@@ -35,6 +35,7 @@ logs/
 
 # Claude
 .claude/
+.superpowers/
 
 # Node
 node_modules/
