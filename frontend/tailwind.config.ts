@@ -17,7 +17,7 @@ const config: Config = {
         'text-primary':      '#1a1208',
         'text-secondary':    '#6b5c3e',
         'text-muted':        '#b0956b',
-        'border-warm':       '#e8e0d4',
+        'border':            '#e8e0d4',
         'border-active':     '#92763c',
       },
       fontFamily: {
