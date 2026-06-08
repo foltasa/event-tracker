@@ -94,5 +94,31 @@ def test_empty_page():
 
 
 def test_http_error_raises():
-    with pytest.raises(Exception):
+    with pytest.raises(httpx.HTTPStatusError):
         list(HamburgScraper(client=_FakeClient("", status_code=500)).fetch())
+
+
+def test_skips_malformed_and_continues():
+    # An event anchor whose slug produces an error in _parse_card
+    # (clock next-sibling raises during _parse_time) should be skipped;
+    # a well-formed event after it should still be yielded.
+    html = """<html><body><main>
+      <a href="/event/bad-event">Bad Event</a>
+      <img src="/icons/icon-clock.svg" alt="Icon">
+      <a href="/event/good-event"><img src="https://cdn.example.com/good.jpg" alt="Good"></a>
+      <a href="/kategorie/musik">Musik</a>
+      <a href="/event/good-event">Good Event</a>
+      <img src="/icons/icon-clock.svg" alt="Icon"> 19:00 Uhr
+      <a href="https://maps.google.com/?q=Venue">
+        <img src="/icons/icon-map.svg" alt="Icon"> Some Venue
+      </a>
+      <a href="#">
+        <img src="/icons/icon-ticket.svg" alt="Icon"> kostenlos
+      </a>
+    </main></body></html>"""
+    # bad-event has no category, venue, or price but is structurally valid enough
+    # that _parse_card returns None (caught by the except guard) or just yields nothing.
+    # good-event must always be yielded.
+    events = list(HamburgScraper(client=_FakeClient(html)).fetch())
+    slugs = [e.external_id for e in events]
+    assert "good-event" in slugs

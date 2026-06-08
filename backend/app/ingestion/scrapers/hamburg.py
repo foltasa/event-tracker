@@ -92,13 +92,35 @@ class HamburgScraper:
                 continue
             seen.add(slug)
 
-            ev = self._parse_card(soup, link, slug, title, today)
+            ev = self._parse_card(link, slug, title, today)
             if ev:
                 yield ev
 
-    def _parse_card(self, soup, title_link, slug: str, title: str, today: date) -> NormalizedEvent | None:
+    def _parse_card(self, title_link, slug: str, title: str, today: date) -> NormalizedEvent | None:
         try:
             source_url = f"{_BASE_URL}/event/{slug}"
+
+            # Compute the next event's title anchor as a forward-search stop boundary.
+            # Prevents find_next calls from crossing into the next event's card.
+            end = next(
+                (
+                    a for a in title_link.find_all_next("a", href=True)
+                    if a.get("href", "").startswith("/event/")
+                    and not a.find("img")
+                    and a.get_text(strip=True)
+                ),
+                None,
+            )
+
+            def _before_boundary(tag):
+                if tag is None or end is None:
+                    return tag
+                for el in title_link.find_all_next():
+                    if el is end:
+                        return None
+                    if el is tag:
+                        return tag
+                return None
 
             # Category from nearest preceding /kategorie/ link
             cat_link = title_link.find_previous("a", href=lambda h: h and "/kategorie/" in h)
@@ -117,7 +139,7 @@ class HamburgScraper:
                         image_url = src if src.startswith("http") else _BASE_URL + src
 
             # Time from nearest following clock icon
-            clock = title_link.find_next("img", attrs={"src": "/icons/icon-clock.svg"})
+            clock = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-clock.svg"}))
             start_datetime: datetime
             if clock and clock.next_sibling:
                 parsed = _parse_time(str(clock.next_sibling), today)
@@ -127,13 +149,13 @@ class HamburgScraper:
 
             # Venue from nearest following map icon's parent anchor
             venue_name: str | None = None
-            map_img = title_link.find_next("img", attrs={"src": "/icons/icon-map.svg"})
+            map_img = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-map.svg"}))
             if map_img:
                 venue_name = map_img.parent.get_text(strip=True) or None
 
             # Price from nearest following ticket icon's parent anchor
             is_free, price_min, price_max = False, None, None
-            ticket_img = title_link.find_next("img", attrs={"src": "/icons/icon-ticket.svg"})
+            ticket_img = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-ticket.svg"}))
             if ticket_img:
                 is_free, price_min, price_max = _parse_price(
                     ticket_img.parent.get_text(strip=True)
