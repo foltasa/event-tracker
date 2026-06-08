@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from app.db.base import Base  # noqa: E402
 # Import all model modules so their tables register on Base.metadata.
 from app.db.models import user as _user_model  # noqa: F401, E402
+from app.db.models import event as _event_model  # noqa: F401, E402
 
 target_metadata = Base.metadata
 
