@@ -1,0 +1,10 @@
+[
+  { "type": "token", "content": "Looking" },
+  { "type": "token", "content": " for events" },
+  { "type": "token", "content": " that match your taste..." },
+  { "type": "tool_start", "tool_name": "search_events" },
+  { "type": "tool_end",   "tool_name": "search_events", "status": "ok" },
+  { "type": "token", "content": " Found 3 matches:" },
+  { "type": "token", "content": " a small jazz set on Friday, an outdoor coding meetup, and a street-food festival." },
+  { "type": "done", "token_usage": { "input_tokens": 420, "output_tokens": 88, "estimated_cost_usd": 0.0012 } }
+]

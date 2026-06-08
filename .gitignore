@@ -35,3 +35,8 @@ logs/
 
 # Claude
 .claude/
+
+# Node
+node_modules/
+.next/
+out/

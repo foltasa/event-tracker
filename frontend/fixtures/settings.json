@@ -1,0 +1,13 @@
+{
+  "tool_toggles": {
+    "search_events": true,
+    "get_recommendations": true,
+    "record_feedback": true,
+    "save_to_calendar": true,
+    "get_calendar": true,
+    "get_user_profile": true,
+    "update_user_profile": true
+  },
+  "llm_provider": "openai",
+  "llm_model": "gpt-4o-mini"
+}
