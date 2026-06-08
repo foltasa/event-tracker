@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
+from app.db import models  # noqa: F401 - imports all models for metadata registration
 
 
 @pytest.fixture

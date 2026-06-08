@@ -89,7 +89,7 @@ class TicketmasterAdapter:
             loc = venue.get("location", {})
             line1 = venue.get("address", {}).get("line1", "")
             city = venue.get("city", {}).get("name", "Hamburg")
-            venue_address = f"{line1}, {city}".strip(", ") or None
+            venue_address = ", ".join(p for p in [line1, city] if p) or None
 
             ranges = raw.get("priceRanges") or []
             price_min = min((p["min"] for p in ranges if "min" in p), default=None)

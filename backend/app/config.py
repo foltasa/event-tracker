@@ -6,7 +6,8 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./event_tracker.db"
     default_user_id: str = "local"
-    ticketmaster_api_key: str = ""
+    eventbrite_token: str | None = None
+    ticketmaster_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -84,6 +84,8 @@ def test_fetch_paginates():
     adapter = TicketmasterAdapter(client=_FakeClient([_PAGE_1, _PAGE_2]))
     events = list(adapter.fetch())
     assert len(events) == 2
+    assert events[0].external_id == "tm_001"
+    assert events[1].external_id == "tm_002"
 
 
 def test_fetch_maps_sports_category():
@@ -116,3 +118,13 @@ def test_fetch_skips_malformed_event():
     events = list(adapter.fetch())
     assert len(events) == 1
     assert events[0].external_id == "tm_001"
+
+
+def test_fetch_raises_on_http_error():
+    class _ErrorClient:
+        def get(self, url: str, **kwargs) -> httpx.Response:
+            return httpx.Response(429, request=httpx.Request("GET", url))
+
+    adapter = TicketmasterAdapter(client=_ErrorClient())
+    with pytest.raises(httpx.HTTPStatusError):
+        list(adapter.fetch())
