@@ -1,0 +1,95 @@
+{
+  "date": "2026-06-08",
+  "picks": [
+    {
+      "event": {
+        "id": "evt_001",
+        "title": "Jazz Night at Mojo Club",
+        "summary": "Intimate trio set, doors 20:00",
+        "start_datetime": "2026-06-14T20:00:00+02:00",
+        "end_datetime": "2026-06-14T23:00:00+02:00",
+        "venue_name": "Mojo Club",
+        "venue_address": "Reeperbahn 1, 20359 Hamburg",
+        "category": "music",
+        "tags": ["jazz", "live music", "intimate"],
+        "price_min": 18.0,
+        "price_max": 24.0,
+        "is_free": false,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800",
+        "source_url": "https://www.eventbrite.de/e/jazz-night-12345",
+        "source": "eventbrite",
+        "is_active": true
+      },
+      "justification": "You consistently liked small intimate jazz venues last month, and this is a trio set at one of your saved spots."
+    },
+    {
+      "event": {
+        "id": "evt_002",
+        "title": "Open-Air Coding Meetup",
+        "summary": "Outdoor hack session at Stadtpark",
+        "start_datetime": "2026-06-13T15:00:00+02:00",
+        "end_datetime": "2026-06-13T19:00:00+02:00",
+        "venue_name": "Hamburger Stadtpark",
+        "venue_address": "Otto-Wels-Straße 3, 22303 Hamburg",
+        "category": "tech",
+        "tags": ["meetup", "outdoor", "coding"],
+        "price_min": null,
+        "price_max": null,
+        "is_free": true,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800",
+        "source_url": "https://meetup.example/hh-code-outside",
+        "source": "hamburg_scraper",
+        "is_active": true
+      },
+      "justification": "Combines two stated interests — tech and outdoor — and it's free; matches your bias toward low-commitment weekday events."
+    },
+    {
+      "event": {
+        "id": "evt_003",
+        "title": "Hamburg Street Food Festival",
+        "summary": "Weekend food market in the Schanze",
+        "start_datetime": "2026-06-15T11:00:00+02:00",
+        "end_datetime": "2026-06-15T22:00:00+02:00",
+        "venue_name": "Schanzenviertel",
+        "venue_address": "Sternschanze, 20357 Hamburg",
+        "category": "food",
+        "tags": ["food", "market", "weekend"],
+        "price_min": null,
+        "price_max": null,
+        "is_free": true,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800",
+        "source_url": "https://www.eventbrite.de/e/street-food-67890",
+        "source": "eventbrite",
+        "is_active": true
+      },
+      "justification": "Free, casual, in a neighbourhood you've reacted positively to before."
+    },
+    {
+      "event": {
+        "id": "evt_004",
+        "title": "Kampnagel: Contemporary Dance",
+        "summary": "International dance series, ticketed",
+        "start_datetime": "2026-06-16T19:30:00+02:00",
+        "end_datetime": "2026-06-16T21:00:00+02:00",
+        "venue_name": "Kampnagel",
+        "venue_address": "Jarrestraße 20, 22303 Hamburg",
+        "category": "theater",
+        "tags": ["dance", "contemporary"],
+        "price_min": 28.0,
+        "price_max": 42.0,
+        "is_free": false,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1535525153412-5a092d46b07a?w=800",
+        "source_url": "https://www.ticketmaster.de/event/kampnagel-dance",
+        "source": "ticketmaster",
+        "is_active": true
+      },
+      "justification": "Stretching beyond music since you've mentioned wanting to see more performance art."
+    }
+  ],
+  "generated_at": "2026-06-08T07:42:11+02:00",
+  "is_cached": true
+}

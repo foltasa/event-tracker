@@ -1,0 +1,73 @@
+{
+  "entries": [
+    {
+      "id": "sav_001",
+      "event": {
+        "id": "evt_001",
+        "title": "Jazz Night at Mojo Club",
+        "summary": "Intimate trio set, doors 20:00",
+        "start_datetime": "2026-06-14T20:00:00+02:00",
+        "end_datetime": "2026-06-14T23:00:00+02:00",
+        "venue_name": "Mojo Club",
+        "venue_address": "Reeperbahn 1, 20359 Hamburg",
+        "category": "music",
+        "tags": ["jazz"],
+        "price_min": 18.0,
+        "price_max": 24.0,
+        "is_free": false,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800",
+        "source_url": "https://www.eventbrite.de/e/jazz-night-12345",
+        "source": "eventbrite",
+        "is_active": true
+      },
+      "saved_at": "2026-06-07T11:02:00+02:00"
+    },
+    {
+      "id": "sav_002",
+      "event": {
+        "id": "evt_003",
+        "title": "Hamburg Street Food Festival",
+        "summary": "Weekend food market in the Schanze",
+        "start_datetime": "2026-06-15T11:00:00+02:00",
+        "end_datetime": "2026-06-15T22:00:00+02:00",
+        "venue_name": "Schanzenviertel",
+        "venue_address": "Sternschanze, 20357 Hamburg",
+        "category": "food",
+        "tags": ["food", "market"],
+        "price_min": null,
+        "price_max": null,
+        "is_free": true,
+        "currency": "EUR",
+        "image_url": "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800",
+        "source_url": "https://www.eventbrite.de/e/street-food-67890",
+        "source": "eventbrite",
+        "is_active": true
+      },
+      "saved_at": "2026-06-06T18:30:00+02:00"
+    },
+    {
+      "id": "sav_003",
+      "event": {
+        "id": "evt_099",
+        "title": "Cancelled: Hafenfest Mini-Concert",
+        "summary": "Originally scheduled at the Landungsbrücken",
+        "start_datetime": "2026-06-05T18:00:00+02:00",
+        "end_datetime": "2026-06-05T20:00:00+02:00",
+        "venue_name": "Landungsbrücken",
+        "venue_address": "Landungsbrücken, 20359 Hamburg",
+        "category": "music",
+        "tags": ["concert"],
+        "price_min": null,
+        "price_max": null,
+        "is_free": true,
+        "currency": "EUR",
+        "image_url": null,
+        "source_url": "https://meetup.example/hafenfest",
+        "source": "hamburg_scraper",
+        "is_active": false
+      },
+      "saved_at": "2026-06-01T09:14:00+02:00"
+    }
+  ]
+}

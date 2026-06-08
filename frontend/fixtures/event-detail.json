@@ -1,0 +1,22 @@
+{
+  "id": "evt_001",
+  "title": "Jazz Night at Mojo Club",
+  "summary": "Intimate trio set, doors 20:00",
+  "start_datetime": "2026-06-14T20:00:00+02:00",
+  "end_datetime": "2026-06-14T23:00:00+02:00",
+  "venue_name": "Mojo Club",
+  "venue_address": "Reeperbahn 1, 20359 Hamburg",
+  "category": "music",
+  "tags": ["jazz", "live music", "intimate"],
+  "price_min": 18.0,
+  "price_max": 24.0,
+  "is_free": false,
+  "currency": "EUR",
+  "image_url": "https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800",
+  "source_url": "https://www.eventbrite.de/e/jazz-night-12345",
+  "source": "eventbrite",
+  "is_active": true,
+  "user_sentiment": "like",
+  "user_comment": "loved this venue last time",
+  "is_saved": true
+}
