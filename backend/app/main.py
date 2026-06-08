@@ -26,11 +26,11 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/ingestion/run")
+@app.post("/ingestion/run", status_code=200)
 def trigger_ingestion() -> dict:
     try:
         report = run_ingestion()
         return {"inserted": report.inserted, "updated": report.updated, "skipped": report.skipped}
     except Exception as exc:
         logger.exception("Manual ingestion run failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Ingestion failed") from exc
