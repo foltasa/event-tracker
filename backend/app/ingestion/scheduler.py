@@ -59,6 +59,7 @@ def run_ingestion(
     except Exception:
         if own_session:
             session.rollback()
+        logger.exception("run_ingestion failed, rolled back")
         raise
     finally:
         if own_session:

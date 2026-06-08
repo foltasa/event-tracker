@@ -1,13 +1,14 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Iterator
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.ingestion.normalize import NormalizedEvent
 from app.ingestion.scheduler import run_ingestion
 
-_BERLIN = timezone(timedelta(hours=2))
+_BERLIN = ZoneInfo("Europe/Berlin")
 
 
 def _ev(slug: str = "evt_1") -> NormalizedEvent:
@@ -56,7 +57,6 @@ def test_aggregates_across_adapters(db_session):
 
 def test_calls_deactivate(db_session):
     with patch("app.ingestion.scheduler.deactivate_past_events") as mock_deact:
-        mock_deact.return_value = 0
         run_ingestion(adapters=[_OkAdapter()], session=db_session)
     mock_deact.assert_called_once_with(db_session)
 
@@ -65,3 +65,16 @@ def test_calls_embed_stub(db_session):
     with patch("app.ingestion.scheduler.embed_new_events") as mock_embed:
         run_ingestion(adapters=[_OkAdapter()], session=db_session)
     mock_embed.assert_called_once_with(db_session)
+
+
+def test_db_error_rolls_back(db_session):
+    with patch("app.ingestion.scheduler.upsert_events", side_effect=RuntimeError("db down")):
+        with pytest.raises(RuntimeError, match="db down"):
+            run_ingestion(adapters=[_OkAdapter()], session=db_session)
+
+
+def test_all_adapters_fail_returns_empty_report(db_session):
+    report = run_ingestion(adapters=[_FailAdapter(), _FailAdapter()], session=db_session)
+    assert report.inserted == 0
+    assert report.updated == 0
+    assert report.skipped == 0
