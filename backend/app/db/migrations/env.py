@@ -26,6 +26,7 @@ from app.db.models import user as _user_model  # noqa: F401, E402
 from app.db.models import event as _event_model  # noqa: F401, E402
 from app.db.models import feedback as _feedback_model  # noqa: F401, E402
 from app.db.models import saved_event as _saved_event_model  # noqa: F401, E402
+from app.db.models import chat_message as _chat_message_model  # noqa: F401, E402
 
 target_metadata = Base.metadata
 
