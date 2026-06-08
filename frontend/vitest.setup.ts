@@ -1,0 +1,13 @@
+import '@testing-library/jest-dom'
+
+// IntersectionObserver is not available in jsdom
+class MockIntersectionObserver {
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+  constructor(public callback: IntersectionObserverCallback) {}
+}
+Object.defineProperty(window, 'IntersectionObserver', {
+  writable: true,
+  value: MockIntersectionObserver,
+})
