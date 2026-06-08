@@ -1,7 +1,13 @@
-from datetime import datetime
+import logging
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Iterable, Iterator
 
 from pydantic import Field, field_validator, model_validator
+from sqlalchemy.orm import Session
 
+from app.db.models.event import Event
 from app.schemas.common import EventCategory, _JsonBase
 
 
@@ -53,16 +59,6 @@ class NormalizedEvent(_JsonBase):
                     raise ValueError("is_free=True requires prices to be 0 or None")
         return self
 
-
-import logging
-import uuid
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Iterable
-
-from sqlalchemy.orm import Session
-
-from app.db.models.event import Event
 
 logger = logging.getLogger(__name__)
 

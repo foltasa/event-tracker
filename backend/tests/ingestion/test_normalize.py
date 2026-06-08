@@ -153,6 +153,21 @@ def test_deactivate_past_events(db_session):
     assert future_ev.is_active is True
 
 
+def test_upsert_skips_on_error(db_session):
+    class _Bad:
+        external_id = "bad"
+        source = "test"
+        # model_dump does not exist → AttributeError caught by except Exception
+        def __getattr__(self, name):
+            raise AttributeError(f"no attr {name}")
+
+    good = _normed_event()
+    report = upsert_events(db_session, [_Bad(), good])
+    db_session.commit()
+    assert report.skipped == 1
+    assert report.inserted == 1
+
+
 def test_deactivate_does_not_double_count_already_inactive(db_session):
     now = datetime.now(tz=timezone.utc)
     past = _normed_event(external_id="past", start_datetime=now - timedelta(days=1))
