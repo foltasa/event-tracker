@@ -1,19 +1,109 @@
-import { getDigest } from "@/lib/api";
+'use client'
+import { useState, useCallback } from 'react'
+import useSWR from 'swr'
+import { postFeedback, saveToCalendar, getSettings, getDigest, getEventDetail } from '@/lib/api'
+import type { Sentiment } from '@/lib/types'
+import TopNav from '@/components/TopNav'
+import DigestSection from '@/components/DigestSection'
+import FeedFilters from '@/components/FeedFilters'
+import type { FeedFilterState } from '@/components/FeedFilters'
+import FeedSection from '@/components/FeedSection'
+import ChatPanel from '@/components/ChatPanel'
+import EventDetailOverlay from '@/components/EventDetailOverlay'
 
-export default async function HomePage() {
-  const digest = await getDigest();
+const DEFAULT_FILTERS: FeedFilterState = {
+  category: null, datePreset: 'any', isFree: false, q: '',
+}
+
+export default function DashboardPage() {
+  const [activeEventId, setActiveEventId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<FeedFilterState>(DEFAULT_FILTERS)
+
+  const { data: digest } = useSWR('/digest', getDigest)
+  const { data: settings } = useSWR('/settings', getSettings)
+
+  const handleFeedback = useCallback(async (eventId: string, sentiment: Sentiment) => {
+    await postFeedback({ event_id: eventId, sentiment, comment: null })
+  }, [])
+
+  const handleSave = useCallback(async (eventId: string) => {
+    await saveToCalendar(eventId)
+  }, [])
+
+  const handleCardClick = useCallback((eventId: string) => {
+    setActiveEventId(eventId)
+  }, [])
+
+  const today = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
+  const model = settings?.llm_model ?? 'gpt-4o-mini'
+  const activeJustification = digest?.picks.find((p) => p.event.id === activeEventId)?.justification ?? null
+
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Event Tracker — Mock Mode</h1>
-      <p className="text-sm text-gray-500 mb-4">Digest date: {digest.date} · {digest.picks.length} picks</p>
-      <ul className="space-y-2">
-        {digest.picks.map((p) => (
-          <li key={p.event.id} className="border p-3 rounded">
-            <strong>{p.event.title}</strong> — {p.event.venue_name}
-            <p className="text-sm text-gray-600 mt-1">{p.justification}</p>
-          </li>
-        ))}
-      </ul>
-    </main>
-  );
+    <div className="flex flex-col h-screen overflow-hidden bg-bg-page">
+      <TopNav active="dashboard" date={`Hamburg · ${today}`} />
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left column */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <DigestSection
+            onCardClick={handleCardClick}
+            onFeedback={handleFeedback}
+            onSave={handleSave}
+          />
+          <FeedFilters filters={filters} onChange={setFilters} />
+          <FeedSection
+            filters={filters}
+            onCardClick={handleCardClick}
+            onFeedback={handleFeedback}
+            onSave={handleSave}
+          />
+        </div>
+
+        {/* Chat panel */}
+        <ChatPanel
+          sessionId="dashboard"
+          model={model}
+          dailyCost={0}
+          onCardClick={handleCardClick}
+          onFeedback={handleFeedback}
+          onSave={handleSave}
+        />
+      </div>
+
+      {/* Event detail overlay */}
+      {activeEventId && (
+        <EventDetailOverlayLoader
+          eventId={activeEventId}
+          justification={activeJustification}
+          onClose={() => setActiveEventId(null)}
+          onFeedback={handleFeedback}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  )
+}
+
+function EventDetailOverlayLoader({
+  eventId, justification, onClose, onFeedback, onSave,
+}: {
+  eventId: string
+  justification: string | null
+  onClose: () => void
+  onFeedback: (id: string, s: Sentiment) => void
+  onSave: (id: string) => void
+}) {
+  const { data: event } = useSWR(`/events/${eventId}`, () => getEventDetail(eventId))
+
+  if (!event) return null
+
+  return (
+    <EventDetailOverlay
+      event={event}
+      justification={justification}
+      onClose={onClose}
+      onFeedback={onFeedback}
+      onSave={onSave}
+    />
+  )
 }
