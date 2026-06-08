@@ -64,3 +64,104 @@ def test_is_free_requires_zero_or_null_prices():
     # is_free=True with 0 prices → ok
     e2 = NormalizedEvent(**_kwargs(is_free=True, price_min=0.0, price_max=0.0))
     assert e2.is_free is True
+
+
+# ---------------------------------------------------------------------------
+# Upsert + deactivation tests (added in ingestion pipeline task)
+# ---------------------------------------------------------------------------
+from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events  # noqa: E402
+from datetime import timedelta
+
+
+def _normed_event(**overrides) -> NormalizedEvent:
+    base = dict(
+        external_id="src_001",
+        source="eventbrite",
+        title="Test Event",
+        start_datetime=datetime(2026, 7, 1, 20, 0, tzinfo=BERLIN),
+        category="music",
+        is_free=False,
+        price_min=10.0,
+        price_max=20.0,
+        source_url="https://example.com/e/001",
+    )
+    base.update(overrides)
+    return NormalizedEvent(**base)
+
+
+def test_upsert_inserts_new_event(db_session):
+    report = upsert_events(db_session, [_normed_event()])
+    db_session.commit()
+    assert report.inserted == 1
+    assert report.updated == 0
+    assert report.skipped == 0
+
+
+def test_upsert_updates_existing_event(db_session):
+    upsert_events(db_session, [_normed_event(title="Original")])
+    db_session.commit()
+
+    report = upsert_events(db_session, [_normed_event(title="Updated")])
+    db_session.commit()
+
+    assert report.inserted == 0
+    assert report.updated == 1
+
+    from app.db.models.event import Event
+    ev = db_session.query(Event).filter_by(external_id="src_001", source="eventbrite").one()
+    assert ev.title == "Updated"
+
+
+def test_upsert_is_idempotent(db_session):
+    events = [_normed_event()]
+    upsert_events(db_session, events)
+    db_session.commit()
+    report = upsert_events(db_session, events)
+    db_session.commit()
+
+    from app.db.models.event import Event
+    assert db_session.query(Event).count() == 1
+    assert report.updated == 1
+
+
+def test_upsert_handles_multiple_sources(db_session):
+    report = upsert_events(db_session, [
+        _normed_event(source="eventbrite", external_id="001"),
+        _normed_event(source="ticketmaster", external_id="001"),
+    ])
+    db_session.commit()
+    assert report.inserted == 2
+
+
+def test_deactivate_past_events(db_session):
+    now = datetime.now(tz=timezone.utc)
+    past = _normed_event(external_id="past", start_datetime=now - timedelta(days=1))
+    future = _normed_event(external_id="future", start_datetime=now + timedelta(days=1))
+
+    upsert_events(db_session, [past, future])
+    db_session.commit()
+
+    count = deactivate_past_events(db_session)
+    db_session.commit()
+
+    from app.db.models.event import Event
+    past_ev = db_session.query(Event).filter_by(external_id="past").one()
+    future_ev = db_session.query(Event).filter_by(external_id="future").one()
+
+    assert count == 1
+    assert past_ev.is_active is False
+    assert future_ev.is_active is True
+
+
+def test_deactivate_does_not_double_count_already_inactive(db_session):
+    now = datetime.now(tz=timezone.utc)
+    past = _normed_event(external_id="past", start_datetime=now - timedelta(days=1))
+    upsert_events(db_session, [past])
+    db_session.commit()
+
+    deactivate_past_events(db_session)
+    db_session.commit()
+    count = deactivate_past_events(db_session)
+    db_session.commit()
+
+    assert count == 0
