@@ -20,9 +20,10 @@ const mockPick: DigestPick = {
 
 describe('EventCard feed variant', () => {
   it('renders title and venue', () => {
-    render(<EventCard variant="feed" data={mockEventCtx} onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={vi.fn()} />)
+    const { container } = render(<EventCard variant="feed" data={mockEventCtx} onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={vi.fn()} />)
     expect(screen.getByText('Jazz Night at Mojo Club')).toBeInTheDocument()
-    expect(screen.getByText(/Mojo Club/)).toBeInTheDocument()
+    const metaLines = container.querySelectorAll('.text-text-secondary')
+    expect(Array.from(metaLines).some(el => el.textContent?.includes('Mojo Club'))).toBe(true)
   })
 
   it('calls onCardClick when title clicked', () => {

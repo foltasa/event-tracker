@@ -157,7 +157,7 @@ export default function EventCard({ variant, data, onCardClick, onFeedback, onSa
             {event.title}
           </button>
           <p className="text-[9px] text-text-secondary">
-            {dateStr}{priceStr && ` · ${priceStr}`}
+            {event.venue_name && `${event.venue_name} · `}{dateStr}{priceStr && ` · ${priceStr}`}
           </p>
         </div>
         <div className="flex gap-1 items-center">
