@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
+from app.api.deps import current_user_id_middleware
 from app.ingestion.scheduler import create_scheduler, run_ingestion
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Event Tracker API", lifespan=lifespan)
+app.middleware("http")(current_user_id_middleware)
 
 
 @app.get("/health")
