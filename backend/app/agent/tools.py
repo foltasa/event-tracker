@@ -173,3 +173,117 @@ def update_user_profile(
         return {"status": "ok"}
     finally:
         session.close()
+
+
+from app.agent.memory import refresh_taste_centroid
+
+
+@tool
+def get_recommendations(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    n: int = 10,
+) -> list[dict]:
+    """Recommend events ranked by similarity to the user's taste.
+
+    Uses the user's taste centroid (mean of liked-event embeddings) when
+    available; otherwise falls back to embedding their interest tags."""
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+
+        if user.taste_centroid is not None and len(user.taste_centroid) > 0:
+            vector = list(user.taste_centroid)
+        elif user.interest_tags:
+            vector = embed_one(", ".join(user.interest_tags))
+        else:
+            return []
+
+        where = None
+        ranges = []
+        if date_from:
+            ranges.append({"start_time": {"$gte": int(datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc).timestamp())}})
+        if date_to:
+            ranges.append({"start_time": {"$lte": int(datetime.combine(date.fromisoformat(date_to), time.max, tzinfo=timezone.utc).timestamp())}})
+        if ranges:
+            where = {"$and": ranges} if len(ranges) > 1 else ranges[0]
+
+        try:
+            hits = chroma_store.query_by_vector(vector, n=min(n, 30), where=where)
+        except Exception as exc:
+            logger.exception("chroma query failed")
+            raise ToolError("recommendations temporarily unavailable") from exc
+
+        if not hits:
+            return []
+
+        id_to_score = {h.event_id: h.similarity_score for h in hits}
+        rows = session.query(Event).filter(Event.id.in_(id_to_score.keys())).all()
+        return sorted(
+            (_event_to_summary(r, similarity_score=id_to_score[r.id]) for r in rows),
+            key=lambda d: d["similarity_score"] or 0.0,
+            reverse=True,
+        )
+    finally:
+        session.close()
+
+
+@tool
+def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -> dict:
+    """Record thumbs feedback on an event.
+
+    Args:
+        event_id: Event ID being reacted to.
+        sentiment: 'like' or 'dislike'.
+        comment: Optional free-text comment.
+    """
+    if sentiment not in ("like", "dislike"):
+        raise ToolError("sentiment must be 'like' or 'dislike'")
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        if not session.query(Event).filter_by(id=event_id).first():
+            raise ToolError("event not found")
+        existing = session.query(Feedback).filter_by(user_id=user_id, event_id=event_id).first()
+        if existing:
+            existing.sentiment = sentiment
+            existing.comment = comment
+        else:
+            import uuid as _uuid
+            session.add(Feedback(
+                id=str(_uuid.uuid4()),
+                user_id=user_id,
+                event_id=event_id,
+                sentiment=sentiment,
+                comment=comment,
+            ))
+        user = session.query(User).filter_by(id=user_id).one()
+        user.taste_summary_dirty = True
+        session.commit()
+        if sentiment == "like":
+            refresh_taste_centroid(session, user_id)
+            session.commit()
+        return {"status": "ok"}
+    finally:
+        session.close()
+
+
+ALL_TOOLS = [
+    search_events,
+    get_recommendations,
+    record_feedback,
+    save_to_calendar,
+    get_calendar,
+    get_user_profile,
+    update_user_profile,
+]
+
+
+def select_tools(enabled_names: list[str] | None = None) -> list:
+    if enabled_names is None:
+        return ALL_TOOLS
+    by_name = {t.name: t for t in ALL_TOOLS}
+    return [by_name[n] for n in enabled_names if n in by_name]
