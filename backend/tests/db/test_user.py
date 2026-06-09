@@ -29,3 +29,22 @@ def test_user_id_is_primary_key(db_session):
     db_session.add(User(id="local", interest_tags=[], settings={}))
     with pytest.raises(IntegrityError):
         db_session.commit()
+
+
+def test_user_has_taste_centroid_and_dirty_flag(db_session):
+    from app.db.models import User
+    u = User(id="local", interest_tags=["music"])
+    db_session.add(u)
+    db_session.commit()
+    fresh = db_session.query(User).filter_by(id="local").first()
+    assert fresh.taste_summary_dirty is True  # default true => first read triggers initial summary
+    assert fresh.taste_centroid is None
+
+
+def test_user_taste_centroid_roundtrip(db_session):
+    from app.db.models import User
+    u = User(id="local", interest_tags=[], taste_centroid=[0.1, 0.2, 0.3])
+    db_session.add(u)
+    db_session.commit()
+    fresh = db_session.query(User).filter_by(id="local").first()
+    assert fresh.taste_centroid == [0.1, 0.2, 0.3]

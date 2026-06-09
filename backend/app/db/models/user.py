@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, String
+from sqlalchemy import JSON, Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -18,6 +18,8 @@ class User(Base):
     interest_tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     about_me: Mapped[str | None] = mapped_column(String, nullable=True)
     taste_summary: Mapped[str | None] = mapped_column(String, nullable=True)
+    taste_summary_dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    taste_centroid: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
