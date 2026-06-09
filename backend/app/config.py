@@ -9,6 +9,21 @@ class Settings(BaseSettings):
     eventbrite_token: str | None = None
     ticketmaster_api_key: str | None = None
 
+    # Agent / LLM
+    openrouter_api_key: str | None = None
+    openai_api_key: str | None = None  # used by embeddings (OpenAI direct, not via OpenRouter)
+    agent_model: str = "openai/gpt-4o-mini"
+    agent_temperature: float = 0.7
+    summary_model: str = "openai/gpt-4o-mini"
+
+    # RAG
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dim: int = 1536
+    chroma_path: str = "./data/chroma"
+
+    # LangGraph checkpointer
+    checkpointer_path: str = "./data/agent.sqlite"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
