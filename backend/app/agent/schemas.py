@@ -25,7 +25,7 @@ class EventSummary(BaseModel):
 
 class LLMDigestPick(BaseModel):
     event_id: str
-    justification: str  # plain str — tests pass "j" (length 1); min_length would break test setup
+    justification: str = Field(min_length=10)
 
 
 class LLMDigestResponse(BaseModel):
