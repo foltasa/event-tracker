@@ -73,3 +73,47 @@ def test_get_calendar_returns_saved(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     results = tools.get_calendar.invoke({})
     assert [r["id"] for r in results] == ["e_music"]
+
+
+def test_save_to_calendar_idempotent(db_session, events, monkeypatch):
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
+    tools.save_to_calendar.invoke({"event_id": "e_music"})
+    tools.save_to_calendar.invoke({"event_id": "e_music"})  # second call must not raise
+    rows = db_session.query(SavedEvent).filter_by(user_id="local", event_id="e_music").all()
+    assert len(rows) == 1
+
+
+def test_save_to_calendar_unknown_raises_toolerror(db_session, user, monkeypatch):
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
+    with pytest.raises(ToolError, match="event not found"):
+        tools.save_to_calendar.invoke({"event_id": "nope"})
+
+
+def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
+    user.taste_summary_dirty = False
+    user.taste_summary = "loves jazz"
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
+    result = tools.get_user_profile.invoke({})
+    assert result == {
+        "interest_tags": ["music"],
+        "about_me": None,
+        "taste_summary": "loves jazz",
+    }
+
+
+def test_update_user_profile_marks_dirty(db_session, user, monkeypatch):
+    user.taste_summary_dirty = False
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
+    tools.update_user_profile.invoke({"interest_tags": ["music", "tech"], "about_me": "loves indie"})
+    # Tool closes its session, which expunges instances from the shared test session.
+    # Re-fetch via a fresh query instead of refresh().
+    fresh = db_session.query(User).filter_by(id="local").one()
+    assert fresh.interest_tags == ["music", "tech"]
+    assert fresh.about_me == "loves indie"
+    assert fresh.taste_summary_dirty is True

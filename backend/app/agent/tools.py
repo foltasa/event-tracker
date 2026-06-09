@@ -108,3 +108,68 @@ def get_calendar(date_from: str | None = None, date_to: str | None = None) -> li
         return [_event_to_summary(r) for r in rows]
     finally:
         session.close()
+
+
+@tool
+def save_to_calendar(event_id: str) -> dict:
+    """Save an event to the current user's calendar. Idempotent on (user, event)."""
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        if not session.query(Event).filter_by(id=event_id).first():
+            raise ToolError("event not found")
+        exists = session.query(SavedEvent).filter_by(user_id=user_id, event_id=event_id).first()
+        if exists:
+            return {"status": "ok", "already_saved": True}
+        import uuid as _uuid
+        session.add(SavedEvent(id=str(_uuid.uuid4()), user_id=user_id, event_id=event_id))
+        session.commit()
+        return {"status": "ok", "already_saved": False}
+    finally:
+        session.close()
+
+
+@tool
+def get_user_profile() -> dict:
+    """Return the current user's interests, about-me, and distilled taste summary."""
+    from app.agent.memory import refresh_taste_summary
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        refresh_taste_summary(session, user_id)
+        session.commit()
+        session.refresh(user)
+        return {
+            "interest_tags": list(user.interest_tags),
+            "about_me": user.about_me,
+            "taste_summary": user.taste_summary,
+        }
+    finally:
+        session.close()
+
+
+@tool
+def update_user_profile(
+    interest_tags: list[str] | None = None,
+    about_me: str | None = None,
+) -> dict:
+    """Update user profile fields. Any field omitted is left unchanged.
+    Marks the taste summary dirty so it regenerates on next read."""
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        if interest_tags is not None:
+            user.interest_tags = interest_tags
+        if about_me is not None:
+            user.about_me = about_me
+        user.taste_summary_dirty = True
+        session.commit()
+        return {"status": "ok"}
+    finally:
+        session.close()
