@@ -3,19 +3,39 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.db.models import Event
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
 from app.ingestion.eventbrite import EventbriteAdapter
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
 from app.ingestion.ticketmaster import TicketmasterAdapter
+from app.rag.chroma_store import EventForEmbedding
+from app.rag.chroma_store import upsert_events as chroma_upsert_events
 
 logger = logging.getLogger(__name__)
 
 
 def embed_new_events(session: Session) -> None:
-    """Stub — Chroma embedding deferred to the RAG feature."""
-    logger.info("embed_new_events: deferred, skipping")
+    """Embed all currently-active events into Chroma. Idempotent: upsert by id."""
+    rows = session.query(Event).filter(Event.is_active == True).all()  # noqa: E712
+    if not rows:
+        logger.info("embed_new_events: no active events")
+        return
+    payload = [
+        EventForEmbedding(
+            id=r.id,
+            title=r.title,
+            description=r.description,
+            category=r.category,
+            venue_name=r.venue_name,
+            neighborhood=None,  # not in the current schema; leave None for MVP
+            start_datetime=r.start_datetime,
+        )
+        for r in rows
+    ]
+    chroma_upsert_events(payload)
+    logger.info("embed_new_events: embedded %d events", len(payload))
 
 
 def _default_adapters() -> list[SourceAdapter]:
