@@ -1,4 +1,6 @@
-from app.config import settings
+from pathlib import Path
+
+from app.config import Settings, settings
 
 
 def test_agent_settings_have_defaults():
@@ -11,10 +13,6 @@ def test_agent_settings_have_defaults():
 def test_agent_settings_optional_keys():
     assert hasattr(settings, "openrouter_api_key")
     assert hasattr(settings, "openai_api_key")
-
-
-from pathlib import Path
-from app.config import Settings
 
 
 def test_settings_env_file_points_to_repo_root():
