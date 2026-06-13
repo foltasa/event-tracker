@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]  # config.py -> app -> backend -> repo
 
 
 class Settings(BaseSettings):
@@ -11,7 +15,7 @@ class Settings(BaseSettings):
 
     # Agent / LLM
     openrouter_api_key: str | None = None
-    openai_api_key: str | None = None  # used by embeddings (OpenAI direct, not via OpenRouter)
+    openai_api_key: str | None = None  # retained until Task 3 removes it
     agent_model: str = "openai/gpt-4o-mini"
     agent_temperature: float = 0.7
     summary_model: str = "openai/gpt-4o-mini"
@@ -24,7 +28,11 @@ class Settings(BaseSettings):
     # LangGraph checkpointer
     checkpointer_path: str = "./data/agent.sqlite"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_REPO_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()
