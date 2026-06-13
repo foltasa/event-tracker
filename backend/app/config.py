@@ -15,7 +15,6 @@ class Settings(BaseSettings):
 
     # Agent / LLM
     openrouter_api_key: str | None = None
-    openai_api_key: str | None = None  # retained until Task 3 removes it
     agent_model: str = "openai/gpt-4o-mini"
     agent_temperature: float = 0.7
     summary_model: str = "openai/gpt-4o-mini"

@@ -12,7 +12,7 @@ def test_agent_settings_have_defaults():
 
 def test_agent_settings_optional_keys():
     assert hasattr(settings, "openrouter_api_key")
-    assert hasattr(settings, "openai_api_key")
+    assert not hasattr(settings, "openai_api_key")
 
 
 def test_settings_env_file_points_to_repo_root():
