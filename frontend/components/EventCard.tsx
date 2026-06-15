@@ -146,7 +146,7 @@ export default function EventCard({ variant, data, onCardClick, onFeedback, onSa
 
   // variant === 'feed'
   return (
-    <div className={`flex h-[68px] rounded-lg border ${borderClass} ${opacityClass} overflow-hidden bg-white`}>
+    <div className={`flex h-[68px] flex-shrink-0 rounded-lg border ${borderClass} ${opacityClass} overflow-hidden bg-white`}>
       {imageBanner('w-20')}
       <div className="flex-1 flex flex-col justify-between p-2 min-w-0">
         <div>

@@ -23,6 +23,20 @@ def test_health(client):
     assert resp.json() == {"status": "ok"}
 
 
+def test_cors_preflight_allows_localhost_dev_origin(client):
+    resp = client.options(
+        "/digest",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-user-id,content-type",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "GET" in resp.headers.get("access-control-allow-methods", "")
+
+
 def test_ingestion_run_returns_report(client):
     mock_report = MagicMock(inserted=3, updated=1, skipped=0)
     with patch("app.main.run_ingestion", return_value=mock_report):

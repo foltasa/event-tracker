@@ -12,7 +12,7 @@ export default function SkeletonCard({ variant }: { variant: 'digest' | 'feed' }
     )
   }
   return (
-    <div className="flex h-[68px] rounded-lg border border-border overflow-hidden">
+    <div className="flex h-[68px] flex-shrink-0 rounded-lg border border-border overflow-hidden">
       <div className="w-20 shimmer flex-shrink-0" />
       <div className="flex-1 p-2 space-y-2">
         <div className="h-3 rounded shimmer" />

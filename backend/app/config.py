@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # LangGraph checkpointer
     checkpointer_path: str = "./data/agent.sqlite"
 
+    # Comma-separated list of origins allowed to call the API (browser CORS).
+    # Defaults cover the Next.js dev server on common ports.
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
+
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
