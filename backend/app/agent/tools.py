@@ -217,6 +217,37 @@ def edit_facts(old_string: str, new_string: str) -> dict:
 
 
 @tool
+def edit_taste_summary(old_string: str, new_string: str) -> dict:
+    """Edit your behavioural summary (your inferred picture of the user from
+    saves/feedback).
+
+    Same semantics as edit_facts. Cap is 20 lines. Returns
+    {"status": "ok", "lines": <new line count>} on success.
+    """
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        try:
+            new_blob = apply_edit(
+                user.taste_summary or "",
+                old_string,
+                new_string,
+                cap=20,
+                label="taste_summary",
+            )
+        except EditError as e:
+            raise ToolError(str(e))
+        user.taste_summary = new_blob
+        session.commit()
+        return {"status": "ok", "lines": len(new_blob.splitlines())}
+    finally:
+        session.close()
+
+
+@tool
 def get_recommendations(
     date_from: str | None = None,
     date_to: str | None = None,
@@ -318,6 +349,7 @@ ALL_TOOLS = [
     get_user_profile,
     update_user_profile,
     edit_facts,
+    edit_taste_summary,
 ]
 
 
