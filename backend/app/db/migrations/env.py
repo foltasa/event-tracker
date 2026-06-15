@@ -1,3 +1,4 @@
+import logging
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -9,9 +10,9 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
+# Only apply alembic.ini's logging when no logging is already configured
+# (i.e. when invoked via the `alembic` CLI, not from the running app).
+if config.config_file_name is not None and not logging.getLogger().hasHandlers():
     fileConfig(config.config_file_name)
 
 import os

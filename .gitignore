@@ -41,3 +41,6 @@ logs/
 node_modules/
 .next/
 out/
+
+# DB
+event_tracker.db

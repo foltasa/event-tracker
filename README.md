@@ -4,13 +4,13 @@ A personalized AI agent for discovering events in Hamburg. The app ingests event
 
 ## Architecture
 
-| Layer | Tech | Port |
-|---|---|---|
-| Frontend | Next.js 14 (App Router, TypeScript) | 3000 |
-| Backend | FastAPI + LangGraph agent | 8000 |
-| Database | SQLite (via SQLAlchemy + Alembic) | — |
-| Vector store | ChromaDB | — |
-| Ingestion | APScheduler (daily 04:00 Berlin time) | — |
+| Layer        | Tech                                  | Port |
+| ------------ | ------------------------------------- | ---- |
+| Frontend     | Next.js 14 (App Router, TypeScript)   | 3000 |
+| Backend      | FastAPI + LangGraph agent             | 8000 |
+| Database     | SQLite (via SQLAlchemy + Alembic)     | —   |
+| Vector store | ChromaDB                              | —   |
+| Ingestion    | APScheduler (daily 04:00 Berlin time) | —   |
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ A personalized AI agent for discovering events in Hamburg. The app ingests event
 ### 1. Clone and install
 
 ```powershell
-git clone <repo-url>
+it clone <repo-url>
 cd event-tracker
 
 # Backend
@@ -75,7 +75,21 @@ cd backend
 python -m uvicorn app.main:app --reload   # http://localhost:8000
 ```
 
+Or from the repo root without `cd`:
+
+```powershell
+python -m uvicorn app.main:app --reload --app-dir backend
+```
+
 Interactive API docs are available at `http://localhost:8000/docs` once the server is running.
+
+### Ingestion pipeline (manual trigger)
+
+With the backend running, trigger a full ingestion run from the repo root:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/ingestion/run
+```
 
 ### Tests
 
@@ -101,22 +115,22 @@ alembic downgrade -1                                  # roll back one step
 
 ## API Overview
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Health check |
-| GET | `/digest` | Today's AI-curated digest (cached) |
-| POST | `/digest/refresh` | Force-regenerate the digest |
-| POST | `/chat` | Streaming agent chat (SSE) |
-| GET | `/events` | Paginated event feed with filters |
-| GET | `/events/{id}` | Single event detail |
-| POST | `/feedback` | Record thumbs-up / thumbs-down |
-| DELETE | `/feedback/{id}` | Remove feedback |
-| GET | `/calendar` | Saved events |
-| POST | `/calendar/{id}` | Save an event |
-| DELETE | `/calendar/{id}` | Remove a saved event |
-| GET | `/profile` | User profile and preferences |
-| PUT | `/profile` | Update user preferences |
-| POST | `/ingestion/run` | Manually trigger ingestion pipeline |
+| Method | Path                | Description                         |
+| ------ | ------------------- | ----------------------------------- |
+| GET    | `/health`         | Health check                        |
+| GET    | `/digest`         | Today's AI-curated digest (cached)  |
+| POST   | `/digest/refresh` | Force-regenerate the digest         |
+| POST   | `/chat`           | Streaming agent chat (SSE)          |
+| GET    | `/events`         | Paginated event feed with filters   |
+| GET    | `/events/{id}`    | Single event detail                 |
+| POST   | `/feedback`       | Record thumbs-up / thumbs-down      |
+| DELETE | `/feedback/{id}`  | Remove feedback                     |
+| GET    | `/calendar`       | Saved events                        |
+| POST   | `/calendar/{id}`  | Save an event                       |
+| DELETE | `/calendar/{id}`  | Remove a saved event                |
+| GET    | `/profile`        | User profile and preferences        |
+| PUT    | `/profile`        | Update user preferences             |
+| POST   | `/ingestion/run`  | Manually trigger ingestion pipeline |
 
 ## Project Structure
 
