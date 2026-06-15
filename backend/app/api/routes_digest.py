@@ -20,12 +20,25 @@ router = APIRouter(prefix="/digest", tags=["digest"])
 
 _agent_singleton = None
 
+# Digest agent is read-only with respect to long-term memory: it must not be
+# able to call edit_facts or edit_taste_summary. The prompt declares this, and
+# we enforce it here by gating the tool set.
+DIGEST_TOOLS = [
+    "search_events",
+    "get_recommendations",
+    "record_feedback",
+    "save_to_calendar",
+    "get_calendar",
+    "get_user_profile",
+    "update_user_profile",
+]
+
 
 def get_agent():
     global _agent_singleton
     if _agent_singleton is None:
         from app.agent.runtime import build_agent
-        _agent_singleton = build_agent()
+        _agent_singleton = build_agent(tools_enabled=DIGEST_TOOLS)
     return _agent_singleton
 
 

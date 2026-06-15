@@ -74,3 +74,25 @@ def test_digest_502_when_agent_returns_too_few_picks(mock_agent, _today, client,
     mock_agent.return_value = agent
     r = client.get("/digest")
     assert r.status_code == 502
+
+
+def test_digest_agent_tool_set_excludes_edit_tools():
+    """The digest agent must be read-only with respect to long-term memory:
+    its tool list must NOT contain edit_facts or edit_taste_summary, matching
+    the read-only marker in the curation prompt."""
+    from app.agent.tools import select_tools
+    from app.api.routes_digest import DIGEST_TOOLS
+
+    digest_tools = select_tools(DIGEST_TOOLS)
+    names = {t.name for t in digest_tools}
+    assert "edit_facts" not in names
+    assert "edit_taste_summary" not in names
+    assert {
+        "search_events",
+        "get_recommendations",
+        "record_feedback",
+        "save_to_calendar",
+        "get_calendar",
+        "get_user_profile",
+        "update_user_profile",
+    } <= names

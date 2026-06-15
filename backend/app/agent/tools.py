@@ -12,7 +12,7 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.agent.memory import get_current_user_id
+from app.agent.memory import get_current_user_id, refresh_taste_centroid
 from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.db.models import Event, Feedback, SavedEvent, User
@@ -168,9 +168,6 @@ def update_user_profile(
         return {"status": "ok"}
     finally:
         session.close()
-
-
-from app.agent.memory import refresh_taste_centroid
 
 
 @tool
