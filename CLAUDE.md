@@ -10,3 +10,4 @@
    This option = `git push -u origin <branch>` only, NO `gh pr create`, keep the branch.
    Preferred flow: feature branch → push (Option 4) → manual review/test → manual
    PR → Squash and Merge.
+4. Never chain commands with `&&` or `;` when each individual command is already allowed by `Bash(git:*)` or similar rules. Use separate parallel Bash tool calls instead — they run concurrently and don't trigger permission prompts.

@@ -1,13 +1,13 @@
-"""OpenAI embeddings client. Uses OpenAI directly (not via OpenRouter) for
-embeddings — OpenRouter does not proxy text-embedding-3-small."""
+"""Embeddings client. Routes via OpenRouter using the OpenAI SDK
+(OpenRouter is OpenAI-API-compatible)."""
 from openai import OpenAI
 
 from app.config import settings
 
-# Use a placeholder when no key is configured so module import never fails
-# (e.g. in tests, which patch `_client` directly). Real API calls without a
-# valid key will fail at request time, which is the desired behavior.
-_client = OpenAI(api_key=settings.openai_api_key or "missing")
+_client = OpenAI(
+    api_key=settings.openrouter_api_key or "missing",
+    base_url="https://openrouter.ai/api/v1",
+)
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -18,5 +18,4 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 def embed_one(text: str) -> list[float]:
-    vectors = embed_texts([text])
-    return vectors[0]
+    return embed_texts([text])[0]

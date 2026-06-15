@@ -36,24 +36,13 @@ npm install
 
 ### 2. Configure environment
 
-**Backend** — copy `backend/.env.example` to `backend/.env`:
+Copy the template at the repo root and fill in the values you need:
 
-```env
-DATABASE_URL=sqlite:///./event_tracker.db
-DEFAULT_USER_ID=local
-EVENTBRITE_TOKEN=your_eventbrite_token_here
-TICKETMASTER_API_KEY=your_ticketmaster_api_key_here
-OPENAI_API_KEY=your_openai_api_key        # for embeddings
-AGENT_MODEL=openai/gpt-4o-mini            # LLM for the agent
+```powershell
+Copy-Item .env.example .env
 ```
 
-**Frontend** — copy `frontend/.env.example` to `frontend/.env.local`:
-
-```env
-NEXT_PUBLIC_MOCK_MODE=true               # set to false to use the real backend
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_USER_ID=local
-```
+The file lives at the repo root and is consumed by both backend and frontend. All keys (with comments) are listed inside `.env.example`. For a local-scraper-only setup you only need `OPENROUTER_API_KEY`; `EVENTBRITE_TOKEN` and `TICKETMASTER_API_KEY` can be left blank and those adapters will skip themselves.
 
 ### 3. Apply database migrations
 
@@ -159,4 +148,4 @@ event-tracker/
 
 ## Mock Mode
 
-Set `NEXT_PUBLIC_MOCK_MODE=true` in `frontend/.env.local` to run the frontend with fixture data — no backend required. This is the default for new setups.
+Set `NEXT_PUBLIC_MOCK_MODE=true` in `.env` to run the frontend with fixture data — no backend required. This is the default for new setups.
