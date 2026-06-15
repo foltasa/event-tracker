@@ -4,10 +4,11 @@ from app.config import Settings, settings
 
 
 def test_agent_settings_have_defaults():
-    assert settings.agent_model == "openai/gpt-4o-mini"
-    assert settings.embedding_model == "text-embedding-3-small"
-    assert settings.chroma_path == "./data/chroma"
-    assert settings.checkpointer_path == "./data/agent.sqlite"
+    fields = Settings.model_fields
+    assert fields["agent_model"].default == "openai/gpt-4o-mini"
+    assert fields["embedding_model"].default == "text-embedding-3-small"
+    assert fields["chroma_path"].default == "./data/chroma"
+    assert fields["checkpointer_path"].default == "./data/agent.sqlite"
 
 
 def test_agent_settings_optional_keys():

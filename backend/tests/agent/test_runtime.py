@@ -5,17 +5,23 @@ from app.agent import runtime
 
 @patch("app.agent.runtime.create_react_agent")
 @patch("app.agent.runtime.SqliteSaver")
+@patch("app.agent.runtime.sqlite3.connect")
 @patch("app.agent.runtime.build_llm")
-def test_build_agent_wires_llm_tools_and_checkpointer(mock_llm, mock_saver, mock_create):
+def test_build_agent_wires_llm_tools_and_checkpointer(
+    mock_llm, mock_connect, mock_saver, mock_create
+):
+    runtime._checkpointer_conn = None
     mock_llm.return_value = "FAKE_LLM"
-    mock_saver.from_conn_string.return_value.__enter__ = lambda s: "FAKE_CHECKPOINTER"
-    mock_saver.from_conn_string.return_value.__exit__ = lambda *a: None
+    mock_connect.return_value = "FAKE_CONN"
+    mock_saver.return_value = "FAKE_CHECKPOINTER"
 
     runtime.build_agent()
 
     mock_llm.assert_called_once()
+    mock_saver.assert_called_once_with("FAKE_CONN")
     args, kwargs = mock_create.call_args
     assert kwargs["model"] == "FAKE_LLM"
+    assert kwargs["checkpointer"] == "FAKE_CHECKPOINTER"
     assert len(kwargs["tools"]) == 9
     tool_names = {t.name for t in kwargs["tools"]}
     assert tool_names == {
@@ -23,3 +29,17 @@ def test_build_agent_wires_llm_tools_and_checkpointer(mock_llm, mock_saver, mock
         "save_to_calendar", "get_calendar", "get_user_profile",
         "update_user_profile", "edit_facts", "edit_taste_summary",
     }
+
+
+@patch("app.agent.runtime.create_react_agent")
+@patch("app.agent.runtime.sqlite3.connect")
+@patch("app.agent.runtime.build_llm")
+def test_checkpointer_connection_reused_across_builds(mock_llm, mock_connect, _mock_create):
+    """Regression: closing the saver between builds broke later agent.invoke calls."""
+    runtime._checkpointer_conn = None
+    mock_connect.return_value = "FAKE_CONN"
+
+    runtime.build_agent()
+    runtime.build_agent()
+
+    assert mock_connect.call_count == 1

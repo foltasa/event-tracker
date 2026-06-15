@@ -12,4 +12,5 @@ def build_llm(model: str | None = None, temperature: float | None = None) -> Cha
         base_url="https://openrouter.ai/api/v1",
         temperature=temperature if temperature is not None else settings.agent_temperature,
         streaming=True,
-    ).with_retry(stop_after_attempt=2, wait_exponential_jitter=True)
+        max_retries=2,
+    )

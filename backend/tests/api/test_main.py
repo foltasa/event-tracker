@@ -3,12 +3,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.db.models import User
+from app.main import _ensure_default_user, app
 
 
 @pytest.fixture
 def client():
-    with patch("app.main.create_scheduler") as mock_sched:
+    with patch("app.main.create_scheduler") as mock_sched, \
+         patch("app.main._run_migrations"), \
+         patch("app.main._ensure_default_user"):
         mock_sched.return_value = MagicMock()
         with TestClient(app) as c:
             yield c
@@ -37,7 +40,46 @@ def test_ingestion_run_returns_500_on_failure(client):
 
 def test_lifespan_starts_and_stops_scheduler():
     mock_scheduler = MagicMock()
-    with patch("app.main.create_scheduler", return_value=mock_scheduler):
+    with patch("app.main.create_scheduler", return_value=mock_scheduler), \
+         patch("app.main._run_migrations"), \
+         patch("app.main._ensure_default_user"):
         with TestClient(app):
             mock_scheduler.start.assert_called_once()
         mock_scheduler.shutdown.assert_called_once_with(wait=False)
+
+
+def test_ensure_default_user_creates_when_missing(db_session, monkeypatch):
+    monkeypatch.setattr("app.main.settings.default_user_id", "local")
+    monkeypatch.setattr("app.main.SessionLocal", lambda: _ContextSession(db_session))
+
+    _ensure_default_user()
+
+    user = db_session.query(User).filter_by(id="local").one()
+    assert user.city == "Hamburg"
+    assert user.interest_tags == []
+
+
+def test_ensure_default_user_idempotent(db_session, monkeypatch):
+    monkeypatch.setattr("app.main.settings.default_user_id", "local")
+    monkeypatch.setattr("app.main.SessionLocal", lambda: _ContextSession(db_session))
+    db_session.add(User(id="local", about_me="already here"))
+    db_session.commit()
+
+    _ensure_default_user()
+
+    users = db_session.query(User).filter_by(id="local").all()
+    assert len(users) == 1
+    assert users[0].about_me == "already here"
+
+
+class _ContextSession:
+    """Wrap an existing Session so `with SessionLocal() as db` doesn't close it."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __enter__(self):
+        return self._session
+
+    def __exit__(self, *_exc):
+        return False

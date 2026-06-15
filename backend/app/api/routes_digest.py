@@ -1,10 +1,12 @@
 import json
 import logging
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import ValidationError
 
 from app.agent.memory import get_current_user_id
 from app.agent.prompts import CURATION_PROMPT
@@ -72,6 +74,54 @@ def _serialise_event_for_prompt(e: Event) -> dict:
     }
 
 
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+_BARE_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json_candidate(content: str) -> str | None:
+    m = _FENCED_JSON_RE.search(content)
+    if m:
+        return m.group(1)
+    text = content.strip()
+    if text.startswith("{") and text.endswith("}"):
+        return text
+    m = _BARE_JSON_RE.search(content)
+    return m.group(0) if m else None
+
+
+def _parse_picks_fallback(messages: list) -> LLMDigestResponse | None:
+    """Best-effort recovery when the model didn't honour response_format.
+
+    Some OpenRouter models lack function-calling and return JSON as plain text
+    (often wrapped in ```json fences and prefixed with prose) instead of
+    populating structured_response. Find the JSON block, remap a common schema
+    slip (`id` -> `event_id`), validate.
+    """
+    if not messages:
+        return None
+    content = getattr(messages[-1], "content", None)
+    if not isinstance(content, str):
+        return None
+
+    candidate = _extract_json_candidate(content)
+    if candidate is None:
+        return None
+
+    try:
+        data = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    for pick in data.get("picks", []) if isinstance(data, dict) else []:
+        if isinstance(pick, dict) and "event_id" not in pick and "id" in pick:
+            pick["event_id"] = pick.pop("id")
+
+    try:
+        return LLMDigestResponse.model_validate(data)
+    except ValidationError:
+        return None
+
+
 def _candidate_pool(db, today: date) -> list[Event]:
     end = datetime.combine(today + timedelta(days=7), datetime.max.time(), tzinfo=timezone.utc)
     start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
@@ -117,8 +167,13 @@ def _generate_digest(db, user: User, today: date) -> DigestResponse:
     )
     structured = result.get("structured_response") if isinstance(result, dict) else None
     if structured is None or not getattr(structured, "picks", None) or len(structured.picks) < 3:
-        logger.warning("digest: agent returned malformed structured_response: %r", result)
-        raise HTTPException(status_code=502, detail="could not generate digest, please refresh")
+        fallback = _parse_picks_fallback(result.get("messages", []) if isinstance(result, dict) else [])
+        if fallback is not None and len(fallback.picks) >= 3:
+            logger.info("digest: recovered picks from message content fallback")
+            structured = fallback
+        else:
+            logger.warning("digest: agent returned malformed structured_response: %r", result)
+            raise HTTPException(status_code=502, detail="could not generate digest, please refresh")
 
     picks_raw = [{"event_id": p.event_id, "justification": p.justification} for p in structured.picks]
     generated_at = datetime.now(timezone.utc)

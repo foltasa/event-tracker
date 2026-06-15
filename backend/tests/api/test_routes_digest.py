@@ -1,9 +1,11 @@
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.agent.schemas import LLMDigestPick, LLMDigestResponse
+from app.api.routes_digest import _parse_picks_fallback
 from app.db.models import DigestCache, Event, User
 
 
@@ -74,6 +76,93 @@ def test_digest_502_when_agent_returns_too_few_picks(mock_agent, _today, client,
     mock_agent.return_value = agent
     r = client.get("/digest")
     assert r.status_code == 502
+
+
+def _msg(content):
+    return SimpleNamespace(content=content)
+
+
+def test_fallback_parses_code_fenced_json_with_id_remap():
+    content = (
+        '```json\n'
+        '{"picks": ['
+        '{"id": "e0", "justification": "this one looks great"},'
+        '{"id": "e1", "justification": "this one looks great"},'
+        '{"id": "e2", "justification": "this one looks great"}'
+        ']}\n'
+        '```'
+    )
+    parsed = _parse_picks_fallback([_msg(content)])
+    assert parsed is not None
+    assert [p.event_id for p in parsed.picks] == ["e0", "e1", "e2"]
+
+
+def test_fallback_parses_fenced_json_with_prose_prefix():
+    """DeepSeek prefixes its fenced JSON with explanatory prose."""
+    content = (
+        "Since you have no saved preferences yet, I've picked a diverse set.\n\n"
+        '```json\n'
+        '{"picks": ['
+        '{"id": "e0", "justification": "great choice for jazz fans"},'
+        '{"id": "e1", "justification": "great choice for jazz fans"},'
+        '{"id": "e2", "justification": "great choice for jazz fans"}'
+        ']}\n'
+        '```'
+    )
+    parsed = _parse_picks_fallback([_msg(content)])
+    assert parsed is not None
+    assert [p.event_id for p in parsed.picks] == ["e0", "e1", "e2"]
+
+
+def test_fallback_parses_bare_json():
+    content = (
+        '{"picks": ['
+        '{"event_id": "e0", "justification": "this one looks great"},'
+        '{"event_id": "e1", "justification": "this one looks great"},'
+        '{"event_id": "e2", "justification": "this one looks great"}'
+        ']}'
+    )
+    parsed = _parse_picks_fallback([_msg(content)])
+    assert parsed is not None
+    assert len(parsed.picks) == 3
+
+
+def test_fallback_returns_none_on_garbage():
+    assert _parse_picks_fallback([_msg("I cannot help with that.")]) is None
+    assert _parse_picks_fallback([]) is None
+    assert _parse_picks_fallback([_msg(None)]) is None
+
+
+def test_fallback_returns_none_on_too_few_picks():
+    content = '{"picks": [{"event_id": "e0", "justification": "only one pick here"}]}'
+    assert _parse_picks_fallback([_msg(content)]) is None
+
+
+@patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.get_agent")
+def test_digest_recovers_via_fallback_when_structured_response_missing(
+    mock_agent, _today, client, setup, db_session
+):
+    agent = MagicMock()
+    fenced_json = (
+        '```json\n'
+        '{"picks": ['
+        '{"id": "e0", "justification": "great choice for jazz fans"},'
+        '{"id": "e1", "justification": "great choice for jazz fans"},'
+        '{"id": "e2", "justification": "great choice for jazz fans"}'
+        ']}\n'
+        '```'
+    )
+    agent.invoke.return_value = {
+        "structured_response": None,
+        "messages": [SimpleNamespace(content=fenced_json)],
+    }
+    mock_agent.return_value = agent
+
+    r = client.get("/digest")
+    assert r.status_code == 200
+    body = r.json()
+    assert {p["event"]["id"] for p in body["picks"]} == {"e0", "e1", "e2"}
 
 
 def test_digest_agent_tool_set_excludes_edit_tools():
