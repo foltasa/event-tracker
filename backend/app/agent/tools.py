@@ -13,6 +13,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.agent.memory import get_current_user_id
+from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.db.models import Event, Feedback, SavedEvent, User
 from app.db.session import SessionLocal
@@ -179,6 +180,43 @@ from app.agent.memory import refresh_taste_centroid
 
 
 @tool
+def edit_facts(old_string: str, new_string: str) -> dict:
+    """Edit the user's facts blob (durable user-stated facts).
+
+    Semantics:
+    - old_string="" and new_string!="" appends new_string as a new line.
+    - both non-empty replaces the unique occurrence of old_string.
+    - old_string!="" and new_string="" removes the unique occurrence.
+    - Both empty is an error (no-op).
+    - old_string must match exactly once when non-empty.
+    - Resulting blob must be at most 200 lines; otherwise the edit is refused.
+
+    Returns {"status": "ok", "lines": <new line count>} on success.
+    """
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        try:
+            new_blob = apply_edit(
+                user.facts_md or "",
+                old_string,
+                new_string,
+                cap=200,
+                label="facts_md",
+            )
+        except EditError as e:
+            raise ToolError(str(e))
+        user.facts_md = new_blob
+        session.commit()
+        return {"status": "ok", "lines": len(new_blob.splitlines())}
+    finally:
+        session.close()
+
+
+@tool
 def get_recommendations(
     date_from: str | None = None,
     date_to: str | None = None,
@@ -279,6 +317,7 @@ ALL_TOOLS = [
     get_calendar,
     get_user_profile,
     update_user_profile,
+    edit_facts,
 ]
 
 
