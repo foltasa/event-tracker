@@ -1,21 +1,31 @@
 """Agent prompt templates."""
 
-SUMMARY_PROMPT = """\
-You are summarising a user's event taste based on their reactions.
+_MEMORY_BLOCK_EDITABLE = """\
+USER MEMORY
 
-Interests (stated): {interests}
-About-me: {about_me}
+  Facts (stated by user, you maintain - max 200 lines):
+  {facts_md}
 
-Recent feedback (newest first):
-{feedback}
+  Behavioural summary (you maintain - max 20 lines, your inferred picture from saves/feedback):
+  {taste_summary}
 
-Recently saved:
-{saved}
+You may edit either block via edit_facts / edit_taste_summary. When the
+user states something durable about themselves or their world (diet,
+constraints, neighbourhood, companions, taste claims), add it to Facts.
+When you notice from the conversation that your behavioural summary is
+wrong or outdated, edit it. Do not duplicate between the two blocks. Do
+not store ephemeral or sensitive details the user did not intend to be
+remembered."""
 
-Write a single paragraph of at most 80 words capturing the user's taste -
-what they consistently like, what they dislike, and any patterns
-(venue type, vibe, day of week). Use natural language. No lists.
-"""
+_MEMORY_BLOCK_READONLY = """\
+USER MEMORY (read-only in this context)
+
+  Facts (stated by user - max 200 lines):
+  {facts_md}
+
+  Behavioural summary (max 20 lines, inferred picture from saves/feedback):
+  {taste_summary}"""
+
 
 CURATION_PROMPT = """\
 You are a Hamburg event concierge picking today's digest for a user.
@@ -23,7 +33,8 @@ You are a Hamburg event concierge picking today's digest for a user.
 USER PROFILE
   Interests: {interests}
   About-me: {about_me}
-  Distilled taste: {taste_summary}
+
+""" + _MEMORY_BLOCK_READONLY + """
 
 TODAY'S CANDIDATE POOL (next 7 days, JSON):
 {event_pool}
@@ -45,11 +56,13 @@ You are a Hamburg event concierge for one specific user. Today is {today}.
 USER PROFILE
   Interests: {interests}
   About-me: {about_me}
-  Distilled taste: {taste_summary}
+
+""" + _MEMORY_BLOCK_EDITABLE + """
 
 You have tools for searching events, getting personalised recommendations,
-recording feedback, saving to the calendar, and reading/updating the
-user's profile. Use them when they will help.
+recording feedback, saving to the calendar, reading/updating the user's
+profile, and editing your memory blocks above. Use them when they will
+help.
 
 Be concise. When you refer to a specific event by name, also mention its
 ID in the form [event:ID] so the UI can render the card inline.

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.agent.memory import get_current_user_id, refresh_taste_centroid
 from app.api.deps import DbSession
-from app.db.models import Event, Feedback, User
+from app.db.models import Event, Feedback
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -33,9 +33,6 @@ def post_feedback(payload: FeedbackCreate, db: DbSession) -> FeedbackResponse:
         )
         db.add(fb)
 
-    user = db.query(User).filter_by(id=user_id).one_or_none()
-    if user is not None:
-        user.taste_summary_dirty = True
     db.commit()
     db.refresh(fb)
 

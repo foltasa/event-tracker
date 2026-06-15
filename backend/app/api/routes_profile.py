@@ -38,7 +38,6 @@ def update_profile(payload: UserProfileUpdate, db: DbSession) -> UserProfileResp
         u.interest_tags = payload.interest_tags
     if payload.about_me is not None:
         u.about_me = payload.about_me
-    u.taste_summary_dirty = True
     db.commit()
     db.refresh(u)
     return _to_response(u)
@@ -53,7 +52,6 @@ def onboard(payload: OnboardingRequest, db: DbSession) -> UserProfileResponse:
         db.add(u)
     u.interest_tags = payload.interest_tags
     u.about_me = payload.about_me
-    u.taste_summary_dirty = True
     db.commit()
     db.refresh(u)
     return _to_response(u)

@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     agent_model: str = "openai/gpt-4o-mini"
     agent_temperature: float = 0.7
-    summary_model: str = "openai/gpt-4o-mini"
 
     # RAG
     embedding_model: str = "text-embedding-3-small"

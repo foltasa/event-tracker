@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sse_starlette.sse import EventSourceResponse
 
-from app.agent.memory import get_current_user_id, record_message, refresh_taste_summary
+from app.agent.memory import get_current_user_id, record_message
 from app.agent.prompts import CONVERSATIONAL_PROMPT
 from app.api.deps import DbSession
 from app.db.models import User
@@ -41,10 +41,6 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
         yield {"event": "message", "data": json.dumps({"type": "error", "message": "user not onboarded"})}
         return
 
-    refresh_taste_summary(db, user_id)
-    db.commit()
-    db.refresh(user)
-
     record_message(db, payload.session_id, user_id, "user", payload.message)
     db.commit()
 
@@ -52,7 +48,8 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
         today=date.today().isoformat(),
         interests=", ".join(user.interest_tags) or "(none)",
         about_me=user.about_me or "(none)",
-        taste_summary=user.taste_summary or "(not yet generated)",
+        facts_md=user.facts_md or "(empty)",
+        taste_summary=user.taste_summary or "(empty)",
     )
 
     assistant_buffer: list[str] = []

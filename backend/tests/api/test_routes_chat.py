@@ -11,7 +11,7 @@ from app.db.models import ChatMessage, User
 @pytest.fixture
 def user(db_session):
     db_session.add(User(id="local", interest_tags=["music"],
-                        taste_summary="loves jazz", taste_summary_dirty=False))
+                        taste_summary="loves indie", facts_md="lives in Eimsbüttel"))
     db_session.commit()
 
 
@@ -80,3 +80,23 @@ def test_chat_emits_error_event_on_agent_exception(mock_get_agent, client, user)
     events = _sse_events(body)
     assert events[-1]["type"] == "error"
     assert "boom" in events[-1]["message"] or "agent error" in events[-1]["message"]
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_prompt_includes_memory_blocks(mock_get_agent, client, user):
+    fake_agent = MagicMock()
+    captured = {}
+
+    async def fake_astream(payload, *args, **kwargs):
+        captured["system"] = payload["messages"][0].content
+        yield ("messages", (AIMessage(content="ok"), {"langgraph_node": "agent"}))
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "hi"}) as r:
+        b"".join(r.iter_bytes())
+
+    assert "USER MEMORY" in captured["system"]
+    assert "lives in Eimsbüttel" in captured["system"]
+    assert "loves indie" in captured["system"]

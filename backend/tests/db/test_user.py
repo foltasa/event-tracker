@@ -37,7 +37,7 @@ def test_user_has_taste_centroid_and_dirty_flag(db_session):
     db_session.add(u)
     db_session.commit()
     fresh = db_session.query(User).filter_by(id="local").first()
-    assert fresh.taste_summary_dirty is True  # default true => first read triggers initial summary
+    assert fresh.facts_md == ""  # default empty for agent-managed memory blob
     assert fresh.taste_centroid is None
 
 

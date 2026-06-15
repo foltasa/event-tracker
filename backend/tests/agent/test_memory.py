@@ -44,27 +44,6 @@ def test_record_message_writes_row(db_session, user):
     assert rows[0].content == "hi"
 
 
-def test_refresh_taste_summary_skips_when_clean(db_session, user):
-    user.taste_summary_dirty = False
-    user.taste_summary = "existing"
-    db_session.commit()
-    with patch("app.agent.memory._invoke_summary_llm") as mock_llm:
-        result = memory.refresh_taste_summary(db_session, "local")
-    assert result == "existing"
-    mock_llm.assert_not_called()
-
-
-def test_refresh_taste_summary_regenerates_when_dirty(db_session, user):
-    user.taste_summary_dirty = True
-    db_session.commit()
-    with patch("app.agent.memory._invoke_summary_llm", return_value="loves jazz"):
-        result = memory.refresh_taste_summary(db_session, "local")
-    assert result == "loves jazz"
-    db_session.refresh(user)
-    assert user.taste_summary == "loves jazz"
-    assert user.taste_summary_dirty is False
-
-
 def test_refresh_taste_centroid_no_likes_sets_null(db_session, user):
     memory.refresh_taste_centroid(db_session, "local")
     db_session.refresh(user)

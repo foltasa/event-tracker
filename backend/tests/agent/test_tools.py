@@ -93,7 +93,6 @@ def test_save_to_calendar_unknown_raises_toolerror(db_session, user, monkeypatch
 
 
 def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
-    user.taste_summary_dirty = False
     user.taste_summary = "loves jazz"
     db_session.commit()
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
@@ -106,9 +105,7 @@ def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
     }
 
 
-def test_update_user_profile_marks_dirty(db_session, user, monkeypatch):
-    user.taste_summary_dirty = False
-    db_session.commit()
+def test_update_user_profile_updates_fields(db_session, user, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     tools.update_user_profile.invoke({"interest_tags": ["music", "tech"], "about_me": "loves indie"})
@@ -117,7 +114,6 @@ def test_update_user_profile_marks_dirty(db_session, user, monkeypatch):
     fresh = db_session.query(User).filter_by(id="local").one()
     assert fresh.interest_tags == ["music", "tech"]
     assert fresh.about_me == "loves indie"
-    assert fresh.taste_summary_dirty is True
 
 
 def test_get_recommendations_cold_start_uses_interest_tags(db_session, events, monkeypatch):
@@ -163,7 +159,7 @@ def test_get_recommendations_uses_centroid_when_present(db_session, user, events
     assert results[0]["id"] == "e_music"
 
 
-def test_record_feedback_inserts_and_marks_dirty(db_session, events, monkeypatch):
+def test_record_feedback_inserts_row(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     monkeypatch.setattr(tools, "refresh_taste_centroid", lambda s, uid: None)
@@ -175,8 +171,6 @@ def test_record_feedback_inserts_and_marks_dirty(db_session, events, monkeypatch
     row = db_session.query(Feedback).filter_by(user_id="local", event_id="e_music").one()
     assert row.sentiment == "like"
     assert row.comment == "loved it"
-    user = db_session.query(User).filter_by(id="local").one()
-    assert user.taste_summary_dirty is True
 
 
 def test_record_feedback_like_refreshes_centroid(db_session, events, monkeypatch):

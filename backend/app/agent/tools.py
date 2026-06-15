@@ -12,7 +12,8 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.agent.memory import get_current_user_id
+from app.agent.memory import get_current_user_id, refresh_taste_centroid
+from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.db.models import Event, Feedback, SavedEvent, User
 from app.db.session import SessionLocal
@@ -132,16 +133,12 @@ def save_to_calendar(event_id: str) -> dict:
 @tool
 def get_user_profile() -> dict:
     """Return the current user's interests, about-me, and distilled taste summary."""
-    from app.agent.memory import refresh_taste_summary
     session = _session_factory()
     try:
         user_id = get_current_user_id()
         user = session.query(User).filter_by(id=user_id).one_or_none()
         if user is None:
             raise ToolError("user not found")
-        refresh_taste_summary(session, user_id)
-        session.commit()
-        session.refresh(user)
         return {
             "interest_tags": list(user.interest_tags),
             "about_me": user.about_me,
@@ -156,8 +153,7 @@ def update_user_profile(
     interest_tags: list[str] | None = None,
     about_me: str | None = None,
 ) -> dict:
-    """Update user profile fields. Any field omitted is left unchanged.
-    Marks the taste summary dirty so it regenerates on next read."""
+    """Update user profile fields. Any field omitted is left unchanged."""
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -168,14 +164,78 @@ def update_user_profile(
             user.interest_tags = interest_tags
         if about_me is not None:
             user.about_me = about_me
-        user.taste_summary_dirty = True
         session.commit()
         return {"status": "ok"}
     finally:
         session.close()
 
 
-from app.agent.memory import refresh_taste_centroid
+@tool
+def edit_facts(old_string: str, new_string: str) -> dict:
+    """Edit the user's facts blob (durable user-stated facts).
+
+    Semantics:
+    - old_string="" and new_string!="" appends new_string as a new line.
+    - both non-empty replaces the unique occurrence of old_string.
+    - old_string!="" and new_string="" removes the unique occurrence.
+    - Both empty is an error (no-op).
+    - old_string must match exactly once when non-empty.
+    - Resulting blob must be at most 200 lines; otherwise the edit is refused.
+
+    Returns {"status": "ok", "lines": <new line count>} on success.
+    """
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        try:
+            new_blob = apply_edit(
+                user.facts_md or "",
+                old_string,
+                new_string,
+                cap=200,
+                label="facts_md",
+            )
+        except EditError as e:
+            raise ToolError(str(e))
+        user.facts_md = new_blob
+        session.commit()
+        return {"status": "ok", "lines": len(new_blob.splitlines())}
+    finally:
+        session.close()
+
+
+@tool
+def edit_taste_summary(old_string: str, new_string: str) -> dict:
+    """Edit your behavioural summary (your inferred picture of the user from
+    saves/feedback).
+
+    Same semantics as edit_facts. Cap is 20 lines. Returns
+    {"status": "ok", "lines": <new line count>} on success.
+    """
+    session = _session_factory()
+    try:
+        user_id = get_current_user_id()
+        user = session.query(User).filter_by(id=user_id).one_or_none()
+        if user is None:
+            raise ToolError("user not found")
+        try:
+            new_blob = apply_edit(
+                user.taste_summary or "",
+                old_string,
+                new_string,
+                cap=20,
+                label="taste_summary",
+            )
+        except EditError as e:
+            raise ToolError(str(e))
+        user.taste_summary = new_blob
+        session.commit()
+        return {"status": "ok", "lines": len(new_blob.splitlines())}
+    finally:
+        session.close()
 
 
 @tool
@@ -260,8 +320,6 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
                 sentiment=sentiment,
                 comment=comment,
             ))
-        user = session.query(User).filter_by(id=user_id).one()
-        user.taste_summary_dirty = True
         session.commit()
         if sentiment == "like":
             refresh_taste_centroid(session, user_id)
@@ -279,6 +337,8 @@ ALL_TOOLS = [
     get_calendar,
     get_user_profile,
     update_user_profile,
+    edit_facts,
+    edit_taste_summary,
 ]
 
 
