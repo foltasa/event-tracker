@@ -133,16 +133,12 @@ def save_to_calendar(event_id: str) -> dict:
 @tool
 def get_user_profile() -> dict:
     """Return the current user's interests, about-me, and distilled taste summary."""
-    from app.agent.memory import refresh_taste_summary
     session = _session_factory()
     try:
         user_id = get_current_user_id()
         user = session.query(User).filter_by(id=user_id).one_or_none()
         if user is None:
             raise ToolError("user not found")
-        refresh_taste_summary(session, user_id)
-        session.commit()
-        session.refresh(user)
         return {
             "interest_tags": list(user.interest_tags),
             "about_me": user.about_me,
@@ -157,8 +153,7 @@ def update_user_profile(
     interest_tags: list[str] | None = None,
     about_me: str | None = None,
 ) -> dict:
-    """Update user profile fields. Any field omitted is left unchanged.
-    Marks the taste summary dirty so it regenerates on next read."""
+    """Update user profile fields. Any field omitted is left unchanged."""
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -169,7 +164,6 @@ def update_user_profile(
             user.interest_tags = interest_tags
         if about_me is not None:
             user.about_me = about_me
-        user.taste_summary_dirty = True
         session.commit()
         return {"status": "ok"}
     finally:
@@ -329,8 +323,6 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
                 sentiment=sentiment,
                 comment=comment,
             ))
-        user = session.query(User).filter_by(id=user_id).one()
-        user.taste_summary_dirty = True
         session.commit()
         if sentiment == "like":
             refresh_taste_centroid(session, user_id)

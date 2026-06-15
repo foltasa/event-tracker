@@ -10,7 +10,7 @@ from app.db.models import DigestCache, Event, User
 @pytest.fixture
 def setup(db_session):
     db_session.add(User(id="local", interest_tags=["music"],
-                        taste_summary="loves jazz", taste_summary_dirty=False))
+                        taste_summary="loves jazz", facts_md=""))
     for i in range(5):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",

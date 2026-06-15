@@ -6,7 +6,7 @@ from app.db.models import User
 @pytest.fixture
 def user(db_session):
     u = User(id="local", interest_tags=["music"], about_me="x",
-             taste_summary="loves jazz", taste_summary_dirty=False)
+             taste_summary="loves jazz")
     db_session.add(u)
     db_session.commit()
     return u
@@ -21,13 +21,12 @@ def test_get_profile(client, user):
     assert body["taste_summary"] == "loves jazz"
 
 
-def test_put_profile_updates_and_marks_dirty(client, user, db_session):
+def test_put_profile_updates_fields(client, user, db_session):
     r = client.put("/profile", json={"interest_tags": ["music", "tech"], "about_me": "new"})
     assert r.status_code == 200
     fresh = db_session.query(User).filter_by(id="local").one()
     assert fresh.interest_tags == ["music", "tech"]
     assert fresh.about_me == "new"
-    assert fresh.taste_summary_dirty is True
 
 
 def test_post_onboard_creates_when_missing(client, db_session):

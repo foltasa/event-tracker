@@ -2,7 +2,6 @@
 
 - ContextVar for per-request user_id (set by middleware, read by tools).
 - record_message: append a row to chat_messages mirror.
-- refresh_taste_summary: lazy regen when users.taste_summary_dirty.
 - refresh_taste_centroid: recompute from 'like' feedback embeddings.
 """
 import logging
@@ -13,10 +12,8 @@ from datetime import datetime, timezone
 import numpy as np
 from sqlalchemy.orm import Session
 
-from app.agent.llm import build_llm
-from app.agent.prompts import SUMMARY_PROMPT
 from app.config import settings
-from app.db.models import ChatMessage, Feedback, SavedEvent, User
+from app.db.models import ChatMessage, Feedback, User
 from app.rag.chroma_store import get_embeddings_for_ids
 
 logger = logging.getLogger(__name__)
@@ -57,56 +54,6 @@ def record_message(
     )
     session.add(msg)
     return msg
-
-
-def _invoke_summary_llm(prompt: str) -> str:
-    llm = build_llm(model=settings.summary_model, temperature=0.3)
-    return llm.invoke(prompt).content
-
-
-def refresh_taste_summary(session: Session, user_id: str) -> str | None:
-    user = session.query(User).filter_by(id=user_id).one()
-    if not user.taste_summary_dirty:
-        return user.taste_summary
-
-    recent_feedback = (
-        session.query(Feedback)
-        .filter_by(user_id=user_id)
-        .order_by(Feedback.created_at.desc())
-        .limit(30)
-        .all()
-    )
-    recent_saved = (
-        session.query(SavedEvent)
-        .filter_by(user_id=user_id)
-        .order_by(SavedEvent.saved_at.desc())
-        .limit(10)
-        .all()
-    )
-
-    feedback_lines = [
-        f"- {f.sentiment} (event {f.event_id})" + (f": {f.comment}" if f.comment else "")
-        for f in recent_feedback
-    ]
-    saved_lines = [f"- saved event {s.event_id}" for s in recent_saved]
-
-    prompt = SUMMARY_PROMPT.format(
-        interests=", ".join(user.interest_tags) or "(none)",
-        about_me=user.about_me or "(none)",
-        feedback="\n".join(feedback_lines) or "(none yet)",
-        saved="\n".join(saved_lines) or "(none yet)",
-    )
-
-    try:
-        summary = _invoke_summary_llm(prompt).strip()
-    except Exception:
-        logger.exception("refresh_taste_summary: LLM failed; leaving prior summary")
-        return user.taste_summary
-
-    user.taste_summary = summary
-    user.taste_summary_dirty = False
-    session.flush()
-    return summary
 
 
 def refresh_taste_centroid(session: Session, user_id: str) -> None:

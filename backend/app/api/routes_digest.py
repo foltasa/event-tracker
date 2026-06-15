@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agent.memory import get_current_user_id, refresh_taste_summary
+from app.agent.memory import get_current_user_id
 from app.agent.prompts import CURATION_PROMPT
 from app.agent.schemas import LLMDigestResponse
 from app.api.deps import DbSession
@@ -84,10 +84,6 @@ def _build_response(picks_raw: list[dict], db, today: date, generated_at: dateti
 
 
 def _generate_digest(db, user: User, today: date) -> DigestResponse:
-    refresh_taste_summary(db, user.id)
-    db.commit()
-    db.refresh(user)
-
     pool = _candidate_pool(db, today)
     if not pool:
         raise HTTPException(status_code=503, detail="no events available")
@@ -95,7 +91,8 @@ def _generate_digest(db, user: User, today: date) -> DigestResponse:
     prompt = CURATION_PROMPT.format(
         interests=", ".join(user.interest_tags) or "(none)",
         about_me=user.about_me or "(none)",
-        taste_summary=user.taste_summary or "(not yet generated)",
+        facts_md=user.facts_md or "(empty)",
+        taste_summary=user.taste_summary or "(empty)",
         event_pool=json.dumps([_serialise_event_for_prompt(e) for e in pool], indent=2),
     )
 

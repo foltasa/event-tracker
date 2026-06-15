@@ -24,8 +24,6 @@ def test_post_feedback_like_inserts_and_refreshes(mock_refresh, client, setup, d
     row = db_session.query(Feedback).filter_by(event_id="e1").one()
     assert row.sentiment == "like"
     assert row.comment == "loved it"
-    user = db_session.query(User).filter_by(id="local").one()
-    assert user.taste_summary_dirty is True
     mock_refresh.assert_called_once()
 
 

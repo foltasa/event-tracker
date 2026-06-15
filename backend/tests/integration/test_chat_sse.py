@@ -10,7 +10,7 @@ from app.db.models import ChatMessage, User
 
 @pytest.fixture
 def user(db_session):
-    db_session.add(User(id="local", interest_tags=["music"], taste_summary="loves jazz", taste_summary_dirty=False))
+    db_session.add(User(id="local", interest_tags=["music"], taste_summary="loves jazz", facts_md=""))
     db_session.commit()
 
 
