@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import asc, nulls_first
 
 from app.agent.memory import get_current_user_id
@@ -69,3 +69,14 @@ def update_appointment(
     db.commit()
     db.refresh(row)
     return Appointment.model_validate(row, from_attributes=True)
+
+
+@router.delete("/{appointment_id}", status_code=204)
+def delete_appointment(appointment_id: str, db: DbSession) -> Response:
+    user_id = get_current_user_id()
+    row = db.query(AppointmentModel).filter_by(id=appointment_id, user_id=user_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="appointment not found")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)

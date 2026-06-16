@@ -94,3 +94,15 @@ def test_patch_validates_times(client, setup):
         "end_at": "2026-06-16T10:00:00+00:00",
     })
     assert r.status_code == 422
+
+
+def test_delete_removes_appointment(client, setup, db_session):
+    r = client.delete("/appointments/a1")
+    assert r.status_code == 204
+    from app.db.models import Appointment as A
+    assert db_session.query(A).filter_by(id="a1").one_or_none() is None
+
+
+def test_delete_other_users_appointment_404(client, setup):
+    r = client.delete("/appointments/a3")
+    assert r.status_code == 404
