@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { getCalendar, getEventDetail } from '@/lib/api'
-import type { CalendarEntry, CalendarResponse, Sentiment } from '@/lib/types'
+import type { CalendarEntry, CalendarResponse } from '@/lib/types'
 import TopNav from '@/components/TopNav'
 import EventDetailOverlay from '@/components/EventDetailOverlay'
 
@@ -57,6 +57,7 @@ function CalendarGrid({
           <div
             key={day}
             data-testid={`day-${day}`}
+            // Opens the first event on the day; multiple events per day are not yet supported
             onClick={() => hasEvents && onDayClick(entries![0].event.id)}
             className={[
               'flex flex-col items-center py-2 rounded',
