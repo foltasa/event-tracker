@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useEffect, useState } from 'react'
+import { Fragment, useRef, useEffect, useState } from 'react'
 import { useChat } from '@/hooks/useChat'
 import type { Sentiment } from '@/lib/types'
 
@@ -13,13 +13,13 @@ interface Props {
 }
 
 export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, onFeedback, onSave }: Props) {
-  const { messages, isStreaming, error, sendMessage } = useChat(sessionId)
+  const { messages, isStreaming, currentTool, error, sendMessage } = useChat(sessionId)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, currentTool])
 
   function handleSubmit() {
     const text = input.trim()
@@ -27,6 +27,8 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
     setInput('')
     sendMessage(text)
   }
+
+  const lastIdx = messages.length - 1
 
   return (
     <div className="flex flex-col w-[280px] flex-shrink-0 bg-bg-chat border-l border-border">
@@ -38,15 +40,13 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2.5 flex flex-col gap-2">
-        {messages.map((msg) => {
-          if (msg.role === 'tool') {
-            return (
-              <div key={msg.id} className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-gold animate-pulse" />
-                <span className="text-[9px] italic text-accent-gold">{msg.toolName} running…</span>
-              </div>
-            )
-          }
+        {messages.map((msg, i) => {
+          const showIndicator =
+            isStreaming &&
+            i === lastIdx &&
+            msg.role === 'assistant' &&
+            (currentTool !== null || msg.content === '')
+          const indicatorText = currentTool ? `${currentTool} running…` : 'thinking…'
           if (msg.role === 'user') {
             return (
               <div key={msg.id} className="self-end max-w-[88%] rounded-lg rounded-br-sm bg-bg-surface px-2.5 py-1.5 text-[10px] italic text-text-primary">
@@ -55,15 +55,23 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
             )
           }
           return (
-            <div key={msg.id} className="self-start max-w-[92%] rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
-              <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-              {msg.isStreaming && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
-              {msg.tokenUsage && (
-                <p className="text-[8px] text-text-muted mt-1 text-right">
-                  {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
-                </p>
+            <Fragment key={msg.id}>
+              {showIndicator && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-gold animate-pulse" />
+                  <span className="text-[9px] italic text-accent-gold">{indicatorText}</span>
+                </div>
               )}
-            </div>
+              <div className="self-start max-w-[92%] rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
+                <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
+                {msg.tokenUsage && (
+                  <p className="text-[8px] text-text-muted mt-1 text-right">
+                    {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
+                  </p>
+                )}
+              </div>
+            </Fragment>
           )
         })}
         {error && <p className="text-[9px] text-red-500 italic">{error}</p>}

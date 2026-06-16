@@ -53,6 +53,11 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     )
 
     assistant_buffer: list[str] = []
+    # stream_mode="messages" yields one AIMessageChunk per LLM token. Tool
+    # calls are assembled incrementally — the name lands on the first chunk
+    # and arg fragments dribble across continuation chunks. Dedupe by id so
+    # we emit exactly one tool_start per logical call.
+    seen_tool_ids: set[str] = set()
     try:
         agent = await get_agent()
         async for message, _meta in agent.astream(
@@ -71,9 +76,14 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
                     assistant_buffer.append(message.content)
                     yield {"event": "message", "data": json.dumps({"type": "token", "content": message.content})}
                 for call in getattr(message, "tool_calls", []) or []:
+                    name = call.get("name") or ""
+                    call_id = call.get("id") or ""
+                    if not name or not call_id or call_id in seen_tool_ids:
+                        continue
+                    seen_tool_ids.add(call_id)
                     yield {
                         "event": "message",
-                        "data": json.dumps({"type": "tool_start", "tool_name": call["name"]}),
+                        "data": json.dumps({"type": "tool_start", "tool_name": name}),
                     }
     except Exception as exc:
         logger.exception("chat stream failed")

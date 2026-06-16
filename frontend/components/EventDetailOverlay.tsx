@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useChat } from '@/hooks/useChat'
 import type { EventWithContext, Sentiment } from '@/lib/types'
@@ -26,13 +26,13 @@ function formatPrice(min: number | null, max: number | null, isFree: boolean) {
 }
 
 function EventChat({ eventId }: { eventId: string }) {
-  const { messages, isStreaming, error, sendMessage } = useChat(`event_${eventId}`)
+  const { messages, isStreaming, currentTool, error, sendMessage } = useChat(`event_${eventId}`)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, currentTool])
 
   function handleSubmit() {
     const text = input.trim()
@@ -41,18 +41,18 @@ function EventChat({ eventId }: { eventId: string }) {
     sendMessage(text)
   }
 
+  const lastIdx = messages.length - 1
+
   return (
     <>
       <div className="flex flex-col gap-2 px-4 py-3">
-        {messages.map((msg) => {
-          if (msg.role === 'tool') {
-            return (
-              <div key={msg.id} className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-gold animate-pulse" />
-                <span className="text-[9px] italic text-accent-gold">{msg.toolName} running…</span>
-              </div>
-            )
-          }
+        {messages.map((msg, i) => {
+          const showIndicator =
+            isStreaming &&
+            i === lastIdx &&
+            msg.role === 'assistant' &&
+            (currentTool !== null || msg.content === '')
+          const indicatorText = currentTool ? `${currentTool} running…` : 'thinking…'
           if (msg.role === 'user') {
             return (
               <div key={msg.id} className="self-end max-w-[85%] rounded-lg rounded-br-sm bg-bg-surface px-3 py-1.5 text-[10px] italic text-text-primary">
@@ -61,15 +61,23 @@ function EventChat({ eventId }: { eventId: string }) {
             )
           }
           return (
-            <div key={msg.id} className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary leading-relaxed">
-              {msg.content}
-              {msg.isStreaming && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
-              {msg.tokenUsage && (
-                <p className="text-[8px] text-text-muted mt-1 text-right">
-                  {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
-                </p>
+            <Fragment key={msg.id}>
+              {showIndicator && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-gold animate-pulse" />
+                  <span className="text-[9px] italic text-accent-gold">{indicatorText}</span>
+                </div>
               )}
-            </div>
+              <div className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary leading-relaxed">
+                {msg.content}
+                {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
+                {msg.tokenUsage && (
+                  <p className="text-[8px] text-text-muted mt-1 text-right">
+                    {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
+                  </p>
+                )}
+              </div>
+            </Fragment>
           )
         })}
         {error && <p className="text-[9px] text-red-500 italic">{error}</p>}
