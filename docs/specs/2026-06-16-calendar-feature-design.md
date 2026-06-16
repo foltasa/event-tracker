@@ -11,7 +11,7 @@
 Three connected pieces:
 
 1. **Fix broken save button** — API URL mismatch between frontend and backend, plus missing SWR cache invalidation after save.
-2. **Calendar page** — New `/calendar` page with a side-by-side mini calendar + event list layout.
+2. **Calendar page** — New `/calendar` page with a single-column calendar grid showing saved events as dots on their days.
 3. **Chat inline event chips** — Parse `[event:ID]` markers in agent messages and render interactive chips with a Save button.
 
 No backend schema changes required. The backend calendar CRUD (`GET /calendar`, `POST /calendar`, `DELETE /calendar/{event_id}`) and all relevant types are already fully implemented.
@@ -48,28 +48,18 @@ The `/calendar` nav link already exists in `TopNav`. The page needs to be create
 
 ### Layout
 
-Two-column body below the standard `TopNav`:
+Single-column body below the standard `TopNav`, centred with a max-width.
 
-- **Left column** — mini calendar grid
-- **Right column** — saved event list
-
-### Left column: Mini calendar grid
+### Calendar grid
 
 - Shows one month at a time; prev/next arrow buttons to navigate months.
 - Rendered from `CalendarResponse` data — no external library needed (7-column CSS grid).
 - Days with at least one saved event show a gold dot beneath the date number.
-- Clicking a day sets `selectedDate` state, filtering the right panel to events on that day.
-- Clicking the selected day again deselects it (shows all events in that month).
-- Defaults to current month; if the current month has no saved events and at least one saved event exists, jumps to the earliest future month that has one. If no saved events exist at all, stays on the current month and shows the empty state in the right column.
-
-### Right column: Event list
-
-- Fetches `GET /calendar` via SWR on mount.
-- Displays all saved events in ascending `start_datetime` order, filtered to the selected day when one is active.
-- Each row shows: category badge · title · date/time · venue · **×** remove button.
-- Clicking the **×** calls `DELETE /calendar/{eventId}`, then optimistically removes the entry from the SWR cache (reverts on failure).
-- Clicking anywhere else on the row opens `EventDetailOverlay` (same component as the dashboard). Justification is passed as `null` (digest justifications are dashboard-only).
-- Empty state: short message + "Browse events →" link back to `/`.
+- Today's date is visually highlighted.
+- Clicking a day that has saved events opens `EventDetailOverlay` for the first event on that day. Justification is passed as `null`.
+- Days without saved events are not clickable.
+- Defaults to current month; if the current month has no saved events and at least one saved event exists, jumps to the earliest future month that has one. If no saved events exist at all, stays on the current month and shows an empty state message below the grid ("No saved events yet — browse events to save some →" linking to `/`).
+- The right-column event list is **out of scope** — reserved for a future feature.
 
 ---
 
@@ -111,7 +101,6 @@ Both `ChatPanel.tsx` and the `EventChat` component inside `EventDetailOverlay.ts
 ### Calendar page
 
 - **SWR error:** shows `Failed to load calendar` with a retry button.
-- **Remove action:** optimistic removal from local SWR cache; reverts on failure.
 - **Overlay from calendar:** `justification` prop is always `null`.
 
 ### EventChip
@@ -124,5 +113,5 @@ Both `ChatPanel.tsx` and the `EventChat` component inside `EventDetailOverlay.ts
 ## Out of Scope
 
 - Fixing existing dashboard EventDetailOverlay bugs (event detail not loading correctly on click from feed/digest).
-- Unsave action from inside the EventDetailOverlay (only available via the calendar page remove button).
+- Unsave / remove action from the calendar page (right-column event list is a future feature).
 - External calendar export (iCal, Google Calendar).
