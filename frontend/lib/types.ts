@@ -149,3 +149,36 @@ export interface UsageRollupResponse {
   today: ChatTokenUsage;
   last_7_days: UsageDay[];
 }
+
+export interface Appointment {
+  id: string;
+  title: string;
+  day: string;              // ISO date YYYY-MM-DD
+  start_at: string | null;  // ISO 8601
+  end_at: string | null;
+  created_at: string;
+}
+
+export interface AppointmentCreate {
+  title: string;
+  day: string;
+  start_at: string | null;
+  end_at: string | null;
+}
+
+export type AppointmentUpdate = Partial<AppointmentCreate>;
+
+export interface AppointmentsResponse {
+  appointments: Appointment[];
+}
+
+export interface RecommendRequest {
+  day: string;
+  start_at: string | null;
+  end_at: string | null;
+  message: string;
+}
+
+export interface RecommendResponse {
+  message: string;
+}
