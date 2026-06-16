@@ -74,3 +74,23 @@ def test_post_scopes_to_current_user(client, setup, db_session):
     from app.db.models import Appointment as A
     row = db_session.query(A).filter_by(title="ScopedToLocal").one()
     assert row.user_id == "local"
+
+
+def test_patch_updates_fields(client, setup, db_session):
+    r = client.patch("/appointments/a1", json={"title": "Renamed"})
+    assert r.status_code == 200
+    from app.db.models import Appointment as A
+    assert db_session.query(A).filter_by(id="a1").one().title == "Renamed"
+
+
+def test_patch_other_users_appointment_404(client, setup):
+    r = client.patch("/appointments/a3", json={"title": "Hijack"})
+    assert r.status_code == 404
+
+
+def test_patch_validates_times(client, setup):
+    r = client.patch("/appointments/a1", json={
+        "start_at": None,
+        "end_at": "2026-06-16T10:00:00+00:00",
+    })
+    assert r.status_code == 422

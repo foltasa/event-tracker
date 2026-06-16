@@ -1,13 +1,13 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import asc, nulls_first
 
 from app.agent.memory import get_current_user_id
 from app.api.deps import DbSession
 from app.db.models import Appointment as AppointmentModel
-from app.schemas.appointment import Appointment, AppointmentCreate, AppointmentsResponse
+from app.schemas.appointment import Appointment, AppointmentCreate, AppointmentUpdate, AppointmentsResponse
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
@@ -50,6 +50,22 @@ def create_appointment(payload: AppointmentCreate, db: DbSession) -> Appointment
         end_at=payload.end_at,
     )
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return Appointment.model_validate(row, from_attributes=True)
+
+
+@router.patch("/{appointment_id}", response_model=Appointment)
+def update_appointment(
+    appointment_id: str, payload: AppointmentUpdate, db: DbSession,
+) -> Appointment:
+    user_id = get_current_user_id()
+    row = db.query(AppointmentModel).filter_by(id=appointment_id, user_id=user_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="appointment not found")
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(row, key, value)
     db.commit()
     db.refresh(row)
     return Appointment.model_validate(row, from_attributes=True)
