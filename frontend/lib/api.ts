@@ -111,7 +111,7 @@ export async function getCalendar(): Promise<CalendarResponse> {
 
 export async function saveToCalendar(eventId: string): Promise<CalendarEntry> {
   if (MOCK) {
-    console.info("[mock] POST /calendar/", eventId);
+    console.info("[mock] POST /calendar", eventId);
     const detail = (await import("@/fixtures/event-detail.json")).default as EventWithContext;
     const { user_sentiment, user_comment, is_saved, ...card } = detail;
     return { id: `sav_mock_${Date.now()}`, event: card, saved_at: new Date().toISOString() };
