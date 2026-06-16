@@ -2,8 +2,9 @@
 import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { getCalendar, getEventDetail } from '@/lib/api'
-import type { CalendarEntry, CalendarResponse } from '@/lib/types'
+import { getCalendar, getEventDetail, postFeedback, saveToCalendar } from '@/lib/api'
+import type { CalendarEntry, CalendarResponse, Sentiment } from '@/lib/types'
+import { useSWRConfig } from 'swr'
 import TopNav from '@/components/TopNav'
 import EventDetailOverlay from '@/components/EventDetailOverlay'
 
@@ -86,14 +87,26 @@ function EventDetailOverlayLoader({
   onClose: () => void
 }) {
   const { data: event } = useSWR(`/events/${eventId}`, () => getEventDetail(eventId))
+  const { mutate } = useSWRConfig()
+
+  async function handleSave(id: string) {
+    await saveToCalendar(id)
+    mutate(`/events/${id}`)
+    mutate('/calendar')
+  }
+
+  async function handleFeedback(id: string, sentiment: Sentiment) {
+    await postFeedback({ event_id: id, sentiment, comment: null })
+  }
+
   if (!event) return null
   return (
     <EventDetailOverlay
       event={event}
       justification={null}
       onClose={onClose}
-      onFeedback={() => {}}
-      onSave={() => {}}
+      onFeedback={handleFeedback}
+      onSave={handleSave}
     />
   )
 }
