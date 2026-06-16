@@ -5,6 +5,10 @@
 // NOT mutate the fixture files.
 
 import type {
+  Appointment,
+  AppointmentCreate,
+  AppointmentUpdate,
+  AppointmentsResponse,
   CalendarEntry,
   CalendarResponse,
   ChatChunk,
@@ -16,6 +20,8 @@ import type {
   FeedbackCreate,
   FeedbackResponse,
   OnboardingRequest,
+  RecommendRequest,
+  RecommendResponse,
   SettingsUpdate,
   UsageRollupResponse,
   UserProfileResponse,
@@ -137,6 +143,55 @@ export async function removeFromCalendar(eventId: string): Promise<void> {
   }
   await fetch(`${API_URL}/calendar/${encodeURIComponent(eventId)}`, {
     method: "DELETE", headers: headers(),
+  });
+}
+
+// ---------- Appointments ----------
+
+export async function listAppointments(from: string, to: string): Promise<AppointmentsResponse> {
+  if (MOCK) return { appointments: [] };
+  return jsonFetch<AppointmentsResponse>(`/appointments?from=${from}&to=${to}`);
+}
+
+export async function createAppointment(body: AppointmentCreate): Promise<Appointment> {
+  if (MOCK) {
+    console.info("[mock] POST /appointments", body);
+    return { id: `app_mock_${Date.now()}`, ...body, created_at: new Date().toISOString() };
+  }
+  return jsonFetch<Appointment>("/appointments", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateAppointment(id: string, body: AppointmentUpdate): Promise<Appointment> {
+  if (MOCK) {
+    console.info("[mock] PATCH /appointments/", id, body);
+    return {
+      id, title: body.title ?? "", day: body.day ?? new Date().toISOString().slice(0, 10),
+      start_at: body.start_at ?? null, end_at: body.end_at ?? null,
+      created_at: new Date().toISOString(),
+    };
+  }
+  return jsonFetch<Appointment>(`/appointments/${encodeURIComponent(id)}`, {
+    method: "PATCH", body: JSON.stringify(body),
+  });
+}
+
+export async function deleteAppointment(id: string): Promise<void> {
+  if (MOCK) {
+    console.info("[mock] DELETE /appointments/", id);
+    return;
+  }
+  await fetch(`${API_URL}/appointments/${encodeURIComponent(id)}`, {
+    method: "DELETE", headers: headers(),
+  });
+}
+
+export async function recommendAppointment(body: RecommendRequest): Promise<RecommendResponse> {
+  if (MOCK) {
+    console.info("[mock] POST /appointments/recommend", body);
+    return { message: "Currently not implemented" };
+  }
+  return jsonFetch<RecommendResponse>("/appointments/recommend", {
+    method: "POST", body: JSON.stringify(body),
   });
 }
 
