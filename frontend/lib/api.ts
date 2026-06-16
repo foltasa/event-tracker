@@ -210,11 +210,12 @@ export async function postChat(req: ChatRequest, onChunk: (chunk: ChatChunk) => 
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    // SSE events are separated by a blank line; each event has `data: <json>` lines.
-    const parts = buffer.split("\n\n");
+    // SSE events are separated by a blank line. sse_starlette emits CRLF
+    // (`\r\n\r\n`); other servers may use LF (`\n\n`). Accept either.
+    const parts = buffer.split(/\r?\n\r?\n/);
     buffer = parts.pop() ?? "";
     for (const part of parts) {
-      const dataLine = part.split("\n").find((l) => l.startsWith("data:"));
+      const dataLine = part.split(/\r?\n/).find((l) => l.startsWith("data:"));
       if (!dataLine) continue;
       try {
         onChunk(JSON.parse(dataLine.slice(5).trim()) as ChatChunk);

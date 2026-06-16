@@ -26,11 +26,11 @@ router = APIRouter(tags=["chat"])
 _agent_singleton = None
 
 
-def get_agent():
+async def get_agent():
     global _agent_singleton
     if _agent_singleton is None:
-        from app.agent.runtime import build_agent
-        _agent_singleton = build_agent()
+        from app.agent.runtime import build_async_agent
+        _agent_singleton = await build_async_agent()
     return _agent_singleton
 
 
@@ -54,15 +54,12 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
 
     assistant_buffer: list[str] = []
     try:
-        agent = get_agent()
-        async for mode, item in agent.astream(
+        agent = await get_agent()
+        async for message, _meta in agent.astream(
             {"messages": [SystemMessage(content=system), HumanMessage(content=payload.message)]},
             config={"configurable": {"thread_id": payload.session_id}},
             stream_mode="messages",
         ):
-            if mode != "messages":
-                continue
-            message, _meta = item
             if isinstance(message, ToolMessage):
                 status = "error" if str(message.content).lower().startswith("error") else "ok"
                 yield {
