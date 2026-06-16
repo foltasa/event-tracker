@@ -7,6 +7,10 @@ type Props = (FeedOrMini | DigestVariant) & {
   onCardClick: (id: string) => void
   onFeedback: (id: string, sentiment: Sentiment) => void
   onSave: (id: string) => void
+  // Set by the AppShell while a save is in-flight (or while waiting for the
+  // server to confirm). Lets the digest variant — which carries no is_saved
+  // field on its own — show the "Saved ✓" state instantly.
+  forceSaved?: boolean
 }
 
 function formatDate(iso: string) {
@@ -57,14 +61,14 @@ function FeedbackButtons({
   )
 }
 
-export default function EventCard({ variant, data, onCardClick, onFeedback, onSave }: Props) {
+export default function EventCard({ variant, data, onCardClick, onFeedback, onSave, forceSaved }: Props) {
   const event = variant === 'digest' ? (data as DigestPick).event : (data as EventWithContext)
   const ctx   = variant !== 'digest' ? (data as EventWithContext) : null
   const justification = variant === 'digest' ? (data as DigestPick).justification : null
 
   const isActive   = event.is_active
   const sentiment  = ctx?.user_sentiment ?? null
-  const isSaved    = ctx?.is_saved ?? false
+  const isSaved    = (ctx?.is_saved ?? false) || !!forceSaved
   const priceStr   = formatPrice(event.price_min, event.price_max, event.is_free)
   const dateStr    = formatDate(event.start_datetime)
 

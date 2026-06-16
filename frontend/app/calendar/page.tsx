@@ -2,11 +2,9 @@
 import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
-import { getCalendar, getEventDetail, postFeedback, saveToCalendar } from '@/lib/api'
-import type { CalendarEntry, CalendarResponse, Sentiment } from '@/lib/types'
-import { useSWRConfig } from 'swr'
-import TopNav from '@/components/TopNav'
-import EventDetailOverlay from '@/components/EventDetailOverlay'
+import { getCalendar } from '@/lib/api'
+import type { CalendarEntry, CalendarResponse } from '@/lib/types'
+import { useAppShell } from '@/components/AppShell'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -80,44 +78,13 @@ function CalendarGrid({
   )
 }
 
-function EventDetailOverlayLoader({
-  eventId, onClose,
-}: {
-  eventId: string
-  onClose: () => void
-}) {
-  const { data: event } = useSWR(`/events/${eventId}`, () => getEventDetail(eventId))
-  const { mutate } = useSWRConfig()
-
-  async function handleSave(id: string) {
-    await saveToCalendar(id)
-    mutate(`/events/${id}`)
-    mutate('/calendar')
-  }
-
-  async function handleFeedback(id: string, sentiment: Sentiment) {
-    await postFeedback({ event_id: id, sentiment, comment: null })
-  }
-
-  if (!event) return null
-  return (
-    <EventDetailOverlay
-      event={event}
-      justification={null}
-      onClose={onClose}
-      onFeedback={handleFeedback}
-      onSave={handleSave}
-    />
-  )
-}
-
 export default function CalendarPage() {
   const today = new Date()
   const todayKey = toDateKey(today.toISOString())
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
-  const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const hasAutoJumped = useRef(false)
+  const { openOverlay } = useAppShell()
 
   const { data, error, isLoading } = useSWR<CalendarResponse>('/calendar', getCalendar)
   const entries = data?.entries ?? []
@@ -156,78 +123,65 @@ export default function CalendarPage() {
     return d.getFullYear() === year && d.getMonth() === month
   })
 
-  const dateLabel = today.toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
-
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-bg-page">
-      <TopNav active="calendar" date={`Hamburg · ${dateLabel}`} />
-
-      <main className="flex-1 overflow-y-auto flex flex-col items-center py-8 px-4">
-        <div className="w-full max-w-sm">
-          {/* Month navigation */}
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={prevMonth}
-              aria-label="Previous month"
-              className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
-            >
-              ‹
-            </button>
-            <h2 className="font-serif font-bold text-base text-text-primary">
-              {MONTHS[month]} {year}
-            </h2>
-            <button
-              onClick={nextMonth}
-              aria-label="Next month"
-              className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
-            >
-              ›
-            </button>
-          </div>
-
-          {/* Calendar grid */}
-          {isLoading && (
-            <div className="text-center text-xs text-text-muted py-8">Loading…</div>
-          )}
-          {error && (
-            <div className="text-center text-xs text-red-500 py-8">
-              Failed to load calendar.{' '}
-              <button onClick={() => window.location.reload()} className="underline">Retry</button>
-            </div>
-          )}
-          {!isLoading && !error && (
-            <CalendarGrid
-              year={year}
-              month={month}
-              byDate={byDate}
-              todayKey={todayKey}
-              onDayClick={setActiveEventId}
-            />
-          )}
-
-          {/* Empty state */}
-          {!isLoading && !error && entries.length === 0 && (
-            <p className="text-center text-xs text-text-muted mt-8">
-              No saved events yet —{' '}
-              <Link href="/" className="text-accent-gold underline">browse events to save some →</Link>
-            </p>
-          )}
-
-          {/* Current month count hint */}
-          {!isLoading && !error && entries.length > 0 && currentMonthEntries.length === 0 && (
-            <p className="text-center text-[10px] text-text-muted mt-4">
-              No saved events this month. Use ‹ › to navigate.
-            </p>
-          )}
+    <main className="flex-1 overflow-y-auto flex flex-col items-center py-8 px-4">
+      <div className="w-full max-w-sm">
+        {/* Month navigation */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={prevMonth}
+            aria-label="Previous month"
+            className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
+          >
+            ‹
+          </button>
+          <h2 className="font-serif font-bold text-base text-text-primary">
+            {MONTHS[month]} {year}
+          </h2>
+          <button
+            onClick={nextMonth}
+            aria-label="Next month"
+            className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
+          >
+            ›
+          </button>
         </div>
-      </main>
 
-      {activeEventId && (
-        <EventDetailOverlayLoader
-          eventId={activeEventId}
-          onClose={() => setActiveEventId(null)}
-        />
-      )}
-    </div>
+        {/* Calendar grid */}
+        {isLoading && (
+          <div className="text-center text-xs text-text-muted py-8">Loading…</div>
+        )}
+        {error && (
+          <div className="text-center text-xs text-red-500 py-8">
+            Failed to load calendar.{' '}
+            <button onClick={() => window.location.reload()} className="underline">Retry</button>
+          </div>
+        )}
+        {!isLoading && !error && (
+          <CalendarGrid
+            year={year}
+            month={month}
+            byDate={byDate}
+            todayKey={todayKey}
+            onDayClick={(id) => openOverlay(id)}
+          />
+        )}
+
+        {/* Empty state */}
+        {!isLoading && !error && entries.length === 0 && (
+          <p className="text-center text-xs text-text-muted mt-8">
+            No saved events yet —{' '}
+            <Link href="/" className="text-accent-gold underline">browse events to save some →</Link>
+          </p>
+        )}
+
+        {/* Current month count hint */}
+        {!isLoading && !error && entries.length > 0 && currentMonthEntries.length === 0 && (
+          <p className="text-center text-[10px] text-text-muted mt-4">
+            No saved events this month. Use ‹ › to navigate.
+          </p>
+        )}
+      </div>
+    </main>
   )
 }
