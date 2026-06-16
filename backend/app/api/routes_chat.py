@@ -16,8 +16,8 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent.memory import get_current_user_id, record_message
 from app.agent.prompts import CONVERSATIONAL_PROMPT
 from app.api.deps import DbSession
-from app.db.models import User
-from app.schemas.chat import ChatRequest
+from app.db.models import ChatMessage, User
+from app.schemas.chat import ChatMessageResponse, ChatRequest
 from app.schemas.common import ChatTokenUsage
 
 logger = logging.getLogger(__name__)
@@ -107,3 +107,34 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
 @router.post("/chat")
 async def chat(payload: ChatRequest, db: DbSession):
     return EventSourceResponse(_stream_chat(payload, db))
+
+
+@router.get("/chat/history", response_model=list[ChatMessageResponse])
+def chat_history(session_id: str, db: DbSession) -> list[ChatMessageResponse]:
+    """Return the persisted turns for one session, in order."""
+    user_id = get_current_user_id()
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user_id, ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+        .all()
+    )
+    out: list[ChatMessageResponse] = []
+    for r in rows:
+        usage = None
+        if r.role == "assistant":
+            usage = ChatTokenUsage(
+                input_tokens=r.input_tokens or 0,
+                output_tokens=r.output_tokens or 0,
+                estimated_cost_usd=r.estimated_cost_usd or 0.0,
+            )
+        out.append(ChatMessageResponse(
+            id=r.id,
+            session_id=r.session_id,
+            role=r.role,
+            content=r.content,
+            tool_name=r.tool_name,
+            token_usage=usage,
+            created_at=r.created_at,
+        ))
+    return out

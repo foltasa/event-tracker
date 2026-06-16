@@ -7,12 +7,15 @@ import SkeletonCard from './SkeletonCard'
 
 interface Props {
   onCardClick: (id: string) => void
-  onFeedback: (id: string, sentiment: Sentiment) => void
-  onSave: (id: string) => void
-  isOptimisticallySaved?: (id: string) => boolean
+  onFeedback: (id: string, sentiment: Sentiment | null) => void
+  onSave: (id: string, save: boolean) => void
+  isOptimisticallySaved?: (id: string) => boolean | undefined
+  optimisticSentimentFor?: (id: string) => Sentiment | null | undefined
 }
 
-export default function DigestSection({ onCardClick, onFeedback, onSave, isOptimisticallySaved }: Props) {
+export default function DigestSection({
+  onCardClick, onFeedback, onSave, isOptimisticallySaved, optimisticSentimentFor,
+}: Props) {
   const { data, isLoading, error, mutate } = useSWR('/digest', getDigest)
 
   // Fallback: when the recommender fails, show the next 3 upcoming events so
@@ -77,6 +80,7 @@ export default function DigestSection({ onCardClick, onFeedback, onSave, isOptim
             onFeedback={onFeedback}
             onSave={onSave}
             forceSaved={isOptimisticallySaved?.(pick.event.id)}
+            forceSentiment={optimisticSentimentFor?.(pick.event.id)}
           />
         ))}
 
@@ -89,6 +93,7 @@ export default function DigestSection({ onCardClick, onFeedback, onSave, isOptim
             onFeedback={onFeedback}
             onSave={onSave}
             forceSaved={isOptimisticallySaved?.(pick.event.id)}
+            forceSentiment={optimisticSentimentFor?.(pick.event.id)}
           />
         ))}
 

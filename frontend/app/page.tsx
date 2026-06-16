@@ -14,7 +14,9 @@ const DEFAULT_FILTERS: FeedFilterState = {
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<FeedFilterState>(DEFAULT_FILTERS)
-  const { openOverlay, handleFeedback, handleSave, isOptimisticallySaved } = useAppShell()
+  const {
+    openOverlay, handleFeedback, handleSave, isOptimisticallySaved, optimisticSentimentFor,
+  } = useAppShell()
 
   // Prefetched here so digest cards can pass justification when opened.
   const { data: digest } = useSWR('/digest', getDigest)
@@ -31,6 +33,7 @@ export default function DashboardPage() {
         onFeedback={handleFeedback}
         onSave={handleSave}
         isOptimisticallySaved={isOptimisticallySaved}
+        optimisticSentimentFor={optimisticSentimentFor}
       />
       <FeedFilters filters={filters} onChange={setFilters} />
       <FeedSection
@@ -39,6 +42,7 @@ export default function DashboardPage() {
         onFeedback={handleFeedback}
         onSave={handleSave}
         isOptimisticallySaved={isOptimisticallySaved}
+        optimisticSentimentFor={optimisticSentimentFor}
       />
     </>
   )

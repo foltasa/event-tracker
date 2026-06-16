@@ -10,9 +10,10 @@ import SkeletonCard from './SkeletonCard'
 interface Props {
   filters: FeedFilterState
   onCardClick: (id: string) => void
-  onFeedback: (id: string, sentiment: Sentiment) => void
-  onSave: (id: string) => void
-  isOptimisticallySaved?: (id: string) => boolean
+  onFeedback: (id: string, sentiment: Sentiment | null) => void
+  onSave: (id: string, save: boolean) => void
+  isOptimisticallySaved?: (id: string) => boolean | undefined
+  optimisticSentimentFor?: (id: string) => Sentiment | null | undefined
 }
 
 function filtersToQuery(filters: FeedFilterState) {
@@ -39,7 +40,9 @@ function filtersToQuery(filters: FeedFilterState) {
   return q
 }
 
-export default function FeedSection({ filters, onCardClick, onFeedback, onSave, isOptimisticallySaved }: Props) {
+export default function FeedSection({
+  filters, onCardClick, onFeedback, onSave, isOptimisticallySaved, optimisticSentimentFor,
+}: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const [debouncedFilters, setDebouncedFilters] = useState(filters)
 
@@ -105,6 +108,7 @@ export default function FeedSection({ filters, onCardClick, onFeedback, onSave, 
           onFeedback={onFeedback}
           onSave={onSave}
           forceSaved={isOptimisticallySaved?.(evt.id)}
+          forceSentiment={optimisticSentimentFor?.(evt.id)}
         />
       ))}
 

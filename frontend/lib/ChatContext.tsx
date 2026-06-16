@@ -1,6 +1,8 @@
 'use client'
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
-import { postChat } from '@/lib/api'
+import {
+  createContext, useCallback, useContext, useEffect, useState, type ReactNode,
+} from 'react'
+import { getChatHistory, postChat } from '@/lib/api'
 import type { ChatTokenUsage } from '@/lib/types'
 
 export interface LocalMessage {
@@ -23,15 +25,55 @@ const EMPTY: SessionState = { messages: [], isStreaming: false, currentTool: nul
 interface ChatCtxValue {
   sessions: Record<string, SessionState>
   sendMessage: (sessionId: string, text: string) => Promise<void>
+  ensureHydrated: (sessionId: string) => void
 }
 
 const ChatCtx = createContext<ChatCtxValue | null>(null)
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<string, SessionState>>({})
+  // Tracks which sessions we've already requested history for, so the same
+  // useChatSession hook firing on multiple mounts doesn't refetch.
+  const [hydrated, setHydrated] = useState<Set<string>>(new Set())
 
   const update = useCallback((sessionId: string, fn: (s: SessionState) => SessionState) => {
     setSessions((all) => ({ ...all, [sessionId]: fn(all[sessionId] ?? EMPTY) }))
+  }, [])
+
+  const ensureHydrated = useCallback((sessionId: string) => {
+    let alreadyMarked = false
+    setHydrated((s) => {
+      if (s.has(sessionId)) { alreadyMarked = true; return s }
+      const next = new Set(s)
+      next.add(sessionId)
+      return next
+    })
+    if (alreadyMarked) return
+
+    void (async () => {
+      try {
+        const msgs = await getChatHistory(sessionId)
+        if (msgs.length === 0) return
+        const localMessages: LocalMessage[] = msgs
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            tokenUsage: m.token_usage ?? undefined,
+          }))
+        setSessions((all) => {
+          // If the user has already started a new message locally before the
+          // server response arrived, don't clobber that in-progress state.
+          const existing = all[sessionId] ?? EMPTY
+          if (existing.messages.length > 0) return all
+          return { ...all, [sessionId]: { ...EMPTY, messages: localMessages } }
+        })
+      } catch {
+        // Allow a retry on the next mount if the fetch failed.
+        setHydrated((s) => { const n = new Set(s); n.delete(sessionId); return n })
+      }
+    })()
   }, [])
 
   const sendMessage = useCallback(async (sessionId: string, text: string) => {
@@ -81,7 +123,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     })
   }, [update])
 
-  return <ChatCtx.Provider value={{ sessions, sendMessage }}>{children}</ChatCtx.Provider>
+  return (
+    <ChatCtx.Provider value={{ sessions, sendMessage, ensureHydrated }}>{children}</ChatCtx.Provider>
+  )
 }
 
 function useChatCtx(): ChatCtxValue {
@@ -92,6 +136,8 @@ function useChatCtx(): ChatCtxValue {
 
 export function useChatSession(sessionId: string) {
   const ctx = useChatCtx()
+  // First call for this sessionId triggers a backend history fetch.
+  useEffect(() => { ctx.ensureHydrated(sessionId) }, [sessionId, ctx])
   const session = ctx.sessions[sessionId] ?? EMPTY
   return {
     ...session,

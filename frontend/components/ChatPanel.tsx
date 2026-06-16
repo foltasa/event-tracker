@@ -10,8 +10,8 @@ interface Props {
   model: string
   dailyCost: number
   onCardClick: (id: string) => void
-  onFeedback: (id: string, sentiment: Sentiment) => void
-  onSave: (id: string) => void
+  onFeedback: (id: string, sentiment: Sentiment | null) => void
+  onSave: (id: string, save: boolean) => void
 }
 
 export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, onFeedback, onSave }: Props) {

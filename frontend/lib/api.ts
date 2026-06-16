@@ -9,6 +9,7 @@ import type {
   CalendarResponse,
   ChatChunk,
   ChatRequest,
+  ChatTokenUsage,
   DigestResponse,
   EventsFeedResponse,
   EventWithContext,
@@ -21,6 +22,16 @@ import type {
   UserProfileUpdate,
   UserSettings,
 } from "@/lib/types";
+
+export interface ChatHistoryMessage {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  tool_name: string | null;
+  token_usage: ChatTokenUsage | null;
+  created_at: string;
+}
 
 const MOCK = process.env.NEXT_PUBLIC_MOCK_MODE === "true";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -180,6 +191,13 @@ export async function getUsage(): Promise<UsageRollupResponse> {
 }
 
 // ---------- Chat (streaming) ----------
+
+export async function getChatHistory(sessionId: string): Promise<ChatHistoryMessage[]> {
+  if (MOCK) return [];
+  return jsonFetch<ChatHistoryMessage[]>(
+    `/chat/history?session_id=${encodeURIComponent(sessionId)}`,
+  );
+}
 
 /**
  * Subscribe to a chat stream. The handler is invoked once per SSE event, in

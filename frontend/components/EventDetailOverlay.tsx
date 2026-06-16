@@ -5,13 +5,14 @@ import { useChat } from '@/hooks/useChat'
 import type { EventWithContext, Sentiment } from '@/lib/types'
 import { parseMessageContent } from '@/lib/parseMessageContent'
 import EventChip from '@/components/EventChip'
+import { useAppShell } from '@/components/AppShell'
 
 interface Props {
   event: EventWithContext
   justification: string | null
   onClose: () => void
-  onFeedback: (id: string, sentiment: Sentiment) => void
-  onSave: (id: string) => void
+  onFeedback: (id: string, sentiment: Sentiment | null) => void
+  onSave: (id: string, save: boolean) => void
 }
 
 function formatDate(iso: string) {
@@ -115,7 +116,11 @@ function EventChat({ eventId }: { eventId: string }) {
 }
 
 function OverlayContent({ event, justification, onClose, onFeedback, onSave }: Props) {
-  const sentiment = event.user_sentiment
+  const { isOptimisticallySaved, optimisticSentimentFor } = useAppShell()
+  const optSent = optimisticSentimentFor(event.id)
+  const sentiment: Sentiment | null = optSent !== undefined ? optSent : (event.user_sentiment ?? null)
+  const optSaved = isOptimisticallySaved(event.id)
+  const isSaved = optSaved !== undefined ? optSaved : event.is_saved
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -196,23 +201,23 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave }: P
           <div className="ml-auto flex gap-1.5 items-center">
             <button
               aria-label="Like"
-              onClick={() => onFeedback(event.id, 'like')}
+              onClick={() => onFeedback(event.id, sentiment === 'like' ? null : 'like')}
               className={`rounded border px-2 py-1 text-xs ${sentiment === 'like' ? 'bg-accent-gold border-accent-gold text-bg-page' : 'bg-white border-border'}`}
             >
               👍
             </button>
             <button
               aria-label="Dislike"
-              onClick={() => onFeedback(event.id, 'dislike')}
+              onClick={() => onFeedback(event.id, sentiment === 'dislike' ? null : 'dislike')}
               className={`rounded border px-2 py-1 text-xs ${sentiment === 'dislike' ? 'bg-text-secondary border-text-secondary text-bg-page' : 'bg-white border-border'}`}
             >
               👎
             </button>
             <button
-              onClick={() => onSave(event.id)}
+              onClick={() => onSave(event.id, !isSaved)}
               className="rounded bg-accent-gold text-bg-page text-[10px] font-semibold px-3 py-1"
             >
-              {event.is_saved ? 'Saved ✓' : 'Save to Calendar'}
+              {isSaved ? 'Saved ✓' : 'Save to Calendar'}
             </button>
           </div>
         </div>
