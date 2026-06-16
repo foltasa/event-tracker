@@ -2,6 +2,8 @@
 import { Fragment, useRef, useEffect, useState } from 'react'
 import { useChat } from '@/hooks/useChat'
 import type { Sentiment } from '@/lib/types'
+import { parseMessageContent } from '@/lib/parseMessageContent'
+import EventChip from '@/components/EventChip'
 
 interface Props {
   sessionId: string
@@ -63,7 +65,13 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
                 </div>
               )}
               <div className="self-start max-w-[92%] rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
-                <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                <p className="leading-relaxed whitespace-pre-wrap">
+                  {parseMessageContent(msg.content).map((seg, si) =>
+                    seg.type === 'event'
+                      ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} />
+                      : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
+                  )}
+                </p>
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
                 {msg.tokenUsage && (
                   <p className="text-[8px] text-text-muted mt-1 text-right">
