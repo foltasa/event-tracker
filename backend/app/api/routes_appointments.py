@@ -1,0 +1,37 @@
+from datetime import date, datetime, timedelta, timezone
+
+from fastapi import APIRouter, Query
+from sqlalchemy import asc, nulls_first
+
+from app.agent.memory import get_current_user_id
+from app.api.deps import DbSession
+from app.db.models import Appointment as AppointmentModel
+from app.schemas.appointment import Appointment, AppointmentsResponse
+
+router = APIRouter(prefix="/appointments", tags=["appointments"])
+
+
+def _today_utc() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+@router.get("", response_model=AppointmentsResponse)
+def list_appointments(
+    db: DbSession,
+    from_: date | None = Query(default=None, alias="from"),
+    to: date | None = Query(default=None),
+) -> AppointmentsResponse:
+    user_id = get_current_user_id()
+    if from_ is None:
+        from_ = _today_utc() - timedelta(days=90)
+    if to is None:
+        to = _today_utc() + timedelta(days=90)
+    rows = (
+        db.query(AppointmentModel)
+        .filter(AppointmentModel.user_id == user_id)
+        .filter(AppointmentModel.day >= from_)
+        .filter(AppointmentModel.day <= to)
+        .order_by(asc(AppointmentModel.day), nulls_first(asc(AppointmentModel.start_at)))
+        .all()
+    )
+    return AppointmentsResponse(appointments=[Appointment.model_validate(r, from_attributes=True) for r in rows])

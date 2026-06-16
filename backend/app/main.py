@@ -8,7 +8,7 @@ from alembic.config import Config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
+from app.api import routes_appointments, routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
 from app.api.deps import current_user_id_middleware
 from app.config import settings
 from app.db.models import User
@@ -76,6 +76,7 @@ app.middleware("http")(current_user_id_middleware)
 app.include_router(routes_profile.router)
 app.include_router(routes_events.router)
 app.include_router(routes_feedback.router)
+app.include_router(routes_appointments.router)
 app.include_router(routes_calendar.router)
 app.include_router(routes_digest.router)
 app.include_router(routes_chat.router)
