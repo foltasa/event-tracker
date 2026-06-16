@@ -39,3 +39,38 @@ def test_list_defaults_to_90_day_window(client, setup):
     # window includes June 2026 when the test runs.
     r = client.get("/appointments")
     assert r.status_code == 200
+
+
+def test_post_creates_timed_appointment(client, setup, db_session):
+    r = client.post("/appointments", json={
+        "title": "Lunch",
+        "day": "2026-06-17",
+        "start_at": "2026-06-17T12:00:00+00:00",
+        "end_at": "2026-06-17T13:00:00+00:00",
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["title"] == "Lunch"
+    from app.db.models import Appointment as A
+    assert db_session.query(A).filter_by(title="Lunch", user_id="local").count() == 1
+
+
+def test_post_only_end_at_400(client, setup):
+    r = client.post("/appointments", json={
+        "title": "Bad",
+        "day": "2026-06-17",
+        "start_at": None,
+        "end_at": "2026-06-17T13:00:00+00:00",
+    })
+    assert r.status_code == 422
+
+
+def test_post_scopes_to_current_user(client, setup, db_session):
+    client.post("/appointments", json={
+        "title": "ScopedToLocal",
+        "day": "2026-06-17",
+        "start_at": None, "end_at": None,
+    })
+    from app.db.models import Appointment as A
+    row = db_session.query(A).filter_by(title="ScopedToLocal").one()
+    assert row.user_id == "local"

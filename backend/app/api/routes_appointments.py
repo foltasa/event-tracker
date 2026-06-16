@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
@@ -6,7 +7,7 @@ from sqlalchemy import asc, nulls_first
 from app.agent.memory import get_current_user_id
 from app.api.deps import DbSession
 from app.db.models import Appointment as AppointmentModel
-from app.schemas.appointment import Appointment, AppointmentsResponse
+from app.schemas.appointment import Appointment, AppointmentCreate, AppointmentsResponse
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
@@ -35,3 +36,20 @@ def list_appointments(
         .all()
     )
     return AppointmentsResponse(appointments=[Appointment.model_validate(r, from_attributes=True) for r in rows])
+
+
+@router.post("", response_model=Appointment)
+def create_appointment(payload: AppointmentCreate, db: DbSession) -> Appointment:
+    user_id = get_current_user_id()
+    row = AppointmentModel(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        title=payload.title,
+        day=payload.day,
+        start_at=payload.start_at,
+        end_at=payload.end_at,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return Appointment.model_validate(row, from_attributes=True)
