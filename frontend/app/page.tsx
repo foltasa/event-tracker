@@ -1,6 +1,6 @@
 'use client'
 import { useState, useCallback } from 'react'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { postFeedback, saveToCalendar, getDigest, getEventDetail } from '@/lib/api'
 import type { Sentiment } from '@/lib/types'
 import TopNav from '@/components/TopNav'
@@ -18,6 +18,7 @@ const DEFAULT_FILTERS: FeedFilterState = {
 export default function DashboardPage() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [filters, setFilters] = useState<FeedFilterState>(DEFAULT_FILTERS)
+  const { mutate } = useSWRConfig()
 
   const { data: digest } = useSWR('/digest', getDigest)
 
@@ -27,7 +28,8 @@ export default function DashboardPage() {
 
   const handleSave = useCallback(async (eventId: string) => {
     await saveToCalendar(eventId)
-  }, [])
+    mutate(`/events/${eventId}`)
+  }, [mutate])
 
   const handleCardClick = useCallback((eventId: string) => {
     setActiveEventId(eventId)
