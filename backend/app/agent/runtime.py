@@ -1,7 +1,9 @@
 """Build the LangGraph agent (a single compiled graph reused for all requests)."""
 import sqlite3
 
+import aiosqlite
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import create_react_agent
 
 from app.agent.llm import build_llm
@@ -13,6 +15,7 @@ from app.config import settings
 # __enter__() leaks the close path and corrupted earlier builds. Owning the
 # connection at module scope keeps it alive for the process lifetime.
 _checkpointer_conn: sqlite3.Connection | None = None
+_async_checkpointer_conn: aiosqlite.Connection | None = None
 
 
 def _get_checkpointer() -> SqliteSaver:
@@ -24,9 +27,27 @@ def _get_checkpointer() -> SqliteSaver:
     return SqliteSaver(_checkpointer_conn)
 
 
+async def _get_async_checkpointer() -> AsyncSqliteSaver:
+    global _async_checkpointer_conn
+    if _async_checkpointer_conn is None:
+        _async_checkpointer_conn = await aiosqlite.connect(
+            settings.checkpointer_path, check_same_thread=False
+        )
+    return AsyncSqliteSaver(_async_checkpointer_conn)
+
+
 def build_agent(tools_enabled: list[str] | None = None):
     """Compile a ReAct agent. Reused across requests; per-request state is
     keyed by thread_id passed at invocation time."""
     llm = build_llm()
     tools = select_tools(tools_enabled)
     return create_react_agent(model=llm, tools=tools, checkpointer=_get_checkpointer())
+
+
+async def build_async_agent(tools_enabled: list[str] | None = None):
+    """Compile a ReAct agent with an async-compatible checkpointer. Required
+    for callers that drive the agent via `astream` / `ainvoke` — SqliteSaver
+    rejects async checkpoint calls."""
+    llm = build_llm()
+    tools = select_tools(tools_enabled)
+    return create_react_agent(model=llm, tools=tools, checkpointer=await _get_async_checkpointer())

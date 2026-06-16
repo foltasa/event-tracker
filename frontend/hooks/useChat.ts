@@ -5,9 +5,8 @@ import type { ChatTokenUsage } from '@/lib/types'
 
 export interface LocalMessage {
   id: string
-  role: 'user' | 'assistant' | 'tool'
+  role: 'user' | 'assistant'
   content: string
-  toolName?: string
   tokenUsage?: ChatTokenUsage
   isStreaming?: boolean
 }
@@ -15,12 +14,13 @@ export interface LocalMessage {
 interface ChatState {
   messages: LocalMessage[]
   isStreaming: boolean
+  currentTool: string | null
   error: string | null
 }
 
 export function useChat(sessionId: string) {
   const [state, setState] = useState<ChatState>({
-    messages: [], isStreaming: false, error: null,
+    messages: [], isStreaming: false, currentTool: null, error: null,
   })
 
   const sendMessage = useCallback(async (text: string) => {
@@ -31,6 +31,7 @@ export function useChat(sessionId: string) {
     setState((s) => ({
       messages: [...s.messages, userMsg, assistantMsg],
       isStreaming: true,
+      currentTool: null,
       error: null,
     }))
 
@@ -43,14 +44,14 @@ export function useChat(sessionId: string) {
           ),
         }))
       } else if (chunk.type === 'tool_start') {
-        const toolMsg: LocalMessage = {
-          id: crypto.randomUUID(), role: 'tool', content: '', toolName: chunk.tool_name,
-        }
-        setState((s) => ({ ...s, messages: [...s.messages, toolMsg] }))
+        setState((s) => ({ ...s, currentTool: chunk.tool_name }))
+      } else if (chunk.type === 'tool_end') {
+        setState((s) => ({ ...s, currentTool: null }))
       } else if (chunk.type === 'done') {
         setState((s) => ({
           ...s,
           isStreaming: false,
+          currentTool: null,
           messages: s.messages.map((m) =>
             m.id === assistantId ? { ...m, isStreaming: false, tokenUsage: chunk.token_usage } : m
           ),
@@ -59,6 +60,7 @@ export function useChat(sessionId: string) {
         setState((s) => ({
           ...s,
           isStreaming: false,
+          currentTool: null,
           error: chunk.message,
           messages: s.messages.map((m) =>
             m.id === assistantId ? { ...m, isStreaming: false } : m

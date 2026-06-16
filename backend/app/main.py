@@ -6,6 +6,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
 from app.api.deps import current_user_id_middleware
@@ -64,6 +65,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Event Tracker API", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.middleware("http")(current_user_id_middleware)
 app.include_router(routes_profile.router)
 app.include_router(routes_events.router)

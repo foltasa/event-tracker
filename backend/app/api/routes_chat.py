@@ -26,11 +26,11 @@ router = APIRouter(tags=["chat"])
 _agent_singleton = None
 
 
-def get_agent():
+async def get_agent():
     global _agent_singleton
     if _agent_singleton is None:
-        from app.agent.runtime import build_agent
-        _agent_singleton = build_agent()
+        from app.agent.runtime import build_async_agent
+        _agent_singleton = await build_async_agent()
     return _agent_singleton
 
 
@@ -53,16 +53,18 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     )
 
     assistant_buffer: list[str] = []
+    # stream_mode="messages" yields one AIMessageChunk per LLM token. Tool
+    # calls are assembled incrementally — the name lands on the first chunk
+    # and arg fragments dribble across continuation chunks. Dedupe by id so
+    # we emit exactly one tool_start per logical call.
+    seen_tool_ids: set[str] = set()
     try:
-        agent = get_agent()
-        async for mode, item in agent.astream(
+        agent = await get_agent()
+        async for message, _meta in agent.astream(
             {"messages": [SystemMessage(content=system), HumanMessage(content=payload.message)]},
             config={"configurable": {"thread_id": payload.session_id}},
             stream_mode="messages",
         ):
-            if mode != "messages":
-                continue
-            message, _meta = item
             if isinstance(message, ToolMessage):
                 status = "error" if str(message.content).lower().startswith("error") else "ok"
                 yield {
@@ -74,9 +76,14 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
                     assistant_buffer.append(message.content)
                     yield {"event": "message", "data": json.dumps({"type": "token", "content": message.content})}
                 for call in getattr(message, "tool_calls", []) or []:
+                    name = call.get("name") or ""
+                    call_id = call.get("id") or ""
+                    if not name or not call_id or call_id in seen_tool_ids:
+                        continue
+                    seen_tool_ids.add(call_id)
                     yield {
                         "event": "message",
-                        "data": json.dumps({"type": "tool_start", "tool_name": call["name"]}),
+                        "data": json.dumps({"type": "tool_start", "tool_name": name}),
                     }
     except Exception as exc:
         logger.exception("chat stream failed")

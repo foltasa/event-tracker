@@ -1,7 +1,7 @@
 'use client'
 import { useState, useCallback } from 'react'
 import useSWR from 'swr'
-import { postFeedback, saveToCalendar, getSettings, getDigest, getEventDetail } from '@/lib/api'
+import { postFeedback, saveToCalendar, getDigest, getEventDetail } from '@/lib/api'
 import type { Sentiment } from '@/lib/types'
 import TopNav from '@/components/TopNav'
 import DigestSection from '@/components/DigestSection'
@@ -20,7 +20,6 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<FeedFilterState>(DEFAULT_FILTERS)
 
   const { data: digest } = useSWR('/digest', getDigest)
-  const { data: settings } = useSWR('/settings', getSettings)
 
   const handleFeedback = useCallback(async (eventId: string, sentiment: Sentiment) => {
     await postFeedback({ event_id: eventId, sentiment, comment: null })
@@ -35,7 +34,7 @@ export default function DashboardPage() {
   }, [])
 
   const today = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
-  const model = settings?.llm_model ?? 'gpt-4o-mini'
+  const model = 'gpt-4o-mini'
   const activeJustification = digest?.picks.find((p) => p.event.id === activeEventId)?.justification ?? null
 
   return (
