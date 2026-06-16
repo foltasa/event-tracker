@@ -3,6 +3,8 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useChat } from '@/hooks/useChat'
 import type { EventWithContext, Sentiment } from '@/lib/types'
+import { parseMessageContent } from '@/lib/parseMessageContent'
+import EventChip from '@/components/EventChip'
 
 interface Props {
   event: EventWithContext
@@ -69,7 +71,11 @@ function EventChat({ eventId }: { eventId: string }) {
                 </div>
               )}
               <div className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary leading-relaxed">
-                {msg.content}
+                {parseMessageContent(msg.content).map((seg, si) =>
+                  seg.type === 'event'
+                    ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} />
+                    : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
+                )}
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
                 {msg.tokenUsage && (
                   <p className="text-[8px] text-text-muted mt-1 text-right">
