@@ -116,7 +116,7 @@ export async function saveToCalendar(eventId: string): Promise<CalendarEntry> {
     const { user_sentiment, user_comment, is_saved, ...card } = detail;
     return { id: `sav_mock_${Date.now()}`, event: card, saved_at: new Date().toISOString() };
   }
-  return jsonFetch<CalendarEntry>(`/calendar/${encodeURIComponent(eventId)}`, { method: "POST" });
+  return jsonFetch<CalendarEntry>('/calendar', { method: 'POST', body: JSON.stringify({ event_id: eventId }) });
 }
 
 export async function removeFromCalendar(eventId: string): Promise<void> {
