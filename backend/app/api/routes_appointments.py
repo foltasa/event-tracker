@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy import asc, nulls_first
 
 from app.agent.memory import get_current_user_id
@@ -80,3 +81,19 @@ def delete_appointment(appointment_id: str, db: DbSession) -> Response:
     db.delete(row)
     db.commit()
     return Response(status_code=204)
+
+
+class _RecommendIn(BaseModel):
+    day: date
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    message: str
+
+
+class _RecommendOut(BaseModel):
+    message: str
+
+
+@router.post("/recommend", response_model=_RecommendOut)
+def recommend(_payload: _RecommendIn) -> _RecommendOut:
+    return _RecommendOut(message="Currently not implemented")

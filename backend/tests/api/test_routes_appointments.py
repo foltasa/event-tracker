@@ -106,3 +106,11 @@ def test_delete_removes_appointment(client, setup, db_session):
 def test_delete_other_users_appointment_404(client, setup):
     r = client.delete("/appointments/a3")
     assert r.status_code == 404
+
+
+def test_recommend_returns_placeholder(client, setup):
+    r = client.post("/appointments/recommend", json={
+        "day": "2026-06-17", "start_at": None, "end_at": None, "message": "anything"
+    })
+    assert r.status_code == 200
+    assert r.json() == {"message": "Currently not implemented"}
