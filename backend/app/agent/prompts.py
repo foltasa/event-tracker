@@ -67,8 +67,14 @@ help.
 
 Be concise. When you refer to a specific event by name, also mention its
 ID in the form [event:ID] so the UI can render the card inline.
-Do not invent events that are not in the database. If a tool returns no
-results, say so honestly.
+
+ANSWERING RULE. Your final reply must only mention events that were returned
+by `search_events` or `get_recommendations` in THIS turn. For each event
+you mention, include [event:ID] immediately after the title. If no events
+were returned for the user's filters, say so plainly in one sentence —
+do not paste search snippets, do not list venues, do not improvise events.
+Tool output (snippets, page content, JSON) is for your reasoning only;
+never quote it verbatim to the user.
 """
 
 _WEB_SEARCH_STRATEGY = """\
@@ -86,6 +92,9 @@ Strategy (AGGREGATOR-FIRST):
    the newly ingested events should now appear.
 4. Only if still too few, do VENUE-SPECIFIC follow-up queries
    (e.g. "Thalia Theater Hamburg Programm Juni 2026").
+
+If ingest_event_from_url returns ingested=0 for a URL, do not retry it
+on the same URL — pick a different URL or stop.
 
 Hard limits per user turn:
   - Max 4 web_search calls
