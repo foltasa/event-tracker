@@ -204,3 +204,50 @@ def test_record_feedback_unknown_event_raises(db_session, user, monkeypatch):
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     with pytest.raises(ToolError, match="event not found"):
         tools.record_feedback.invoke({"event_id": "nope", "sentiment": "like"})
+
+
+# ---------------------------------------------------------------------------
+# Web search tools
+# ---------------------------------------------------------------------------
+from unittest.mock import patch
+
+
+def test_web_search_returns_hits_with_truncated_content():
+    fake_hits = [
+        {"url": "https://thalia-theater.de/x", "title": "Spielplan",
+         "content": "A" * 500},
+    ]
+    with patch("app.agent.tools.web_research_client.search", return_value=fake_hits):
+        from app.agent.tools import web_search
+        out = web_search.invoke({"query": "Theater Hamburg"})
+    assert len(out) == 1
+    assert out[0]["url"] == "https://thalia-theater.de/x"
+    # Content is truncated to <= 300 chars.
+    assert len(out[0]["content"]) <= 300
+
+
+def test_web_search_propagates_toolerror_as_string():
+    from app.agent.schemas import ToolError
+    with patch("app.agent.tools.web_research_client.search", side_effect=ToolError("web search unavailable")):
+        from app.agent.tools import web_search
+        # ReAct prebuilt agent catches ToolError; here we just verify it is raised.
+        import pytest
+        with pytest.raises(ToolError):
+            web_search.invoke({"query": "x"})
+
+
+def test_ingest_event_from_url_tool_returns_report(db_session, monkeypatch):
+    # Patch SessionLocal so the tool's own session is our in-memory test session.
+    monkeypatch.setattr("app.agent.tools.SessionLocal", lambda: db_session)
+    fake_report = {"ingested": 2, "updated": 0, "skipped": 0, "event_ids": ["a", "b"]}
+    with patch("app.agent.tools.web_research_ingest.ingest_event_from_url", return_value=fake_report):
+        from app.agent.tools import ingest_event_from_url
+        out = ingest_event_from_url.invoke({"url": "https://thalia-theater.de/x"})
+    assert out == fake_report
+
+
+def test_tools_registered_in_all_tools():
+    from app.agent.tools import ALL_TOOLS
+    names = [t.name for t in ALL_TOOLS]
+    assert "web_search" in names
+    assert "ingest_event_from_url" in names

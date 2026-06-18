@@ -19,6 +19,8 @@ from app.db.models import Event, Feedback, SavedEvent, User
 from app.db.session import SessionLocal
 from app.rag import chroma_store
 from app.rag.embeddings import embed_one
+from app.web_research import client as web_research_client
+from app.web_research import ingest as web_research_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +331,48 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
         session.close()
 
 
+_SNIPPET_MAX = 300
+
+
+@tool
+def web_search(query: str) -> list[dict]:
+    """Search the web for events using Tavily.
+
+    Use only as a fallback when search_events returned too few results for
+    the user's filters. Returns up to 5 hits with {url, title, content}.
+
+    Args:
+        query: A search query string. Include the user's city and ISO date
+               in the query (e.g. "Theater Hamburg 2026-06-19").
+    """
+    hits = web_research_client.search(query)
+    out: list[dict] = []
+    for h in hits:
+        content = (h.get("content") or "")[:_SNIPPET_MAX]
+        out.append({"url": h["url"], "title": h.get("title", ""), "content": content})
+    return out
+
+
+@tool
+def ingest_event_from_url(url: str) -> dict:
+    """Fetch the given URL, extract its events, and upsert them into the catalogue.
+
+    Use after web_search to ingest events from a promising URL. After this
+    returns, call search_events again to find the newly ingested events.
+
+    Args:
+        url: Exactly one URL from a web_search result.
+
+    Returns: {"ingested": N, "updated": M, "skipped": K, "event_ids": [...]}.
+    """
+    session = _session_factory()
+    try:
+        report = web_research_ingest.ingest_event_from_url(url=url, session=session)
+        return report
+    finally:
+        session.close()
+
+
 ALL_TOOLS = [
     search_events,
     get_recommendations,
@@ -339,6 +383,8 @@ ALL_TOOLS = [
     update_user_profile,
     edit_facts,
     edit_taste_summary,
+    web_search,
+    ingest_event_from_url,
 ]
 
 
