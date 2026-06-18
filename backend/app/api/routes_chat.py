@@ -15,6 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.memory import get_current_user_id, record_message
 from app.agent.prompts import build_conversational_prompt
+from app.agent.turn_budget import set_turn_budget
 from app.api.deps import DbSession
 from app.db.models import ChatMessage, User
 from app.schemas.chat import ChatMessageResponse, ChatRequest
@@ -43,6 +44,9 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
 
     record_message(db, payload.session_id, user_id, "user", payload.message)
     db.commit()
+
+    # Reset per-turn web-tool budget so a prior turn's exhaustion does not leak.
+    set_turn_budget(web_search=4, ingest=6)
 
     system = build_conversational_prompt(
         today=date.today().isoformat(),

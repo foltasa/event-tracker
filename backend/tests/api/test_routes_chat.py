@@ -100,3 +100,38 @@ def test_chat_prompt_includes_memory_blocks(mock_get_agent, client, user):
     assert "USER MEMORY" in captured["system"]
     assert "lives in Eimsbüttel" in captured["system"]
     assert "loves indie" in captured["system"]
+
+
+def test_chat_resets_turn_budget(client, user, monkeypatch):
+    """Each POST /chat must call set_turn_budget so a prior turn's exhaustion
+    does not leak into the next turn.
+
+    We verify via a spy on `set_turn_budget` rather than asserting on the
+    ContextVar directly: TestClient runs handlers in a separate task, and a
+    Task's ContextVar copy does not propagate back to the test thread.
+    """
+    from app.api import routes_chat
+
+    calls: list[tuple[int, int]] = []
+
+    def _spy(*, web_search: int, ingest: int) -> None:
+        calls.append((web_search, ingest))
+
+    monkeypatch.setattr(routes_chat, "set_turn_budget", _spy)
+
+    fake_agent = MagicMock()
+
+    async def fake_astream(*args, **kwargs):
+        yield ("messages", (AIMessage(content="ok"), {"langgraph_node": "agent"}))
+
+    fake_agent.astream = fake_astream
+
+    async def _fake_get_agent():
+        return fake_agent
+
+    monkeypatch.setattr(routes_chat, "get_agent", _fake_get_agent)
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "hi"}) as r:
+        b"".join(r.iter_bytes())
+
+    assert calls == [(4, 6)], f"expected one reset to defaults, got {calls!r}"
