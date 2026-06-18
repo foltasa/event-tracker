@@ -2,13 +2,27 @@
 import sqlite3
 
 import aiosqlite
+from langchain_core.messages import ToolMessage  # noqa: F401  (re-export for tests)
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import ToolNode, create_react_agent
 
 from app.agent.llm import build_llm
 from app.agent.tools import select_tools
 from app.config import settings
+
+
+def _handle_tool_errors(e: Exception) -> str:
+    """Convert any tool exception into a string so ToolNode emits a ToolMessage
+    instead of re-raising.
+
+    langgraph 1.x ships a default handler that only catches ToolInvocationError
+    and re-raises everything else — including our ToolError. When the graph
+    crashes mid-step, the AIMessage(tool_calls=...) is already checkpointed but
+    no matching ToolMessage gets appended, so every subsequent turn fails with
+    INVALID_CHAT_HISTORY. This handler catches all exceptions and lets the
+    agent decide what to do with the resulting error ToolMessage."""
+    return f"Tool error: {e}"
 
 # Process-wide connection for the checkpointer. SqliteSaver.from_conn_string
 # wraps the connection in a contextmanager that closes on GC — using it via
@@ -41,7 +55,8 @@ def build_agent(tools_enabled: list[str] | None = None):
     keyed by thread_id passed at invocation time."""
     llm = build_llm()
     tools = select_tools(tools_enabled)
-    return create_react_agent(model=llm, tools=tools, checkpointer=_get_checkpointer())
+    tool_node = ToolNode(tools, handle_tool_errors=_handle_tool_errors)
+    return create_react_agent(model=llm, tools=tool_node, checkpointer=_get_checkpointer())
 
 
 async def build_async_agent(tools_enabled: list[str] | None = None):
@@ -50,4 +65,5 @@ async def build_async_agent(tools_enabled: list[str] | None = None):
     rejects async checkpoint calls."""
     llm = build_llm()
     tools = select_tools(tools_enabled)
-    return create_react_agent(model=llm, tools=tools, checkpointer=await _get_async_checkpointer())
+    tool_node = ToolNode(tools, handle_tool_errors=_handle_tool_errors)
+    return create_react_agent(model=llm, tools=tool_node, checkpointer=await _get_async_checkpointer())

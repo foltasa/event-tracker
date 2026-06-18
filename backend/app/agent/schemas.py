@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field
 
 class ToolError(Exception):
     """Raised by tool functions on user-facing failures.
-    The prebuilt LangGraph agent catches and forwards the message to the LLM."""
+
+    Converted into a ToolMessage by the ToolNode's `handle_tool_errors`
+    callback in `runtime.py`. Without that callback, langgraph's default
+    handler re-raises everything except ToolInvocationError, which would
+    crash the graph mid-step and leave the checkpoint with an orphaned
+    AIMessage(tool_calls=...) — every subsequent turn would then fail with
+    INVALID_CHAT_HISTORY."""
 
 
 class EventSummary(BaseModel):
