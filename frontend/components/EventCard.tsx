@@ -5,8 +5,14 @@ type FeedOrMini = { variant: 'feed' | 'chat-mini'; data: EventWithContext }
 type DigestVariant = { variant: 'digest'; data: DigestPick }
 type Props = (FeedOrMini | DigestVariant) & {
   onCardClick: (id: string) => void
-  onFeedback: (id: string, sentiment: Sentiment) => void
-  onSave: (id: string) => void
+  // `sentiment === null` means "clear feedback".
+  onFeedback: (id: string, sentiment: Sentiment | null) => void
+  // `save === false` means "unsave".
+  onSave: (id: string, save: boolean) => void
+  // Optimistic overrides from the AppShell while a write is in-flight. `undefined`
+  // means "no override, trust the cached value on the event/context".
+  forceSaved?: boolean
+  forceSentiment?: Sentiment | null
 }
 
 function formatDate(iso: string) {
@@ -33,14 +39,17 @@ function CategoryBadge({ category }: { category: string }) {
 function FeedbackButtons({
   id, sentiment, onFeedback, disabled,
 }: {
-  id: string; sentiment: string | null; onFeedback: (id: string, s: Sentiment) => void; disabled: boolean
+  id: string
+  sentiment: Sentiment | null
+  onFeedback: (id: string, s: Sentiment | null) => void
+  disabled: boolean
 }) {
   return (
     <>
       <button
         aria-label="Like"
         disabled={disabled}
-        onClick={(e) => { e.stopPropagation(); onFeedback(id, 'like') }}
+        onClick={(e) => { e.stopPropagation(); onFeedback(id, sentiment === 'like' ? null : 'like') }}
         className={`rounded border px-1.5 py-0.5 text-xs ${sentiment === 'like' ? 'bg-accent-gold border-accent-gold text-bg-page' : 'bg-white border-border'}`}
       >
         👍
@@ -48,7 +57,7 @@ function FeedbackButtons({
       <button
         aria-label="Dislike"
         disabled={disabled}
-        onClick={(e) => { e.stopPropagation(); onFeedback(id, 'dislike') }}
+        onClick={(e) => { e.stopPropagation(); onFeedback(id, sentiment === 'dislike' ? null : 'dislike') }}
         className={`rounded border px-1.5 py-0.5 text-xs ${sentiment === 'dislike' ? 'bg-text-secondary border-text-secondary text-bg-page' : 'bg-white border-border'}`}
       >
         👎
@@ -57,14 +66,17 @@ function FeedbackButtons({
   )
 }
 
-export default function EventCard({ variant, data, onCardClick, onFeedback, onSave }: Props) {
+export default function EventCard({
+  variant, data, onCardClick, onFeedback, onSave, forceSaved, forceSentiment,
+}: Props) {
   const event = variant === 'digest' ? (data as DigestPick).event : (data as EventWithContext)
   const ctx   = variant !== 'digest' ? (data as EventWithContext) : null
   const justification = variant === 'digest' ? (data as DigestPick).justification : null
 
   const isActive   = event.is_active
-  const sentiment  = ctx?.user_sentiment ?? null
-  const isSaved    = ctx?.is_saved ?? false
+  const sentiment: Sentiment | null =
+    forceSentiment !== undefined ? forceSentiment : (ctx?.user_sentiment ?? null)
+  const isSaved    = forceSaved !== undefined ? forceSaved : (ctx?.is_saved ?? false)
   const priceStr   = formatPrice(event.price_min, event.price_max, event.is_free)
   const dateStr    = formatDate(event.start_datetime)
 
@@ -107,7 +119,7 @@ export default function EventCard({ variant, data, onCardClick, onFeedback, onSa
           <div className="flex gap-1 mt-1.5 items-center">
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
-              onClick={(e) => { e.stopPropagation(); onSave(event.id) }}
+              onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
               className="ml-auto rounded bg-accent-gold text-bg-page text-[9px] px-1.5 py-0.5"
             >
               {isSaved ? 'Saved ✓' : 'Save'}
@@ -133,7 +145,7 @@ export default function EventCard({ variant, data, onCardClick, onFeedback, onSa
           <div className="flex gap-1 mt-1">
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
-              onClick={(e) => { e.stopPropagation(); onSave(event.id) }}
+              onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
               className="ml-auto rounded bg-accent-gold text-bg-page text-[8px] px-1.5 py-0.5"
             >
               {isSaved ? 'Saved ✓' : 'Save'}
@@ -163,7 +175,7 @@ export default function EventCard({ variant, data, onCardClick, onFeedback, onSa
         <div className="flex gap-1 items-center">
           <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
           <button
-            onClick={(e) => { e.stopPropagation(); onSave(event.id) }}
+            onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
             className="ml-auto rounded bg-accent-gold-light text-accent-gold text-[9px] px-1.5 py-0.5"
           >
             {isSaved ? 'Saved ✓' : 'Save'}

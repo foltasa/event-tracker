@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
 from app.agent.memory import get_current_user_id, refresh_taste_centroid
 from app.api.deps import DbSession
@@ -44,3 +44,17 @@ def post_feedback(payload: FeedbackCreate, db: DbSession) -> FeedbackResponse:
         id=fb.id, event_id=fb.event_id, sentiment=fb.sentiment,
         comment=fb.comment, created_at=fb.created_at, updated_at=fb.updated_at,
     )
+
+
+@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_feedback(event_id: str, db: DbSession) -> None:
+    user_id = get_current_user_id()
+    existing = db.query(Feedback).filter_by(user_id=user_id, event_id=event_id).first()
+    if not existing:
+        return  # idempotent: silent success when there's nothing to clear
+    was_like = existing.sentiment == "like"
+    db.delete(existing)
+    db.commit()
+    if was_like:
+        refresh_taste_centroid(db, user_id)
+        db.commit()
