@@ -14,7 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent.memory import get_current_user_id, record_message
-from app.agent.prompts import CONVERSATIONAL_PROMPT
+from app.agent.prompts import build_conversational_prompt
 from app.api.deps import DbSession
 from app.db.models import ChatMessage, User
 from app.schemas.chat import ChatMessageResponse, ChatRequest
@@ -44,7 +44,7 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     record_message(db, payload.session_id, user_id, "user", payload.message)
     db.commit()
 
-    system = CONVERSATIONAL_PROMPT.format(
+    system = build_conversational_prompt(
         today=date.today().isoformat(),
         interests=", ".join(user.interest_tags) or "(none)",
         about_me=user.about_me or "(none)",
