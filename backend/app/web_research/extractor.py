@@ -5,7 +5,6 @@ strictly as JSON and validated by Pydantic before any further processing.
 """
 import json
 import logging
-import re
 
 from langchain_core.messages import SystemMessage
 from pydantic import ValidationError
@@ -18,7 +17,6 @@ from app.web_research.schemas import WebExtractedEvent
 
 logger = logging.getLogger(__name__)
 
-_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.DOTALL)
 # Truncate input to keep prompt size manageable (~150k chars ~= 35k tokens).
 _MAX_INPUT_CHARS = 150_000
 
