@@ -51,7 +51,7 @@ describe('EventCard feed variant', () => {
     const onSave = vi.fn()
     render(<EventCard variant="feed" data={mockEventCtx} onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={onSave} />)
     fireEvent.click(screen.getByText('Save'))
-    expect(onSave).toHaveBeenCalledWith('evt_001')
+    expect(onSave).toHaveBeenCalledWith('evt_001', true)
   })
 
   it('shows Saved when is_saved is true', () => {

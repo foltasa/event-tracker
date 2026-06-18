@@ -4,7 +4,14 @@ import EventDetailOverlay from '@/components/EventDetailOverlay'
 
 vi.mock('@/hooks/useChat', () => ({
   useChat: vi.fn(() => ({
-    messages: [], isStreaming: false, error: null, sendMessage: vi.fn(),
+    messages: [], isStreaming: false, error: null, currentTool: null, sendMessage: vi.fn(),
+  })),
+}))
+
+vi.mock('@/components/AppShell', () => ({
+  useAppShell: vi.fn(() => ({
+    isOptimisticallySaved: vi.fn(() => undefined),
+    optimisticSentimentFor: vi.fn(() => undefined),
   })),
 }))
 
