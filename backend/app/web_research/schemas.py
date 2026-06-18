@@ -60,7 +60,14 @@ _SOURCE_TAG = "web_search"
 
 
 def _origin_match(a: str, b: str) -> bool:
-    return urlparse(a).hostname == urlparse(b).hostname
+    import tldextract
+    if urlparse(a).scheme not in ("http", "https") or urlparse(b).scheme not in ("http", "https"):
+        return False
+    ea = tldextract.extract(a)
+    eb = tldextract.extract(b)
+    if not ea.domain or not eb.domain:
+        return False
+    return (ea.domain, ea.suffix) == (eb.domain, eb.suffix)
 
 
 def _stable_external_id(source_url: str, start_iso: str, title: str) -> str:

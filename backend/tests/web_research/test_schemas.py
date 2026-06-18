@@ -121,6 +121,41 @@ def test_mapping_rejects_origin_mismatch():
     assert ne is None
 
 
+def test_origin_match_accepts_apex_vs_www():
+    """www and apex must be treated as the same origin."""
+    from app.web_research.schemas import WebExtractedEvent, map_to_normalized_event
+    we = WebExtractedEvent(
+        title="O.R.B + Pult",
+        start_datetime=datetime(2026, 7, 11, 21, 0, tzinfo=BERLIN),
+        source_url="https://www.hafenklang.com/programm?cpnr=1",
+    )
+    ne = map_to_normalized_event(we, input_url="https://hafenklang.com/programm")
+    assert ne is not None
+    assert ne.title == "O.R.B + Pult"
+
+
+def test_origin_match_rejects_different_apex():
+    from app.web_research.schemas import WebExtractedEvent, map_to_normalized_event
+    we = WebExtractedEvent(
+        title="Spoof",
+        start_datetime=datetime(2026, 7, 11, 21, 0, tzinfo=BERLIN),
+        source_url="https://evil.com/programm",
+    )
+    ne = map_to_normalized_event(we, input_url="https://hafenklang.com/programm")
+    assert ne is None
+
+
+def test_origin_match_rejects_non_http_scheme():
+    from app.web_research.schemas import WebExtractedEvent, map_to_normalized_event
+    we = WebExtractedEvent(
+        title="x",
+        start_datetime=datetime(2026, 7, 11, 21, 0, tzinfo=BERLIN),
+        source_url="mailto:tickets@hafenklang.com",
+    )
+    ne = map_to_normalized_event(we, input_url="https://hafenklang.com/programm")
+    assert ne is None
+
+
 def test_mapping_returns_none_on_normalized_event_validation_failure():
     """is_free=True with non-zero price violates NormalizedEvent._price_consistency
     and should yield None rather than crash."""
