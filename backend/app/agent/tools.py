@@ -382,6 +382,8 @@ def web_search(query: str) -> list[dict]:
         query: A search query string. Include the user's city and ISO date
                in the query (e.g. "Theater Hamburg 2026-06-19").
     """
+    from app.agent.turn_budget import consume_web_search
+    consume_web_search()
     hits = web_research_client.search(query)
     out: list[dict] = []
     for h in hits:
@@ -402,6 +404,8 @@ def ingest_event_from_url(url: str) -> dict:
 
     Returns: {"ingested": N, "updated": M, "skipped": K, "event_ids": [...]}.
     """
+    from app.agent.turn_budget import consume_ingest
+    consume_ingest()
     session = _session_factory()
     try:
         report = web_research_ingest.ingest_event_from_url(url=url, session=session)

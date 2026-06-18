@@ -333,3 +333,28 @@ def test_tools_registered_in_all_tools():
     names = [t.name for t in ALL_TOOLS]
     assert "web_search" in names
     assert "ingest_event_from_url" in names
+
+
+def test_web_search_raises_when_budget_exhausted():
+    from app.agent import turn_budget
+    from app.agent.schemas import ToolError
+    from app.agent.tools import web_search
+
+    turn_budget.set_turn_budget(web_search=0, ingest=6)
+    with patch("app.agent.tools.web_research_client.search", return_value=[]):
+        with pytest.raises(ToolError, match="web_search budget exhausted"):
+            web_search.invoke({"query": "x"})
+    turn_budget._reset()
+
+
+def test_ingest_event_from_url_raises_when_budget_exhausted(db_session, monkeypatch):
+    from app.agent import turn_budget
+    from app.agent.schemas import ToolError
+    from app.agent.tools import ingest_event_from_url
+
+    monkeypatch.setattr("app.agent.tools.SessionLocal", lambda: db_session)
+    turn_budget.set_turn_budget(web_search=4, ingest=0)
+    with patch("app.agent.tools.web_research_ingest.ingest_event_from_url", return_value={"ingested": 0, "updated": 0, "skipped": 0, "event_ids": []}):
+        with pytest.raises(ToolError, match="ingest budget exhausted"):
+            ingest_event_from_url.invoke({"url": "https://hafenklang.com/programm"})
+    turn_budget._reset()
