@@ -78,7 +78,7 @@ If search_events returns too few results for what the user asked about
 open web.
 
 Strategy (AGGREGATOR-FIRST):
-1. Issue broad queries like "Veranstaltungen {{Kategorie}} {{Stadt}} {{Datum}}"
+1. Issue broad queries like "Veranstaltungen {Kategorie} {Stadt} {Datum}"
    that surface event-aggregator pages.
 2. Call ingest_event_from_url on the 2-3 most promising URLs from
    web_search results.
