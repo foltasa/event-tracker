@@ -42,14 +42,18 @@ def events(db_session, user):
 
 def test_search_events_by_category(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    results = tools.search_events.invoke({"categories": ["music"]})
+    results = tools.search_events.invoke(
+        {"categories": ["music"], "date_from": "2026-06-01", "date_to": "2026-06-30"}
+    )
     assert len(results) == 1
     assert results[0]["id"] == "e_music"
 
 
 def test_search_events_by_text(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    results = tools.search_events.invoke({"text": "python"})
+    results = tools.search_events.invoke(
+        {"text": "python", "date_from": "2026-06-01", "date_to": "2026-06-30"}
+    )
     assert {r["id"] for r in results} == {"e_tech"}
 
 
@@ -204,6 +208,71 @@ def test_record_feedback_unknown_event_raises(db_session, user, monkeypatch):
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     with pytest.raises(ToolError, match="event not found"):
         tools.record_feedback.invoke({"event_id": "nope", "sentiment": "like"})
+
+
+def test_search_events_defaults_to_today_plus_3d(db_session, user, monkeypatch):
+    """When both date_from and date_to are omitted, only events in
+    today..today+3d (Europe/Berlin) are returned."""
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    in_window = datetime.combine(today + _td(days=1), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    out_window = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+
+    db_session.add(Event(
+        id="e_in", external_id="in1", source="x", title="Soon", description="",
+        category="music", source_url="http://x",
+        start_datetime=in_window, venue_name="v", is_free=True,
+    ))
+    db_session.add(Event(
+        id="e_out", external_id="out1", source="x", title="Later", description="",
+        category="music", source_url="http://x",
+        start_datetime=out_window, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    results = tools.search_events.invoke({})
+    ids = {r["id"] for r in results}
+    assert "e_in" in ids
+    assert "e_out" not in ids
+
+
+def test_search_events_explicit_bounds_override_default(db_session, user, monkeypatch):
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    far = datetime.combine(today + _td(days=30), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    db_session.add(Event(
+        id="e_far", external_id="far1", source="x", title="Far", description="",
+        category="music", source_url="http://x",
+        start_datetime=far, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    far_iso = (today + _td(days=29)).isoformat()
+    far_to_iso = (today + _td(days=31)).isoformat()
+    results = tools.search_events.invoke({"date_from": far_iso, "date_to": far_to_iso})
+    assert {r["id"] for r in results} == {"e_far"}
+
+
+def test_search_events_one_bound_does_not_trigger_default(db_session, user, monkeypatch):
+    """Caller passing only date_from leaves date_to open — no implicit upper bound."""
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    later = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    db_session.add(Event(
+        id="e_later", external_id="later1", source="x", title="Later", description="",
+        category="music", source_url="http://x",
+        start_datetime=later, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    results = tools.search_events.invoke({"date_from": today.isoformat()})
+    assert "e_later" in {r["id"] for r in results}
 
 
 # ---------------------------------------------------------------------------

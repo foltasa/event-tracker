@@ -57,7 +57,11 @@ def search_events(
 
     Args:
         date_from: ISO date (YYYY-MM-DD), inclusive lower bound on start_datetime.
+            If BOTH date_from and date_to are omitted, defaults to today
+            (Europe/Berlin) for a 3-day window.
         date_to: ISO date (YYYY-MM-DD), inclusive upper bound on start_datetime.
+            If BOTH date_from and date_to are omitted, defaults to today+3d
+            (Europe/Berlin).
         categories: limit to these category strings (e.g. ["music", "tech"]).
         text: case-insensitive substring match on title or description.
         max_price: include only events whose price_min is <= this (or is_free=True).
@@ -66,6 +70,15 @@ def search_events(
     """
     session = _session_factory()
     try:
+        from datetime import timedelta as _td
+        from zoneinfo import ZoneInfo
+        _LOCAL_TZ = ZoneInfo("Europe/Berlin")
+
+        if date_from is None and date_to is None:
+            today_local = datetime.now(_LOCAL_TZ).date()
+            date_from = today_local.isoformat()
+            date_to = (today_local + _td(days=3)).isoformat()
+
         q = session.query(Event).filter(Event.is_active == True)  # noqa: E712
         if date_from:
             q = q.filter(Event.start_datetime >= datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc))
