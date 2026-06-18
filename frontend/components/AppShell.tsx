@@ -87,6 +87,7 @@ function Shell({ children }: { children: ReactNode }) {
     mutate('/digest')
     mutate('/calendar')
     mutate((key) => Array.isArray(key) && key[0] === '/events')
+    mutate((key) => Array.isArray(key) && key[0] === '/appointments')
   }, [mutate])
 
   const handleFeedback = useCallback(async (eventId: string, sentiment: Sentiment | null) => {
