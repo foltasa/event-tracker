@@ -1,187 +1,139 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import useSWR from 'swr'
-import Link from 'next/link'
-import { getCalendar } from '@/lib/api'
-import type { CalendarEntry, CalendarResponse } from '@/lib/types'
+import { useMemo, useState } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
+import { getCalendar, listAppointments } from '@/lib/api'
+import type { Appointment, AppointmentsResponse, CalendarResponse } from '@/lib/types'
 import { useAppShell } from '@/components/AppShell'
+import WeekView from '@/components/calendar/WeekView'
+import AppointmentModal from '@/components/calendar/appointmentModal/AppointmentModal'
+import type { MakeInitial } from '@/components/calendar/appointmentModal/MakeAppointmentTab'
+import { getWeekRange, type LaidOutItem } from '@/lib/calendarGrid'
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-
-function toDateKey(iso: string): string {
-  const d = new Date(iso)
+function toKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function groupByDate(entries: CalendarEntry[]): Map<string, CalendarEntry[]> {
-  const map = new Map<string, CalendarEntry[]>()
-  for (const entry of entries) {
-    const key = toDateKey(entry.event.start_datetime)
-    const list = map.get(key) ?? []
-    list.push(entry)
-    map.set(key, list)
-  }
-  return map
-}
-
-function CalendarGrid({
-  year, month, byDate, todayKey, onDayClick,
-}: {
-  year: number
-  month: number
-  byDate: Map<string, CalendarEntry[]>
-  todayKey: string
-  onDayClick: (eventId: string) => void
-}) {
-  const firstDayOfWeek = (new Date(year, month, 1).getDay() + 6) % 7 // Mon=0
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cells: (number | null)[] = [
-    ...Array<null>(firstDayOfWeek).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ]
-
-  return (
-    <div className="grid grid-cols-7 gap-1">
-      {DAYS.map((d) => (
-        <div key={d} className="text-center text-[9px] text-text-muted py-1 uppercase tracking-wider">{d}</div>
-      ))}
-      {cells.map((day, i) => {
-        if (day === null) return <div key={`pad-${i}`} />
-        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-        const entries = byDate.get(dateKey)
-        const hasEvents = !!entries
-        const isToday = dateKey === todayKey
-        return (
-          <div
-            key={day}
-            data-testid={`day-${day}`}
-            // Opens the first event on the day; multiple events per day are not yet supported
-            onClick={() => hasEvents && onDayClick(entries![0].event.id)}
-            className={[
-              'flex flex-col items-center py-2 rounded',
-              hasEvents ? 'cursor-pointer hover:bg-accent-gold-light' : 'cursor-default',
-              isToday ? 'ring-1 ring-accent-gold' : '',
-            ].join(' ')}
-          >
-            <span className={`text-xs leading-none ${isToday ? 'font-bold text-accent-gold' : 'text-text-primary'}`}>
-              {day}
-            </span>
-            {hasEvents
-              ? <span className="w-1.5 h-1.5 rounded-full bg-accent-gold mt-1" />
-              : <span className="w-1.5 h-1.5 mt-1" />
-            }
-          </div>
-        )
-      })}
-    </div>
-  )
+function minutesToIso(day: string, minutes: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const h = Math.floor(minutes / 60)
+  const mm = minutes % 60
+  return new Date(y, m - 1, d, h, mm).toISOString()
 }
 
 export default function CalendarPage() {
-  const today = new Date()
-  const todayKey = toDateKey(today.toISOString())
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth())
-  const hasAutoJumped = useRef(false)
   const { openOverlay } = useAppShell()
+  const { mutate } = useSWRConfig()
+  const today = new Date()
+  const todayKey = toKey(today)
 
-  const { data, error, isLoading } = useSWR<CalendarResponse>('/calendar', getCalendar)
-  const entries = data?.entries ?? []
-  const byDate = groupByDate(entries)
+  const [weekStart, setWeekStart] = useState<Date>(() => getWeekRange(new Date()).start)
+  const [modal, setModal] = useState<{ mode: 'create' | 'edit'; initial: MakeInitial } | null>(null)
 
-  // Auto-jump to earliest month with events on first load
-  useEffect(() => {
-    if (hasAutoJumped.current || !data || data.entries.length === 0) return
-    const currentMonthHasEvents = data.entries.some((e) => {
-      const d = new Date(e.event.start_datetime)
-      return d.getFullYear() === year && d.getMonth() === month
-    })
-    if (!currentMonthHasEvents) {
-      const earliest = data.entries.reduce<Date>((min, e) => {
-        const d = new Date(e.event.start_datetime)
-        return d < min ? d : min
-      }, new Date(data.entries[0].event.start_datetime))
-      setYear(earliest.getFullYear())
-      setMonth(earliest.getMonth())
-    }
-    hasAutoJumped.current = true
-  }, [data])
+  const { start, end } = useMemo(() => {
+    const r = getWeekRange(weekStart)
+    return { start: toKey(r.start), end: toKey(new Date(r.end.getTime() - 1)) }
+  }, [weekStart])
 
-  function prevMonth() {
-    if (month === 0) { setYear(y => y - 1); setMonth(11) }
-    else setMonth(m => m - 1)
-  }
+  const { data: appData, error: appError } = useSWR<AppointmentsResponse>(
+    ['/appointments', start, end],
+    () => listAppointments(start, end),
+  )
+  const { data: calData, error: calError } = useSWR<CalendarResponse>('/calendar', getCalendar)
 
-  function nextMonth() {
-    if (month === 11) { setYear(y => y + 1); setMonth(0) }
-    else setMonth(m => m + 1)
-  }
-
-  const currentMonthEntries = entries.filter((e) => {
-    const d = new Date(e.event.start_datetime)
-    return d.getFullYear() === year && d.getMonth() === month
+  const appointments: Appointment[] = appData?.appointments ?? []
+  const events = (calData?.entries ?? []).filter((entry) => {
+    const k = toKey(new Date(entry.event.start_datetime))
+    return k >= start && k <= end
   })
 
+  const appointmentById = new Map(appointments.map(a => [a.id, a]))
+
+  function shiftWeek(days: number) {
+    const next = new Date(weekStart); next.setDate(next.getDate() + days)
+    setWeekStart(next)
+  }
+
+  function onEmptyClick(dayKey: string, startMinutes: number) {
+    setModal({
+      mode: 'create',
+      initial: {
+        day: dayKey,
+        start_at: minutesToIso(dayKey, startMinutes),
+        end_at: minutesToIso(dayKey, Math.min(24 * 60 - 1, startMinutes + 60)),
+        title: '',
+      },
+    })
+  }
+
+  function onAllDayClick(dayKey: string) {
+    setModal({
+      mode: 'create',
+      initial: { day: dayKey, start_at: null, end_at: null, title: '' },
+    })
+  }
+
+  function onItemClick(item: LaidOutItem) {
+    if (item.kind === 'event') {
+      openOverlay(item.id)
+      return
+    }
+    const appt = appointmentById.get(item.id)
+    if (!appt) return
+    setModal({
+      mode: 'edit',
+      initial: {
+        id: appt.id, day: appt.day, title: appt.title,
+        start_at: appt.start_at, end_at: appt.end_at,
+      },
+    })
+  }
+
+  function onSaved() {
+    mutate((key) => Array.isArray(key) && key[0] === '/appointments')
+    mutate('/calendar')
+  }
+
   return (
-    <main className="flex-1 overflow-y-auto flex flex-col items-center py-8 px-4">
-      <div className="w-full max-w-sm">
-        {/* Month navigation */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={prevMonth}
-            aria-label="Previous month"
-            className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
-          >
-            ‹
-          </button>
-          <h2 className="font-serif font-bold text-base text-text-primary">
-            {MONTHS[month]} {year}
-          </h2>
-          <button
-            onClick={nextMonth}
-            aria-label="Next month"
-            className="rounded px-2 py-1 text-text-secondary hover:text-text-primary"
-          >
-            ›
-          </button>
+    <>
+      {(appError || calError) && (
+        <div className="flex flex-col gap-1 px-4 py-2 bg-bg-page border-b border-border">
+          {appError && (
+            <p data-testid="appointments-error" className="text-[10px] text-red-500">
+              Couldn&apos;t load appointments.{' '}
+              <button
+                onClick={() => mutate((key) => Array.isArray(key) && key[0] === '/appointments')}
+                className="underline"
+              >Retry</button>
+            </p>
+          )}
+          {calError && (
+            <p data-testid="calendar-error" className="text-[10px] text-red-500">
+              Couldn&apos;t load saved events.{' '}
+              <button onClick={() => mutate('/calendar')} className="underline">Retry</button>
+            </p>
+          )}
         </div>
-
-        {/* Calendar grid */}
-        {isLoading && (
-          <div className="text-center text-xs text-text-muted py-8">Loading…</div>
-        )}
-        {error && (
-          <div className="text-center text-xs text-red-500 py-8">
-            Failed to load calendar.{' '}
-            <button onClick={() => window.location.reload()} className="underline">Retry</button>
-          </div>
-        )}
-        {!isLoading && !error && (
-          <CalendarGrid
-            year={year}
-            month={month}
-            byDate={byDate}
-            todayKey={todayKey}
-            onDayClick={(id) => openOverlay(id)}
-          />
-        )}
-
-        {/* Empty state */}
-        {!isLoading && !error && entries.length === 0 && (
-          <p className="text-center text-xs text-text-muted mt-8">
-            No saved events yet —{' '}
-            <Link href="/" className="text-accent-gold underline">browse events to save some →</Link>
-          </p>
-        )}
-
-        {/* Current month count hint */}
-        {!isLoading && !error && entries.length > 0 && currentMonthEntries.length === 0 && (
-          <p className="text-center text-[10px] text-text-muted mt-4">
-            No saved events this month. Use ‹ › to navigate.
-          </p>
-        )}
-      </div>
-    </main>
+      )}
+      <WeekView
+        weekStart={weekStart}
+        todayKey={todayKey}
+        appointments={appointments}
+        events={events}
+        onPrev={() => shiftWeek(-7)}
+        onNext={() => shiftWeek(7)}
+        onToday={() => setWeekStart(getWeekRange(new Date()).start)}
+        onEmptyClick={onEmptyClick}
+        onItemClick={onItemClick}
+        onAllDayClick={onAllDayClick}
+      />
+      {modal && (
+        <AppointmentModal
+          mode={modal.mode}
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSaved={onSaved}
+        />
+      )}
+    </>
   )
 }
