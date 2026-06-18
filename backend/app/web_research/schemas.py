@@ -3,10 +3,13 @@
 Structurally strict (so injection-shaped payloads fail validation),
 content-wise lenient (so real-world pages with missing fields still ingest)."""
 import hashlib
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+logger = logging.getLogger(__name__)
 
 _LOCAL_TZ = ZoneInfo("Europe/Berlin")
 
@@ -84,25 +87,29 @@ def map_to_normalized_event(
         extracted.title,
     )
 
-    return NormalizedEvent(
-        external_id=external_id,
-        source=_SOURCE_TAG,
-        title=extracted.title,
-        description=extracted.description,
-        summary=extracted.summary,
-        start_datetime=extracted.start_datetime,
-        end_datetime=extracted.end_datetime,
-        venue_name=extracted.venue_name,
-        venue_address=extracted.venue_address,
-        latitude=None,
-        longitude=None,
-        category=category,
-        tags=list(extracted.tags),
-        price_min=extracted.price_min,
-        price_max=extracted.price_max,
-        is_free=is_free,
-        currency="EUR",
-        image_url=extracted.image_url,
-        source_url=extracted.source_url,
-        raw_data={},
-    )
+    try:
+        return NormalizedEvent(
+            external_id=external_id,
+            source=_SOURCE_TAG,
+            title=extracted.title,
+            description=extracted.description,
+            summary=extracted.summary,
+            start_datetime=extracted.start_datetime,
+            end_datetime=extracted.end_datetime,
+            venue_name=extracted.venue_name,
+            venue_address=extracted.venue_address,
+            latitude=None,
+            longitude=None,
+            category=category,
+            tags=list(extracted.tags),
+            price_min=extracted.price_min,
+            price_max=extracted.price_max,
+            is_free=is_free,
+            currency="EUR",
+            image_url=extracted.image_url,
+            source_url=extracted.source_url,
+            raw_data={},
+        )
+    except ValidationError as exc:
+        logger.info("web_research mapping rejected by NormalizedEvent: %s", exc.errors()[:1])
+        return None

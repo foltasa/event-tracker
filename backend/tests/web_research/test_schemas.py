@@ -119,3 +119,18 @@ def test_mapping_rejects_origin_mismatch():
     )
     ne = map_to_normalized_event(we, input_url="https://thalia-theater.de/x")
     assert ne is None
+
+
+def test_mapping_returns_none_on_normalized_event_validation_failure():
+    """is_free=True with non-zero price violates NormalizedEvent._price_consistency
+    and should yield None rather than crash."""
+    from app.web_research.schemas import WebExtractedEvent, map_to_normalized_event
+    we = WebExtractedEvent(
+        title="Hamlet",
+        start_datetime=datetime(2026, 6, 19, 19, 30, tzinfo=BERLIN),
+        source_url="https://thalia-theater.de/x",
+        is_free=True,
+        price_min=5.0,
+    )
+    ne = map_to_normalized_event(we, input_url="https://thalia-theater.de/x")
+    assert ne is None
