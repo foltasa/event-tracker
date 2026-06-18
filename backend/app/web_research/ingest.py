@@ -36,7 +36,15 @@ def ingest_event_from_url(*, url: str, session: Session) -> dict:
     """Fetch a URL, extract events, upsert them, embed them.
 
     Returns: {ingested, updated, skipped, event_ids}.
-    Raises ToolError on structural failures."""
+    Raises ToolError on structural failures.
+
+    Concurrency invariant: the SQL upsert is committed via `session.commit()`
+    before this function returns. Within a single agent turn, LangGraph ReAct
+    runs tools sequentially, so any subsequent call to `search_events` in the
+    same turn is guaranteed to observe the freshly-ingested rows. The Chroma
+    upsert that follows the SQL commit is best-effort; failures there affect
+    `get_recommendations` only, not `search_events`.
+    """
     if not _allowed(url):
         raise ToolError("url not allowed")
 
