@@ -281,18 +281,31 @@ def test_search_events_one_bound_does_not_trigger_default(db_session, user, monk
 from unittest.mock import patch
 
 
-def test_web_search_returns_hits_with_truncated_content():
+def test_web_search_returns_hits_with_short_plain_text_content():
+    """Snippets are stripped of HTML/markdown and capped at 160 chars."""
     fake_hits = [
-        {"url": "https://thalia-theater.de/x", "title": "Spielplan",
-         "content": "A" * 500},
+        {
+            "url": "https://hafenklang.com/programm",
+            "title": "Programm",
+            "content": "[![Foto - Event - O.R.B + Pult](https://hafenklang.com/wp-content/themes/bgtoolbox/images/px.png)](/programm?cpnr=1) Sa 11.07.26 Goldener Salon Konzert [O.R.B + Pult](/programm?cpnr=1) " * 5,
+        }
     ]
     with patch("app.agent.tools.web_research_client.search", return_value=fake_hits):
         from app.agent.tools import web_search
-        out = web_search.invoke({"query": "Theater Hamburg"})
+        out = web_search.invoke({"query": "punk Hamburg"})
     assert len(out) == 1
-    assert out[0]["url"] == "https://thalia-theater.de/x"
-    # Content is truncated to <= 300 chars.
-    assert len(out[0]["content"]) <= 300
+    c = out[0]["content"]
+    assert len(c) <= 160
+    # No markdown image refs
+    assert "![Foto" not in c
+    assert "![" not in c
+    # No bare URLs from inside markdown link syntax
+    assert "https://hafenklang.com/wp-content" not in c
+    # No raw HTML tags
+    assert "<" not in c
+    # No newlines/tabs (collapsed to spaces)
+    assert "\n" not in c
+    assert "\t" not in c
 
 
 def test_web_search_propagates_toolerror_as_string():

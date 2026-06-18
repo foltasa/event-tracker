@@ -344,7 +344,29 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
         session.close()
 
 
-_SNIPPET_MAX = 300
+import re as _re
+
+_SNIPPET_MAX = 160
+
+_MD_IMAGE_RE = _re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK_RE = _re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_HTML_TAG_RE = _re.compile(r"<[^>]+>")
+_WHITESPACE_RE = _re.compile(r"\s+")
+
+
+def _plain_text_snippet(s: str) -> str:
+    """Strip markdown/HTML decoration and collapse whitespace, then truncate.
+
+    Order matters: drop image refs first (they look like links with a leading `!`),
+    then unwrap text-bearing links (keep the visible text, drop the URL),
+    then strip any leftover HTML tags, then collapse runs of whitespace."""
+    if not s:
+        return ""
+    s = _MD_IMAGE_RE.sub("", s)
+    s = _MD_LINK_RE.sub(r"\1", s)
+    s = _HTML_TAG_RE.sub("", s)
+    s = _WHITESPACE_RE.sub(" ", s).strip()
+    return s[:_SNIPPET_MAX]
 
 
 @tool
@@ -353,6 +375,8 @@ def web_search(query: str) -> list[dict]:
 
     Use only as a fallback when search_events returned too few results for
     the user's filters. Returns up to 5 hits with {url, title, content}.
+    `content` is a plain-text snippet (stripped of markdown/HTML, max 160
+    chars) for judging URL relevance — do not paste it into your reply.
 
     Args:
         query: A search query string. Include the user's city and ISO date
@@ -361,7 +385,7 @@ def web_search(query: str) -> list[dict]:
     hits = web_research_client.search(query)
     out: list[dict] = []
     for h in hits:
-        content = (h.get("content") or "")[:_SNIPPET_MAX]
+        content = _plain_text_snippet(h.get("content") or "")
         out.append({"url": h["url"], "title": h.get("title", ""), "content": content})
     return out
 
