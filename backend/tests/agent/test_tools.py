@@ -42,14 +42,18 @@ def events(db_session, user):
 
 def test_search_events_by_category(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    results = tools.search_events.invoke({"categories": ["music"]})
+    results = tools.search_events.invoke(
+        {"categories": ["music"], "date_from": "2026-06-01", "date_to": "2026-06-30"}
+    )
     assert len(results) == 1
     assert results[0]["id"] == "e_music"
 
 
 def test_search_events_by_text(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    results = tools.search_events.invoke({"text": "python"})
+    results = tools.search_events.invoke(
+        {"text": "python", "date_from": "2026-06-01", "date_to": "2026-06-30"}
+    )
     assert {r["id"] for r in results} == {"e_tech"}
 
 
@@ -204,3 +208,153 @@ def test_record_feedback_unknown_event_raises(db_session, user, monkeypatch):
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     with pytest.raises(ToolError, match="event not found"):
         tools.record_feedback.invoke({"event_id": "nope", "sentiment": "like"})
+
+
+def test_search_events_defaults_to_today_plus_3d(db_session, user, monkeypatch):
+    """When both date_from and date_to are omitted, only events in
+    today..today+3d (Europe/Berlin) are returned."""
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    in_window = datetime.combine(today + _td(days=1), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    out_window = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+
+    db_session.add(Event(
+        id="e_in", external_id="in1", source="x", title="Soon", description="",
+        category="music", source_url="http://x",
+        start_datetime=in_window, venue_name="v", is_free=True,
+    ))
+    db_session.add(Event(
+        id="e_out", external_id="out1", source="x", title="Later", description="",
+        category="music", source_url="http://x",
+        start_datetime=out_window, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    results = tools.search_events.invoke({})
+    ids = {r["id"] for r in results}
+    assert "e_in" in ids
+    assert "e_out" not in ids
+
+
+def test_search_events_explicit_bounds_override_default(db_session, user, monkeypatch):
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    far = datetime.combine(today + _td(days=30), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    db_session.add(Event(
+        id="e_far", external_id="far1", source="x", title="Far", description="",
+        category="music", source_url="http://x",
+        start_datetime=far, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    far_iso = (today + _td(days=29)).isoformat()
+    far_to_iso = (today + _td(days=31)).isoformat()
+    results = tools.search_events.invoke({"date_from": far_iso, "date_to": far_to_iso})
+    assert {r["id"] for r in results} == {"e_far"}
+
+
+def test_search_events_one_bound_does_not_trigger_default(db_session, user, monkeypatch):
+    """Caller passing only date_from leaves date_to open — no implicit upper bound."""
+    from datetime import date as _date, timedelta as _td
+
+    today = _date.today()
+    later = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    db_session.add(Event(
+        id="e_later", external_id="later1", source="x", title="Later", description="",
+        category="music", source_url="http://x",
+        start_datetime=later, venue_name="v", is_free=True,
+    ))
+    db_session.commit()
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    results = tools.search_events.invoke({"date_from": today.isoformat()})
+    assert "e_later" in {r["id"] for r in results}
+
+
+# ---------------------------------------------------------------------------
+# Web search tools
+# ---------------------------------------------------------------------------
+from unittest.mock import patch
+
+
+def test_web_search_returns_hits_with_short_plain_text_content():
+    """Snippets are stripped of HTML/markdown and capped at 160 chars."""
+    fake_hits = [
+        {
+            "url": "https://hafenklang.com/programm",
+            "title": "Programm",
+            "content": "[![Foto - Event - O.R.B + Pult](https://hafenklang.com/wp-content/themes/bgtoolbox/images/px.png)](/programm?cpnr=1) Sa 11.07.26 Goldener Salon Konzert [O.R.B + Pult](/programm?cpnr=1) " * 5,
+        }
+    ]
+    with patch("app.agent.tools.web_research_client.search", return_value=fake_hits):
+        from app.agent.tools import web_search
+        out = web_search.invoke({"query": "punk Hamburg"})
+    assert len(out) == 1
+    c = out[0]["content"]
+    assert len(c) <= 160
+    # No markdown image refs
+    assert "![Foto" not in c
+    assert "![" not in c
+    # No bare URLs from inside markdown link syntax
+    assert "https://hafenklang.com/wp-content" not in c
+    # No raw HTML tags
+    assert "<" not in c
+    # No newlines/tabs (collapsed to spaces)
+    assert "\n" not in c
+    assert "\t" not in c
+
+
+def test_web_search_propagates_toolerror_as_string():
+    from app.agent.schemas import ToolError
+    with patch("app.agent.tools.web_research_client.search", side_effect=ToolError("web search unavailable")):
+        from app.agent.tools import web_search
+        # ReAct prebuilt agent catches ToolError; here we just verify it is raised.
+        import pytest
+        with pytest.raises(ToolError):
+            web_search.invoke({"query": "x"})
+
+
+def test_ingest_event_from_url_tool_returns_report(db_session, monkeypatch):
+    # Patch SessionLocal so the tool's own session is our in-memory test session.
+    monkeypatch.setattr("app.agent.tools.SessionLocal", lambda: db_session)
+    fake_report = {"ingested": 2, "updated": 0, "skipped": 0, "event_ids": ["a", "b"]}
+    with patch("app.agent.tools.web_research_ingest.ingest_event_from_url", return_value=fake_report):
+        from app.agent.tools import ingest_event_from_url
+        out = ingest_event_from_url.invoke({"url": "https://thalia-theater.de/x"})
+    assert out == fake_report
+
+
+def test_tools_registered_in_all_tools():
+    from app.agent.tools import ALL_TOOLS
+    names = [t.name for t in ALL_TOOLS]
+    assert "web_search" in names
+    assert "ingest_event_from_url" in names
+
+
+def test_web_search_raises_when_budget_exhausted():
+    from app.agent import turn_budget
+    from app.agent.schemas import ToolError
+    from app.agent.tools import web_search
+
+    turn_budget.set_turn_budget(web_search=0, ingest=6)
+    with patch("app.agent.tools.web_research_client.search", return_value=[]):
+        with pytest.raises(ToolError, match="web_search budget exhausted"):
+            web_search.invoke({"query": "x"})
+    turn_budget._reset()
+
+
+def test_ingest_event_from_url_raises_when_budget_exhausted(db_session, monkeypatch):
+    from app.agent import turn_budget
+    from app.agent.schemas import ToolError
+    from app.agent.tools import ingest_event_from_url
+
+    monkeypatch.setattr("app.agent.tools.SessionLocal", lambda: db_session)
+    turn_budget.set_turn_budget(web_search=4, ingest=0)
+    with patch("app.agent.tools.web_research_ingest.ingest_event_from_url", return_value={"ingested": 0, "updated": 0, "skipped": 0, "event_ids": []}):
+        with pytest.raises(ToolError, match="ingest budget exhausted"):
+            ingest_event_from_url.invoke({"url": "https://hafenklang.com/programm"})
+    turn_budget._reset()

@@ -2,13 +2,31 @@
 import sqlite3
 
 import aiosqlite
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import ToolNode, create_react_agent
 
 from app.agent.llm import build_llm
 from app.agent.tools import select_tools
 from app.config import settings
+
+_ORPHAN_TOOL_MESSAGE = (
+    "Tool execution was interrupted before completion; treat as no result."
+)
+
+
+def _handle_tool_errors(e: Exception) -> str:
+    """Convert any tool exception into a string so ToolNode emits a ToolMessage
+    instead of re-raising.
+
+    langgraph 1.x ships a default handler that only catches ToolInvocationError
+    and re-raises everything else — including our ToolError. When the graph
+    crashes mid-step, the AIMessage(tool_calls=...) is already checkpointed but
+    no matching ToolMessage gets appended, so every subsequent turn fails with
+    INVALID_CHAT_HISTORY. This handler catches all exceptions and lets the
+    agent decide what to do with the resulting error ToolMessage."""
+    return f"Tool error: {e}"
 
 # Process-wide connection for the checkpointer. SqliteSaver.from_conn_string
 # wraps the connection in a contextmanager that closes on GC — using it via
@@ -41,7 +59,8 @@ def build_agent(tools_enabled: list[str] | None = None):
     keyed by thread_id passed at invocation time."""
     llm = build_llm()
     tools = select_tools(tools_enabled)
-    return create_react_agent(model=llm, tools=tools, checkpointer=_get_checkpointer())
+    tool_node = ToolNode(tools, handle_tool_errors=_handle_tool_errors)
+    return create_react_agent(model=llm, tools=tool_node, checkpointer=_get_checkpointer())
 
 
 async def build_async_agent(tools_enabled: list[str] | None = None):
@@ -50,4 +69,48 @@ async def build_async_agent(tools_enabled: list[str] | None = None):
     rejects async checkpoint calls."""
     llm = build_llm()
     tools = select_tools(tools_enabled)
-    return create_react_agent(model=llm, tools=tools, checkpointer=await _get_async_checkpointer())
+    tool_node = ToolNode(tools, handle_tool_errors=_handle_tool_errors)
+    return create_react_agent(model=llm, tools=tool_node, checkpointer=await _get_async_checkpointer())
+
+
+async def heal_orphan_tool_calls(agent, thread_id: str) -> int:
+    """Inject synthetic ToolMessages for any orphan tool_calls the prior turn
+    left in the checkpoint. Returns the number of healed calls.
+
+    SqliteSaver checkpoints between the LLM step and the ToolNode step. If the
+    ToolNode is interrupted from outside the tool body — asyncio cancellation
+    on client disconnect, watchfiles reload, process kill — the AIMessage
+    persists with no matching ToolMessages and every subsequent turn dies
+    with INVALID_CHAT_HISTORY. Run this once at the start of each turn.
+
+    Only the *latest* AIMessage with tool_calls is inspected: any earlier such
+    message is by construction inside a valid prefix (otherwise prior turns
+    would already have failed), and re-patching it could shadow real tool
+    results."""
+    config = {"configurable": {"thread_id": thread_id}}
+    state = await agent.aget_state(config)
+    messages = state.values.get("messages", []) if state and state.values else []
+    if not messages:
+        return 0
+
+    answered: set[str] = {
+        m.tool_call_id for m in messages
+        if isinstance(m, ToolMessage) and m.tool_call_id
+    }
+
+    synthetic: list[ToolMessage] = []
+    for m in reversed(messages):
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+            for call in m.tool_calls:
+                cid = call.get("id")
+                if cid and cid not in answered:
+                    synthetic.append(ToolMessage(
+                        content=_ORPHAN_TOOL_MESSAGE,
+                        tool_call_id=cid,
+                        name=call.get("name", "unknown"),
+                    ))
+            break
+
+    if synthetic:
+        await agent.aupdate_state(config, {"messages": synthetic})
+    return len(synthetic)

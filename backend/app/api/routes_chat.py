@@ -14,7 +14,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent.memory import get_current_user_id, record_message
-from app.agent.prompts import CONVERSATIONAL_PROMPT
+from app.agent.prompts import build_conversational_prompt
+from app.agent.runtime import heal_orphan_tool_calls
+from app.agent.turn_budget import set_turn_budget
 from app.api.deps import DbSession
 from app.db.models import ChatMessage, User
 from app.schemas.chat import ChatMessageResponse, ChatRequest
@@ -44,7 +46,10 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     record_message(db, payload.session_id, user_id, "user", payload.message)
     db.commit()
 
-    system = CONVERSATIONAL_PROMPT.format(
+    # Reset per-turn web-tool budget so a prior turn's exhaustion does not leak.
+    set_turn_budget(web_search=4, ingest=6)
+
+    system = build_conversational_prompt(
         today=date.today().isoformat(),
         interests=", ".join(user.interest_tags) or "(none)",
         about_me=user.about_me or "(none)",
@@ -60,6 +65,12 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     seen_tool_ids: set[str] = set()
     try:
         agent = await get_agent()
+        healed = await heal_orphan_tool_calls(agent, payload.session_id)
+        if healed:
+            logger.warning(
+                "chat: healed %d orphan tool_call(s) left by a prior interrupted turn (session=%s)",
+                healed, payload.session_id,
+            )
         async for message, _meta in agent.astream(
             {"messages": [SystemMessage(content=system), HumanMessage(content=payload.message)]},
             config={"configurable": {"thread_id": payload.session_id}},

@@ -19,6 +19,8 @@ from app.db.models import Event, Feedback, SavedEvent, User
 from app.db.session import SessionLocal
 from app.rag import chroma_store
 from app.rag.embeddings import embed_one
+from app.web_research import client as web_research_client
+from app.web_research import ingest as web_research_ingest
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,11 @@ def search_events(
 
     Args:
         date_from: ISO date (YYYY-MM-DD), inclusive lower bound on start_datetime.
+            If BOTH date_from and date_to are omitted, defaults to today
+            (Europe/Berlin) for a 3-day window.
         date_to: ISO date (YYYY-MM-DD), inclusive upper bound on start_datetime.
+            If BOTH date_from and date_to are omitted, defaults to today+3d
+            (Europe/Berlin).
         categories: limit to these category strings (e.g. ["music", "tech"]).
         text: case-insensitive substring match on title or description.
         max_price: include only events whose price_min is <= this (or is_free=True).
@@ -64,6 +70,15 @@ def search_events(
     """
     session = _session_factory()
     try:
+        from datetime import timedelta as _td
+        from zoneinfo import ZoneInfo
+        _LOCAL_TZ = ZoneInfo("Europe/Berlin")
+
+        if date_from is None and date_to is None:
+            today_local = datetime.now(_LOCAL_TZ).date()
+            date_from = today_local.isoformat()
+            date_to = (today_local + _td(days=3)).isoformat()
+
         q = session.query(Event).filter(Event.is_active == True)  # noqa: E712
         if date_from:
             q = q.filter(Event.start_datetime >= datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc))
@@ -329,6 +344,76 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
         session.close()
 
 
+import re as _re
+
+_SNIPPET_MAX = 160
+
+_MD_IMAGE_RE = _re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK_RE = _re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_HTML_TAG_RE = _re.compile(r"<[^>]+>")
+_WHITESPACE_RE = _re.compile(r"\s+")
+
+
+def _plain_text_snippet(s: str) -> str:
+    """Strip markdown/HTML decoration and collapse whitespace, then truncate.
+
+    Order matters: drop image refs first (they look like links with a leading `!`),
+    then unwrap text-bearing links (keep the visible text, drop the URL),
+    then strip any leftover HTML tags, then collapse runs of whitespace."""
+    if not s:
+        return ""
+    s = _MD_IMAGE_RE.sub("", s)
+    s = _MD_LINK_RE.sub(r"\1", s)
+    s = _HTML_TAG_RE.sub("", s)
+    s = _WHITESPACE_RE.sub(" ", s).strip()
+    return s[:_SNIPPET_MAX]
+
+
+@tool
+def web_search(query: str) -> list[dict]:
+    """Search the web for events using Tavily.
+
+    Use only as a fallback when search_events returned too few results for
+    the user's filters. Returns up to 5 hits with {url, title, content}.
+    `content` is a plain-text snippet (stripped of markdown/HTML, max 160
+    chars) for judging URL relevance — do not paste it into your reply.
+
+    Args:
+        query: A search query string. Include the user's city and ISO date
+               in the query (e.g. "Theater Hamburg 2026-06-19").
+    """
+    from app.agent.turn_budget import consume_web_search
+    consume_web_search()
+    hits = web_research_client.search(query)
+    out: list[dict] = []
+    for h in hits:
+        content = _plain_text_snippet(h.get("content") or "")
+        out.append({"url": h["url"], "title": h.get("title", ""), "content": content})
+    return out
+
+
+@tool
+def ingest_event_from_url(url: str) -> dict:
+    """Fetch the given URL, extract its events, and upsert them into the catalogue.
+
+    Use after web_search to ingest events from a promising URL. After this
+    returns, call search_events again to find the newly ingested events.
+
+    Args:
+        url: Exactly one URL from a web_search result.
+
+    Returns: {"ingested": N, "updated": M, "skipped": K, "event_ids": [...]}.
+    """
+    from app.agent.turn_budget import consume_ingest
+    consume_ingest()
+    session = _session_factory()
+    try:
+        report = web_research_ingest.ingest_event_from_url(url=url, session=session)
+        return report
+    finally:
+        session.close()
+
+
 ALL_TOOLS = [
     search_events,
     get_recommendations,
@@ -339,6 +424,8 @@ ALL_TOOLS = [
     update_user_profile,
     edit_facts,
     edit_taste_summary,
+    web_search,
+    ingest_event_from_url,
 ]
 
 

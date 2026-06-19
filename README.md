@@ -12,6 +12,9 @@ A personalized AI agent for discovering events in Hamburg. The app ingests event
 | Vector store | ChromaDB                              | —   |
 | Ingestion    | APScheduler (daily 04:00 Berlin time) | —   |
 
+The agent also supports a web-search fallback via `web_search` and `ingest_event_from_url` — Tavily-backed tools that discover events on the open web when the local catalogue is too sparse.
+Set `TAVILY_API_KEY` in `.env` to enable; leave it empty to disable.
+
 ## Prerequisites
 
 - Node.js 18+

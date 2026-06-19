@@ -23,6 +23,7 @@ dependencies = [
     "openai>=1.40.0",
     "numpy>=1.26.0",
     "sse-starlette>=2.1.0",
+    "tldextract>=5.1.0",
 ]
 
 [project.optional-dependencies]
