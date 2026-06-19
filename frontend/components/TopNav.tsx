@@ -1,11 +1,10 @@
 import Link from 'next/link'
 
-type ActivePage = 'dashboard' | 'calendar' | 'settings'
+type ActivePage = 'dashboard' | 'calendar'
 
 const LINKS: { href: string; label: string; page: ActivePage }[] = [
   { href: '/',          label: 'Dashboard', page: 'dashboard' },
   { href: '/calendar',  label: 'Calendar',  page: 'calendar'  },
-  { href: '/settings',  label: 'Settings',  page: 'settings'  },
 ]
 
 export default function TopNav({ active, date }: { active: ActivePage; date: string }) {

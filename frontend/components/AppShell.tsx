@@ -57,10 +57,8 @@ function EventDetailOverlayLoader({
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const active: 'dashboard' | 'calendar' | 'settings' =
-    pathname?.startsWith('/calendar') ? 'calendar'
-    : pathname?.startsWith('/settings') ? 'settings'
-    : 'dashboard'
+  const active: 'dashboard' | 'calendar' =
+    pathname?.startsWith('/calendar') ? 'calendar' : 'dashboard'
   const dateLabel = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
