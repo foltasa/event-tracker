@@ -23,7 +23,7 @@ export default function FeedFilters({ filters, onChange }: Props) {
       <button
         key={label}
         onClick={onClick}
-        className={`rounded px-2 py-0.5 text-[10px] cursor-pointer ${active ? 'bg-accent-gold text-bg-page font-semibold' : 'border border-border text-text-secondary hover:bg-accent-gold-light'}`}
+        className={`rounded px-2 py-0.5 text-[11px] cursor-pointer ${active ? 'bg-accent-gold text-bg-page font-semibold' : 'border border-border text-text-secondary hover:bg-accent-gold-light'}`}
       >
         {label}
       </button>
@@ -32,7 +32,7 @@ export default function FeedFilters({ filters, onChange }: Props) {
 
   return (
     <div className="sticky flex flex-wrap items-center gap-1.5 px-5 py-2 border-b border-border bg-bg-page">
-      <span className="text-[9px] uppercase tracking-widest text-accent-gold mr-1">Filter:</span>
+      <span className="text-[10px] uppercase tracking-widest text-accent-gold mr-1">Filter:</span>
 
       {chip('All', filters.category === null, () => onChange({ ...filters, category: null }))}
       {CATEGORIES.map((cat) =>
@@ -46,7 +46,7 @@ export default function FeedFilters({ filters, onChange }: Props) {
       <select
         value={filters.datePreset}
         onChange={(e) => onChange({ ...filters, datePreset: e.target.value as DatePreset })}
-        className="ml-1 text-[10px] border border-border rounded px-1.5 py-0.5 bg-white text-text-secondary"
+        className="ml-1 text-[11px] border border-border rounded px-1.5 py-0.5 bg-white text-text-secondary"
       >
         <option value="any">Any time</option>
         <option value="today">Today</option>
@@ -59,7 +59,7 @@ export default function FeedFilters({ filters, onChange }: Props) {
         value={filters.q}
         onChange={(e) => onChange({ ...filters, q: e.target.value })}
         placeholder="🔍 Search events..."
-        className="ml-auto text-[10px] border border-border rounded px-2 py-0.5 bg-white text-text-primary w-32"
+        className="ml-auto text-[11px] border border-border rounded px-2 py-0.5 bg-white text-text-primary w-32"
       />
     </div>
   )

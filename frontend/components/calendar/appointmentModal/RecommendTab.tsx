@@ -44,16 +44,16 @@ export default function RecommendTab({ initial }: { initial: Initial }) {
 
   return (
     <div className="flex flex-col p-4 gap-3">
-      <p className="text-[10px] text-text-muted">Day: {initial.day}</p>
+      <p className="text-[11px] text-text-muted">Day: {initial.day}</p>
 
       <div className="flex flex-col gap-2 min-h-[120px]">
         {messages.map((msg) =>
           msg.role === 'user' ? (
-            <div key={msg.id} className="self-end max-w-[85%] rounded-lg rounded-br-sm bg-bg-surface px-3 py-1.5 text-[10px] italic text-text-primary">
+            <div key={msg.id} className="self-end max-w-[85%] rounded-lg rounded-br-sm bg-bg-surface px-3 py-1.5 text-[11px] italic text-text-primary">
               {msg.content}
             </div>
           ) : (
-            <div key={msg.id} className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary">
+            <div key={msg.id} className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[11px] text-text-primary">
               {msg.content}
             </div>
           ),
@@ -64,7 +64,7 @@ export default function RecommendTab({ initial }: { initial: Initial }) {
         {showPlaceholder && (
           <p
             data-testid="recommend-placeholder"
-            className="absolute inset-0 px-2.5 py-1.5 text-[10px] text-text-muted pointer-events-none"
+            className="absolute inset-0 px-2.5 py-1.5 text-[11px] text-text-muted pointer-events-none"
           >
             Tell your assistant what you are searching for...
           </p>
@@ -77,7 +77,7 @@ export default function RecommendTab({ initial }: { initial: Initial }) {
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
-          className="w-full text-[10px] border border-border rounded px-2.5 py-1.5 bg-white"
+          className="w-full text-[11px] border border-border rounded px-2.5 py-1.5 bg-white"
         />
       </div>
     </div>

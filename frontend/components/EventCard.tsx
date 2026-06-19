@@ -30,7 +30,7 @@ function formatPrice(min: number | null, max: number | null, isFree: boolean) {
 
 function CategoryBadge({ category }: { category: string }) {
   return (
-    <span className="rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-semibold bg-accent-gold text-bg-page">
+    <span className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-accent-gold text-bg-page">
       {category}
     </span>
   )
@@ -105,22 +105,22 @@ export default function EventCard({
         {imageBanner('h-[60px]')}
         <div className="p-2">
           <button
-            className="font-serif text-[11px] font-bold text-text-primary text-left w-full"
+            className="font-serif text-[12px] font-bold text-text-primary text-left w-full"
             onClick={() => isActive && onCardClick(event.id)}
           >
             {event.title}
           </button>
-          <p className="text-[9px] text-text-secondary mt-0.5">
+          <p className="text-[10px] text-text-secondary mt-0.5">
             {dateStr}{priceStr && ` · ${priceStr}`}
           </p>
           {justification && (
-            <p className="text-[9px] italic text-text-primary mt-1 line-clamp-2">{justification}</p>
+            <p className="text-[10px] italic text-text-primary mt-1 line-clamp-2">{justification}</p>
           )}
           <div className="flex gap-1 mt-1.5 items-center">
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-              className={`ml-auto rounded text-[9px] px-1.5 py-0.5 ${
+              className={`ml-auto rounded text-[10px] px-1.5 py-0.5 ${
                 isSaved
                   ? 'bg-accent-gold-light text-accent-gold'
                   : 'bg-accent-gold text-bg-page'
@@ -140,17 +140,17 @@ export default function EventCard({
         {imageBanner('h-9')}
         <div className="p-1.5">
           <button
-            className="font-serif text-[10px] font-bold text-text-primary text-left w-full"
+            className="font-serif text-[11px] font-bold text-text-primary text-left w-full"
             onClick={() => isActive && onCardClick(event.id)}
           >
             {event.title}
           </button>
-          <p className="text-[9px] text-text-secondary">{dateStr}{priceStr && ` · ${priceStr}`}</p>
+          <p className="text-[10px] text-text-secondary">{dateStr}{priceStr && ` · ${priceStr}`}</p>
           <div className="flex gap-1 mt-1">
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-              className={`ml-auto rounded text-[8px] px-1.5 py-0.5 ${
+              className={`ml-auto rounded text-[9px] px-1.5 py-0.5 ${
                 isSaved
                   ? 'bg-accent-gold-light text-accent-gold'
                   : 'bg-accent-gold text-bg-page'
@@ -171,12 +171,12 @@ export default function EventCard({
       <div className="flex-1 flex flex-col justify-between p-2 min-w-0">
         <div>
           <button
-            className="font-serif text-[11px] font-bold text-text-primary text-left w-full truncate"
+            className="font-serif text-[12px] font-bold text-text-primary text-left w-full truncate"
             onClick={() => isActive && onCardClick(event.id)}
           >
             {event.title}
           </button>
-          <p className="text-[9px] text-text-secondary">
+          <p className="text-[10px] text-text-secondary">
             {event.venue_name && `${event.venue_name} · `}{dateStr}{priceStr && ` · ${priceStr}`}
           </p>
         </div>
@@ -184,7 +184,7 @@ export default function EventCard({
           <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
           <button
             onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-            className={`ml-auto rounded text-[9px] px-1.5 py-0.5 ${
+            className={`ml-auto rounded text-[10px] px-1.5 py-0.5 ${
               isSaved
                 ? 'bg-accent-gold-light text-accent-gold'
                 : 'bg-accent-gold text-bg-page'

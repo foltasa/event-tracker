@@ -1,5 +1,5 @@
-def test_conversational_prompt_includes_web_search_section_when_key_set(monkeypatch):
-    monkeypatch.setattr("app.agent.prompts.settings.tavily_api_key", "tvly-test")
+def test_conversational_prompt_includes_web_search_section_when_enabled(monkeypatch):
+    monkeypatch.setattr("app.agent.prompts.settings.web_search_enabled", True)
     # Re-import to re-evaluate; or call the builder directly.
     from app.agent.prompts import build_conversational_prompt
     out = build_conversational_prompt(
@@ -10,8 +10,8 @@ def test_conversational_prompt_includes_web_search_section_when_key_set(monkeypa
     assert "Max 4 web_search calls" in out
 
 
-def test_conversational_prompt_omits_web_search_section_when_key_missing(monkeypatch):
-    monkeypatch.setattr("app.agent.prompts.settings.tavily_api_key", None)
+def test_conversational_prompt_omits_web_search_section_when_disabled(monkeypatch):
+    monkeypatch.setattr("app.agent.prompts.settings.web_search_enabled", False)
     from app.agent.prompts import build_conversational_prompt
     out = build_conversational_prompt(
         today="2026-06-18", interests="theater", about_me="", facts_md="", taste_summary="",
@@ -28,7 +28,7 @@ def test_conversational_prompt_includes_answering_rule():
 
 
 def test_web_search_strategy_warns_against_retrying_empty_ingest(monkeypatch):
-    monkeypatch.setattr("app.agent.prompts.settings.tavily_api_key", "tvly-test")
+    monkeypatch.setattr("app.agent.prompts.settings.web_search_enabled", True)
     from app.agent.prompts import build_conversational_prompt
     out = build_conversational_prompt(
         today="2026-06-18", interests="punk", about_me="", facts_md="", taste_summary="",

@@ -84,7 +84,7 @@ export default function MakeAppointmentTab({
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <label className="text-[11px] text-text-secondary">
+      <label className="text-[12px] text-text-secondary">
         Title
         <input
           autoFocus={mode === 'create'}
@@ -94,7 +94,7 @@ export default function MakeAppointmentTab({
         />
       </label>
 
-      <label className="flex items-center gap-2 text-[11px] text-text-secondary">
+      <label className="flex items-center gap-2 text-[12px] text-text-secondary">
         <input
           type="checkbox"
           checked={allDay}
@@ -105,7 +105,7 @@ export default function MakeAppointmentTab({
 
       {!allDay && (
         <div className="flex gap-2">
-          <label className="flex-1 text-[11px] text-text-secondary">
+          <label className="flex-1 text-[12px] text-text-secondary">
             Start
             <input
               type="time"
@@ -115,7 +115,7 @@ export default function MakeAppointmentTab({
               className="mt-1 w-full text-xs border border-border rounded px-2 py-1.5 bg-white"
             />
           </label>
-          <label className="flex-1 text-[11px] text-text-secondary">
+          <label className="flex-1 text-[12px] text-text-secondary">
             End
             <input
               type="time"
@@ -125,14 +125,14 @@ export default function MakeAppointmentTab({
               onChange={(e) => setEnd(e.target.value)}
               className="mt-1 w-full text-xs border border-border rounded px-2 py-1.5 bg-white disabled:bg-bg-surface"
             />
-            <span className="block mt-0.5 text-[9px] text-text-muted">Leave empty to last until end of day.</span>
+            <span className="block mt-0.5 text-[10px] text-text-muted">Leave empty to last until end of day.</span>
           </label>
         </div>
       )}
 
-      <p className="text-[10px] text-text-muted">Day: {initial.day}</p>
+      <p className="text-[11px] text-text-muted">Day: {initial.day}</p>
 
-      {error && <p className="text-[10px] text-red-500">{error}</p>}
+      {error && <p className="text-[11px] text-red-500">{error}</p>}
 
       <div className="flex justify-between pt-2 border-t border-border">
         <div>

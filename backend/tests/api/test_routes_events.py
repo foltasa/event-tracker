@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
@@ -7,12 +7,16 @@ from app.db.models import Event, Feedback, SavedEvent, User
 
 @pytest.fixture
 def setup(db_session):
+    # Event start times must stay in the future relative to date.today() —
+    # routes_events.list_events defaults date_from to today, so any fixture
+    # event scheduled in the past would be invisible to the feed.
     db_session.add(User(id="local", interest_tags=[]))
+    base = datetime.combine(date.today() + timedelta(days=1), time(12, 0), tzinfo=timezone.utc)
     for i, cat in enumerate(["music", "tech", "music"]):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
             title=f"Event {i}", category=cat, source_url="http://x",
-            start_datetime=datetime(2026, 6, 10 + i, tzinfo=timezone.utc),
+            start_datetime=base + timedelta(days=i),
         ))
     db_session.commit()
 

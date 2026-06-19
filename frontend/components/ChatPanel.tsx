@@ -36,7 +36,7 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
   const lastIdx = messages.length - 1
 
   return (
-    <div className="flex flex-col w-[280px] flex-shrink-0 bg-bg-chat border-l border-border">
+    <div className="flex flex-col w-[350px] flex-shrink-0 bg-bg-chat border-l border-border">
       {/* Header */}
       <div className="px-3.5 py-2.5 border-b border-border bg-accent-gold-light flex-shrink-0">
         <p className="font-serif font-bold text-xs text-text-primary">Chat Assistant</p>
@@ -53,7 +53,7 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
           const indicatorText = currentTool ? `${currentTool} running…` : 'thinking…'
           if (msg.role === 'user') {
             return (
-              <div key={msg.id} className="self-end max-w-[88%] rounded-lg rounded-br-sm bg-bg-surface px-2.5 py-1.5 text-[10px] italic text-text-primary">
+              <div key={msg.id} className="self-end max-w-[88%] rounded-lg rounded-br-sm bg-bg-surface px-2.5 py-1.5 text-[11px] italic text-text-primary">
                 {msg.content}
               </div>
             )
@@ -63,23 +63,23 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
               {showIndicator && (
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-accent-gold animate-pulse" />
-                  <span className="text-[9px] italic text-accent-gold">{indicatorText}</span>
+                  <span className="text-[10px] italic text-accent-gold">{indicatorText}</span>
                 </div>
               )}
-              <div className="self-start max-w-[92%] rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
-                <p className="leading-relaxed whitespace-pre-wrap">
+              <div className="self-start max-w-[92%] min-w-0 rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[11px] text-text-primary">
+                <div className="leading-relaxed whitespace-pre-wrap">
                   {parseMessageContent(msg.content).map((seg, si) =>
                     seg.type === 'event'
-                      ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} />
+                      ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} onCardClick={onCardClick} />
                       : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
                   )}
-                </p>
+                </div>
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
               </div>
             </Fragment>
           )
         })}
-        {error && <p className="text-[9px] text-red-500 italic">{error}</p>}
+        {error && <p className="text-[10px] text-red-500 italic">{error}</p>}
         <div ref={bottomRef} />
       </div>
 
@@ -91,7 +91,7 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="Ask anything about events…"
-          className="flex-1 text-[10px] border border-border rounded px-2 py-1.5 bg-white disabled:bg-bg-surface"
+          className="flex-1 text-[11px] border border-border rounded px-2 py-1.5 bg-white disabled:bg-bg-surface"
         />
         <button
           aria-label="send"

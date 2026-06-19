@@ -22,7 +22,7 @@ export default function WeekdayStrip({
             key={key}
             className={`flex-1 py-2 text-center border-l border-border ${isWeekend ? 'bg-bg-surface' : ''}`}
           >
-            <p className="text-[10px] uppercase tracking-wider text-text-muted">{SHORT[i]}</p>
+            <p className="text-[11px] uppercase tracking-wider text-text-muted">{SHORT[i]}</p>
             <p
               className={
                 'mt-0.5 text-sm font-serif font-bold ' +

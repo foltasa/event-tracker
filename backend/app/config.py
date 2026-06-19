@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     checkpointer_path: str = "./data/agent.sqlite"
 
     # Web event search (Tavily)
+    # Master switch — when False the agent does not get the web_search /
+    # ingest_event_from_url tools and the conversational prompt omits the
+    # web-search strategy block. Defaults to False until the feature is
+    # reliable; flip via WEB_SEARCH_ENABLED=true in .env to reactivate.
+    web_search_enabled: bool = False
     tavily_api_key: str | None = None
     web_search_extractor_model: str | None = None
     web_search_max_results: int = 5

@@ -63,6 +63,34 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     # and arg fragments dribble across continuation chunks. Dedupe by id so
     # we emit exactly one tool_start per logical call.
     seen_tool_ids: set[str] = set()
+
+    # Per-message-id buffer so the agent's internal monologue (the AIMessage
+    # whose content accompanies a tool_call) never leaks into the user-facing
+    # reply. OpenAI-style streaming emits content tokens BEFORE the tool_call
+    # chunks, so a per-chunk "does this chunk have tool_calls?" check would be
+    # too late. Instead we accumulate content per id and decide whether to
+    # flush only once we have enough signal: a finish_reason marker, the
+    # presence of tool_call_chunks/tool_calls anywhere on the message, or
+    # end-of-stream as a safety fallback. Final answers stream as one larger
+    # token event rather than token-by-token — UX downgrade, but a correctness
+    # win versus glued-together messages like "...generell gibtLeider...".
+    msg_buf: dict[str, str] = {}
+    msg_intermediate: set[str] = set()
+    msg_emitted: set[str] = set()
+
+    def _finish_reason(m) -> str | None:
+        meta = getattr(m, "response_metadata", None)
+        if isinstance(meta, dict):
+            return meta.get("finish_reason")
+        return None
+
+    def _has_tool_call_signal(m) -> bool:
+        if getattr(m, "tool_calls", None):
+            return True
+        if getattr(m, "tool_call_chunks", None):
+            return True
+        return False
+
     try:
         agent = await get_agent()
         healed = await heal_orphan_tool_calls(agent, payload.session_id)
@@ -83,9 +111,6 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
                     "data": json.dumps({"type": "tool_end", "tool_name": message.name or "unknown", "status": status}),
                 }
             elif isinstance(message, AIMessage):
-                if isinstance(message.content, str) and message.content:
-                    assistant_buffer.append(message.content)
-                    yield {"event": "message", "data": json.dumps({"type": "token", "content": message.content})}
                 for call in getattr(message, "tool_calls", []) or []:
                     name = call.get("name") or ""
                     call_id = call.get("id") or ""
@@ -96,10 +121,45 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
                         "event": "message",
                         "data": json.dumps({"type": "tool_start", "tool_name": name}),
                     }
+
+                msg_id = getattr(message, "id", None) or "_anon"
+
+                if _has_tool_call_signal(message):
+                    msg_intermediate.add(msg_id)
+                    msg_buf.pop(msg_id, None)
+
+                if (
+                    msg_id not in msg_intermediate
+                    and isinstance(message.content, str)
+                    and message.content
+                ):
+                    msg_buf[msg_id] = msg_buf.get(msg_id, "") + message.content
+
+                fr = _finish_reason(message)
+                if fr in ("tool_calls", "function_call"):
+                    msg_intermediate.add(msg_id)
+                    msg_buf.pop(msg_id, None)
+                elif fr == "stop":
+                    buffered = msg_buf.pop(msg_id, "")
+                    if buffered and msg_id not in msg_intermediate and msg_id not in msg_emitted:
+                        assistant_buffer.append(buffered)
+                        msg_emitted.add(msg_id)
+                        yield {"event": "message", "data": json.dumps({"type": "token", "content": buffered})}
     except Exception as exc:
         logger.exception("chat stream failed")
         yield {"event": "message", "data": json.dumps({"type": "error", "message": f"agent error: {exc}"})}
         return
+
+    # Safety net: flush any buffer whose owning message never carried a
+    # finish_reason (mocks, providers that omit the field) and was not marked
+    # intermediate. Discard intermediate buffers silently — they were the
+    # agent's internal reasoning.
+    for msg_id, buffered in msg_buf.items():
+        if msg_id in msg_intermediate or msg_id in msg_emitted or not buffered:
+            continue
+        assistant_buffer.append(buffered)
+        msg_emitted.add(msg_id)
+        yield {"event": "message", "data": json.dumps({"type": "token", "content": buffered})}
 
     full_text = "".join(assistant_buffer)
     if full_text:

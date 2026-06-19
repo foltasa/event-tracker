@@ -80,21 +80,21 @@ export default function FeedSection({
 
   return (
     <div className="flex-1 overflow-y-auto px-5 py-3 bg-bg-page flex flex-col gap-2">
-      <p className="text-[9px] uppercase tracking-widest text-accent-gold mb-1">Upcoming Events</p>
+      <p className="text-[10px] uppercase tracking-widest text-accent-gold mb-1">Upcoming Events</p>
 
       {isLoading && Array.from({ length: 5 }).map((_, i) => (
         <SkeletonCard key={i} variant="feed" />
       ))}
 
       {hasError && (
-        <p className="text-[10px] text-red-600 italic">
+        <p className="text-[11px] text-red-600 italic">
           Could not load events.{' '}
           <button onClick={() => setSize(1)} className="text-accent-gold underline">Retry</button>
         </p>
       )}
 
       {isEmpty && (
-        <p className="text-[10px] text-text-muted italic">
+        <p className="text-[11px] text-text-muted italic">
           No events match your filters.
         </p>
       )}
@@ -112,7 +112,7 @@ export default function FeedSection({
         />
       ))}
 
-      {isLoadingMore && <p className="text-[9px] italic text-text-muted text-center py-1">Loading more…</p>}
+      {isLoadingMore && <p className="text-[10px] italic text-text-muted text-center py-1">Loading more…</p>}
 
       <div ref={sentinelRef} className="h-1" />
     </div>

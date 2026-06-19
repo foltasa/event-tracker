@@ -48,7 +48,7 @@ export default function DayColumn({
               e.stopPropagation()
               onItemClick({ ...it, column: 0, columnCount: 1 })
             }}
-            className="text-[9px] truncate rounded bg-white px-1 py-0.5 border-l-[3px] border-text-secondary text-left"
+            className="text-[10px] truncate rounded bg-white px-1 py-0.5 border-l-[3px] border-text-secondary text-left"
           >
             {it.title}
           </button>

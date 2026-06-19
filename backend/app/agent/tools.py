@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.agent.memory import get_current_user_id, refresh_taste_centroid
 from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
+from app.config import settings
 from app.db.models import Event, Feedback, SavedEvent, User
 from app.db.session import SessionLocal
 from app.rag import chroma_store
@@ -428,9 +429,20 @@ ALL_TOOLS = [
     ingest_event_from_url,
 ]
 
+# Tools gated by settings.web_search_enabled. The tool functions themselves are
+# kept importable (and unit-testable) regardless of the flag — the flag only
+# controls whether they get registered with the agent.
+_WEB_SEARCH_TOOL_NAMES = frozenset({"web_search", "ingest_event_from_url"})
+
+
+def _default_enabled_tools() -> list:
+    if settings.web_search_enabled:
+        return ALL_TOOLS
+    return [t for t in ALL_TOOLS if t.name not in _WEB_SEARCH_TOOL_NAMES]
+
 
 def select_tools(enabled_names: list[str] | None = None) -> list:
     if enabled_names is None:
-        return ALL_TOOLS
+        return _default_enabled_tools()
     by_name = {t.name: t for t in ALL_TOOLS}
     return [by_name[n] for n in enabled_names if n in by_name]

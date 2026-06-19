@@ -10,17 +10,27 @@ from app.agent import runtime
 from app.agent.schemas import ToolError
 
 
+_CORE_TOOL_NAMES = {
+    "search_events", "get_recommendations", "record_feedback",
+    "save_to_calendar", "get_calendar", "get_user_profile",
+    "update_user_profile", "edit_facts", "edit_taste_summary",
+}
+_WEB_SEARCH_TOOL_NAMES = {"web_search", "ingest_event_from_url"}
+
+
 @patch("app.agent.runtime.create_react_agent")
 @patch("app.agent.runtime.SqliteSaver")
 @patch("app.agent.runtime.sqlite3.connect")
 @patch("app.agent.runtime.build_llm")
 def test_build_agent_wires_llm_tools_and_checkpointer(
-    mock_llm, mock_connect, mock_saver, mock_create
+    mock_llm, mock_connect, mock_saver, mock_create, monkeypatch
 ):
     runtime._checkpointer_conn = None
     mock_llm.return_value = "FAKE_LLM"
     mock_connect.return_value = "FAKE_CONN"
     mock_saver.return_value = "FAKE_CHECKPOINTER"
+    # Default-off: web-search tools must not be registered when the flag is False.
+    monkeypatch.setattr("app.agent.tools.settings.web_search_enabled", False)
 
     runtime.build_agent()
 
@@ -32,12 +42,24 @@ def test_build_agent_wires_llm_tools_and_checkpointer(
     # Tools are now wrapped in a ToolNode so we can attach handle_tool_errors.
     assert isinstance(kwargs["tools"], ToolNode)
     tool_names = set(kwargs["tools"].tools_by_name.keys())
-    assert tool_names == {
-        "search_events", "get_recommendations", "record_feedback",
-        "save_to_calendar", "get_calendar", "get_user_profile",
-        "update_user_profile", "edit_facts", "edit_taste_summary",
-        "web_search", "ingest_event_from_url",
-    }
+    assert tool_names == _CORE_TOOL_NAMES
+
+
+@patch("app.agent.runtime.create_react_agent")
+@patch("app.agent.runtime.SqliteSaver")
+@patch("app.agent.runtime.sqlite3.connect")
+@patch("app.agent.runtime.build_llm")
+def test_build_agent_includes_web_search_tools_when_flag_enabled(
+    mock_llm, mock_connect, mock_saver, mock_create, monkeypatch
+):
+    runtime._checkpointer_conn = None
+    monkeypatch.setattr("app.agent.tools.settings.web_search_enabled", True)
+
+    runtime.build_agent()
+
+    _, kwargs = mock_create.call_args
+    tool_names = set(kwargs["tools"].tools_by_name.keys())
+    assert tool_names == _CORE_TOOL_NAMES | _WEB_SEARCH_TOOL_NAMES
 
 
 def test_handle_tool_errors_converts_any_exception_to_string():

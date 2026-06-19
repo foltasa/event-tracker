@@ -8,7 +8,7 @@ export default function HourGutter() {
         <div
           key={h}
           style={{ height: HOUR_PX }}
-          className="text-[10px] text-text-muted text-right pr-2 -mt-1.5"
+          className="text-[11px] text-text-muted text-right pr-2 -mt-1.5"
         >
           {String(h).padStart(2, '0')}
         </div>
