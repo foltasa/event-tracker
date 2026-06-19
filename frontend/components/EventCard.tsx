@@ -122,7 +122,7 @@ export default function EventCard({
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
               className="ml-auto rounded bg-accent-gold text-bg-page text-[9px] px-1.5 py-0.5"
             >
-              {isSaved ? 'Saved ✓' : 'Save'}
+              {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
           </div>
         </div>
@@ -148,7 +148,7 @@ export default function EventCard({
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
               className="ml-auto rounded bg-accent-gold text-bg-page text-[8px] px-1.5 py-0.5"
             >
-              {isSaved ? 'Saved ✓' : 'Save'}
+              {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function EventCard({
             onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
             className="ml-auto rounded bg-accent-gold-light text-accent-gold text-[9px] px-1.5 py-0.5"
           >
-            {isSaved ? 'Saved ✓' : 'Save'}
+            {isSaved ? 'Slot Out' : 'Slot in'}
           </button>
         </div>
       </div>

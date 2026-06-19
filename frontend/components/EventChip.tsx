@@ -57,7 +57,7 @@ export default function EventChip({ eventId }: { eventId: string }) {
           disabled={event.is_saved}
           className="ml-1 rounded bg-accent-gold text-bg-page px-2 py-0.5 text-[8px] font-semibold disabled:opacity-70"
         >
-          {event.is_saved ? 'Saved ✓' : 'Save'}
+          {event.is_saved ? 'Slot Out' : 'Slot in'}
         </button>
       </span>
       {saveError && <span className="text-[8px] text-red-500">{saveError}</span>}

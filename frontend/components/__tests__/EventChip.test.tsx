@@ -44,25 +44,25 @@ describe('EventChip', () => {
     expect(screen.getByText(/Fabrik/)).toBeInTheDocument()
   })
 
-  it('shows Save button when is_saved is false', () => {
+  it('shows Slot in button when is_saved is false', () => {
     vi.mocked(useSWR).mockReturnValue({ data: mockEvent, error: undefined, mutate: vi.fn() } as any)
     render(<EventChip eventId="evt-1" />)
-    expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
-    expect(screen.queryByText(/saved ✓/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /slot in/i })).toBeInTheDocument()
+    expect(screen.queryByText(/slot out/i)).not.toBeInTheDocument()
   })
 
-  it('shows Saved ✓ when is_saved is true', () => {
+  it('shows Slot Out when is_saved is true', () => {
     vi.mocked(useSWR).mockReturnValue({ data: { ...mockEvent, is_saved: true }, error: undefined, mutate: vi.fn() } as any)
     render(<EventChip eventId="evt-1" />)
-    expect(screen.getByRole('button', { name: /saved/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /slot out/i })).toBeInTheDocument()
   })
 
-  it('calls saveToCalendar with the event id on Save click', async () => {
+  it('calls saveToCalendar with the event id on Slot in click', async () => {
     const mutate = vi.fn()
     vi.mocked(useSWR).mockReturnValue({ data: mockEvent, error: undefined, mutate } as any)
     vi.mocked(saveToCalendar).mockResolvedValue({} as any)
     render(<EventChip eventId="evt-1" />)
-    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    fireEvent.click(screen.getByRole('button', { name: /slot in/i }))
     await waitFor(() => expect(saveToCalendar).toHaveBeenCalledWith('evt-1'))
   })
 })
