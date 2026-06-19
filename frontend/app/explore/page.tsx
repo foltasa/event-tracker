@@ -19,7 +19,12 @@ export default function DashboardPage() {
   } = useAppShell()
 
   // Prefetched here so digest cards can pass justification when opened.
-  const { data: digest } = useSWR('/digest', getDigest)
+  // Match DigestSection's options so both hooks share the same revalidation
+  // policy (SWR dedups by key but mismatched configs can still re-trigger).
+  const { data: digest } = useSWR('/digest', getDigest, {
+    revalidateIfStale: false,
+    keepPreviousData: true,
+  })
 
   function handleDigestClick(eventId: string) {
     const justification = digest?.picks.find((p) => p.event.id === eventId)?.justification ?? null
