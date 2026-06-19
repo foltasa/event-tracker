@@ -59,7 +59,7 @@ export default function CalendarPage() {
       initial: {
         day: dayKey,
         start_at: minutesToIso(dayKey, startMinutes),
-        end_at: minutesToIso(dayKey, Math.min(24 * 60 - 1, startMinutes + 60)),
+        end_at: null,
         title: '',
       },
     })
