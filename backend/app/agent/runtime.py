@@ -115,7 +115,6 @@ async def heal_orphan_tool_calls(agent, thread_id: str) -> int:
         await agent.aupdate_state(config, {"messages": synthetic})
     return len(synthetic)
 
-
 async def clear_session_checkpoint(thread_id: str) -> None:
     """Wipe every persisted checkpoint for a LangGraph thread so the next turn
     starts with an empty message history.
