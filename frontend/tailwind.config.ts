@@ -23,6 +23,17 @@ const config: Config = {
       fontFamily: {
         serif: ['Georgia', 'serif'],
       },
+      fontSize: {
+        // 10% larger than Tailwind defaults (min +1px) so the app matches the
+        // 110%-zoom level it was visually tuned at.
+        xs:   ['13px', { lineHeight: '1.4' }],
+        sm:   ['15px', { lineHeight: '1.45' }],
+        base: ['18px', { lineHeight: '1.6' }],
+        lg:   ['20px', { lineHeight: '1.6' }],
+        xl:   ['22px', { lineHeight: '1.55' }],
+        '2xl':['26px', { lineHeight: '1.5' }],
+        '3xl':['33px', { lineHeight: '1.4' }],
+      },
     },
   },
   plugins: [],

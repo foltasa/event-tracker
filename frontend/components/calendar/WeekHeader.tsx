@@ -32,7 +32,7 @@ export default function WeekHeader({
         <button
           onClick={onToday}
           aria-label="Go to today"
-          className="ml-2 text-[11px] uppercase tracking-wider text-accent-gold hover:underline"
+          className="ml-2 text-[12px] uppercase tracking-wider text-accent-gold hover:underline"
         >Today</button>
       </div>
       <h2 className="font-serif font-bold text-base text-text-primary">{label(weekStart)}</h2>

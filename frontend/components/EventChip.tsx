@@ -23,7 +23,7 @@ export default function EventChip({ eventId, onCardClick }: Props) {
   const { mutate: globalMutate } = useSWRConfig()
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  if (error) return <span className="text-[9px] text-text-muted">[event not found]</span>
+  if (error) return <span className="text-[10px] text-text-muted">[event not found]</span>
   if (!event) {
     return (
       <span
@@ -73,7 +73,7 @@ export default function EventChip({ eventId, onCardClick }: Props) {
       tabIndex={interactive ? 0 : undefined}
       onClick={interactive ? handleOpen : undefined}
       onKeyDown={interactive ? handleKeyDown : undefined}
-      className={`block w-full max-w-full bg-accent-gold-light border border-accent-gold/30 rounded px-2 py-1 my-1 text-[9px] text-text-primary box-border ${
+      className={`block w-full max-w-full bg-accent-gold-light border border-accent-gold/30 rounded px-2 py-1 my-1 text-[10px] text-text-primary box-border ${
         interactive ? 'cursor-pointer hover:border-accent-gold/60' : ''
       }`}
     >
@@ -82,7 +82,7 @@ export default function EventChip({ eventId, onCardClick }: Props) {
         <span className="font-semibold truncate min-w-0 flex-1">{event.title}</span>
         <button
           onClick={handleToggle}
-          className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[8px] font-semibold ${
+          className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold ${
             event.is_saved
               ? 'bg-accent-gold-light text-accent-gold border border-accent-gold/40'
               : 'bg-accent-gold text-bg-page'
@@ -94,7 +94,7 @@ export default function EventChip({ eventId, onCardClick }: Props) {
       <span className="block text-text-muted truncate mt-0.5">
         {formatDate(event.start_datetime)}{event.venue_name ? ` · ${event.venue_name}` : ''}
       </span>
-      {saveError && <span className="block text-[8px] text-red-500 mt-0.5">{saveError}</span>}
+      {saveError && <span className="block text-[9px] text-red-500 mt-0.5">{saveError}</span>}
     </span>
   )
 }

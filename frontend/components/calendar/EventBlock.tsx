@@ -30,8 +30,8 @@ export default function EventBlock({
       }}
       className={`absolute z-10 text-left rounded-md bg-white border border-border border-l-[3px] ${borderColor} px-2 py-1 overflow-hidden hover:shadow-sm`}
     >
-      <p className="text-[10px] font-semibold text-text-primary truncate">{item.title}</p>
-      <p className="text-[9px] text-text-muted">
+      <p className="text-[11px] font-semibold text-text-primary truncate">{item.title}</p>
+      <p className="text-[10px] text-text-muted">
         {fmtTime(item.startMinutes!)}{item.endMinutes != null ? ` – ${fmtTime(item.endMinutes)}` : ''}
       </p>
     </button>

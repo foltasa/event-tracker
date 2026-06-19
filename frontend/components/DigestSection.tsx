@@ -54,19 +54,19 @@ export default function DigestSection({
         <div className="flex items-baseline gap-2">
           <span className="font-serif font-bold text-sm text-text-primary">Today's Picks</span>
           {data && (
-            <span className="text-[10px] italic text-text-muted">
+            <span className="text-[11px] italic text-text-muted">
               {data.picks.length} picks · generated {new Date(data.generated_at).toLocaleTimeString('en-DE', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           {error && fallbackPicks.length > 0 && (
-            <span className="text-[10px] italic text-text-muted">
+            <span className="text-[11px] italic text-text-muted">
               showing upcoming events while picks are unavailable
             </span>
           )}
         </div>
         <button
           onClick={handleRefresh}
-          className="text-[10px] text-accent-gold border border-border rounded px-2 py-0.5 hover:bg-accent-gold-light"
+          className="text-[11px] text-accent-gold border border-border rounded px-2 py-0.5 hover:bg-accent-gold-light"
         >
           ↻ Refresh
         </button>
@@ -78,7 +78,7 @@ export default function DigestSection({
         ))}
 
         {!isLoading && !error && data?.picks.length === 0 && (
-          <p className="text-[10px] text-text-muted italic py-2">
+          <p className="text-[11px] text-text-muted italic py-2">
             No picks yet — check back after events are loaded.{' '}
             <button onClick={handleRefresh} className="text-accent-gold underline">Refresh now</button>
           </p>
@@ -111,7 +111,7 @@ export default function DigestSection({
         ))}
 
         {error && fallbackPicks.length === 0 && (
-          <p className="text-[10px] text-text-muted italic py-2">
+          <p className="text-[11px] text-text-muted italic py-2">
             Picks unavailable right now.
           </p>
         )}
