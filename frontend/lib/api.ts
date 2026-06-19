@@ -254,6 +254,18 @@ export async function getChatHistory(sessionId: string): Promise<ChatHistoryMess
   );
 }
 
+export async function deleteChatHistory(sessionId: string): Promise<void> {
+  if (MOCK) {
+    console.info("[mock] DELETE /chat/history", sessionId);
+    return;
+  }
+  const res = await fetch(
+    `${API_URL}/chat/history?session_id=${encodeURIComponent(sessionId)}`,
+    { method: "DELETE", headers: headers() },
+  );
+  if (!res.ok) throw new Error(`API ${res.status} /chat/history`);
+}
+
 /**
  * Subscribe to a chat stream. The handler is invoked once per SSE event, in
  * order. In mock mode, the fixture chunks are emitted with ~120ms spacing so
