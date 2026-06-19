@@ -78,11 +78,6 @@ function EventChat({ eventId }: { eventId: string }) {
                     : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
                 )}
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
-                {msg.tokenUsage && (
-                  <p className="text-[8px] text-text-muted mt-1 text-right">
-                    {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
-                  </p>
-                )}
               </div>
             </Fragment>
           )
