@@ -53,4 +53,16 @@ describe('AppointmentModal — Make tab', () => {
     expect(api.createAppointment).toHaveBeenCalled()
     expect(onSaved).toHaveBeenCalled()
   })
+
+  it('does not render the tab switcher', () => {
+    render(<AppointmentModal
+      mode="create"
+      initial={{ day: '2026-06-16', start_at: null, end_at: null, title: '' }}
+      onClose={() => {}}
+      onSaved={() => {}}
+    />)
+    expect(screen.queryByTestId('tab-make')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('tab-recommend')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Recommend me something/i)).not.toBeInTheDocument()
+  })
 })
