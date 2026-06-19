@@ -1,18 +1,17 @@
 import Link from 'next/link'
 
-type ActivePage = 'dashboard' | 'calendar' | 'settings'
+type ActivePage = 'timetable' | 'explore'
 
 const LINKS: { href: string; label: string; page: ActivePage }[] = [
-  { href: '/',          label: 'Dashboard', page: 'dashboard' },
-  { href: '/calendar',  label: 'Calendar',  page: 'calendar'  },
-  { href: '/settings',  label: 'Settings',  page: 'settings'  },
+  { href: '/',         label: 'Timetable', page: 'timetable' },
+  { href: '/explore',  label: 'Explore',   page: 'explore'   },
 ]
 
 export default function TopNav({ active, date }: { active: ActivePage; date: string }) {
   return (
     <nav className="sticky top-0 z-30 flex items-center gap-1 px-5 py-2.5 bg-bg-surface border-b border-border">
       <span className="font-serif font-bold text-base text-text-primary mr-5">
-        Event Tracker
+        SlotIn
       </span>
       {LINKS.map(({ href, label, page }) => (
         <Link

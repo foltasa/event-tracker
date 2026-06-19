@@ -16,7 +16,20 @@ interface Props {
 export default function DigestSection({
   onCardClick, onFeedback, onSave, isOptimisticallySaved, optimisticSentimentFor,
 }: Props) {
-  const { data, isLoading, error, mutate } = useSWR('/digest', getDigest)
+  // Digest is generated once per day and cached server-side. Disable SWR's
+  // automatic revalidations so navigating between pages doesn't flash a
+  // skeleton next to already-rendered picks; the "Refresh" button (and
+  // explicit `mutate()`) remain the way to force a regeneration.
+  const { data, isLoading, error, mutate } = useSWR('/digest', getDigest, {
+    revalidateIfStale: false,
+    revalidateOnMount: undefined,
+    keepPreviousData: true,
+  })
+
+  // Defensive guard: never show skeletons if picks are already in the DOM.
+  // This covers the race where SWR briefly sets `isLoading=true` during a
+  // background revalidation on a stale cache entry.
+  const hasPicks = (data?.picks?.length ?? 0) > 0
 
   // Fallback: when the recommender fails, show the next 3 upcoming events so
   // the panel never collapses to a bare error message.
@@ -60,7 +73,7 @@ export default function DigestSection({
       </div>
 
       <div className="flex gap-2.5 overflow-x-auto px-5 pb-4">
-        {isLoading && Array.from({ length: 3 }).map((_, i) => (
+        {isLoading && !hasPicks && Array.from({ length: 3 }).map((_, i) => (
           <SkeletonCard key={i} variant="digest" />
         ))}
 

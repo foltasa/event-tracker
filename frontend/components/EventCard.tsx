@@ -120,9 +120,13 @@ export default function EventCard({
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-              className="ml-auto rounded bg-accent-gold text-bg-page text-[9px] px-1.5 py-0.5"
+              className={`ml-auto rounded text-[9px] px-1.5 py-0.5 ${
+                isSaved
+                  ? 'bg-accent-gold-light text-accent-gold'
+                  : 'bg-accent-gold text-bg-page'
+              }`}
             >
-              {isSaved ? 'Saved ✓' : 'Save'}
+              {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
           </div>
         </div>
@@ -146,9 +150,13 @@ export default function EventCard({
             <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
             <button
               onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-              className="ml-auto rounded bg-accent-gold text-bg-page text-[8px] px-1.5 py-0.5"
+              className={`ml-auto rounded text-[8px] px-1.5 py-0.5 ${
+                isSaved
+                  ? 'bg-accent-gold-light text-accent-gold'
+                  : 'bg-accent-gold text-bg-page'
+              }`}
             >
-              {isSaved ? 'Saved ✓' : 'Save'}
+              {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
           </div>
         </div>
@@ -176,9 +184,13 @@ export default function EventCard({
           <FeedbackButtons id={event.id} sentiment={sentiment} onFeedback={onFeedback} disabled={!isActive} />
           <button
             onClick={(e) => { e.stopPropagation(); onSave(event.id, !isSaved) }}
-            className="ml-auto rounded bg-accent-gold-light text-accent-gold text-[9px] px-1.5 py-0.5"
+            className={`ml-auto rounded text-[9px] px-1.5 py-0.5 ${
+              isSaved
+                ? 'bg-accent-gold-light text-accent-gold'
+                : 'bg-accent-gold text-bg-page'
+            }`}
           >
-            {isSaved ? 'Saved ✓' : 'Save'}
+            {isSaved ? 'Slot Out' : 'Slot in'}
           </button>
         </div>
       </div>

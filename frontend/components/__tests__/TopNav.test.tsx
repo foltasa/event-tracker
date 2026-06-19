@@ -10,23 +10,27 @@ vi.mock('next/link', () => ({
 
 describe('TopNav', () => {
   it('renders brand name', () => {
-    render(<TopNav active="dashboard" date="Hamburg · June 8" />)
-    expect(screen.getByText('Event Tracker')).toBeInTheDocument()
+    render(<TopNav active="timetable" date="Hamburg · June 8" />)
+    expect(screen.getByText('SlotIn')).toBeInTheDocument()
   })
 
   it('applies active style to current page link', () => {
-    render(<TopNav active="dashboard" date="Hamburg · June 8" />)
-    const dashLink = screen.getByText('Dashboard')
-    expect(dashLink).toHaveClass('bg-accent-gold')
+    render(<TopNav active="timetable" date="Hamburg · June 8" />)
+    expect(screen.getByText('Timetable')).toHaveClass('bg-accent-gold')
   })
 
   it('does not apply active style to inactive links', () => {
-    render(<TopNav active="dashboard" date="Hamburg · June 8" />)
-    expect(screen.getByText('Calendar')).not.toHaveClass('bg-accent-gold')
+    render(<TopNav active="timetable" date="Hamburg · June 8" />)
+    expect(screen.getByText('Explore')).not.toHaveClass('bg-accent-gold')
   })
 
   it('renders date string', () => {
-    render(<TopNav active="dashboard" date="Hamburg · June 8" />)
+    render(<TopNav active="timetable" date="Hamburg · June 8" />)
     expect(screen.getByText('Hamburg · June 8')).toBeInTheDocument()
+  })
+
+  it('does not render a Settings link', () => {
+    render(<TopNav active="timetable" date="Hamburg · June 8" />)
+    expect(screen.queryByText('Settings')).not.toBeInTheDocument()
   })
 })

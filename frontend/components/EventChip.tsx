@@ -1,7 +1,7 @@
 'use client'
 import useSWR from 'swr'
 import { useState } from 'react'
-import { getEventDetail, saveToCalendar } from '@/lib/api'
+import { getEventDetail, removeFromCalendar, saveToCalendar } from '@/lib/api'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-DE', {
@@ -26,16 +26,18 @@ export default function EventChip({ eventId }: { eventId: string }) {
     )
   }
 
-  async function handleSave() {
+  async function handleToggle() {
     if (!event) return
+    const nextSaved = !event.is_saved
     setSaveError(null)
-    mutate({ ...event, is_saved: true }, false)
+    mutate({ ...event, is_saved: nextSaved }, false)
     try {
-      await saveToCalendar(eventId)
+      if (nextSaved) await saveToCalendar(eventId)
+      else            await removeFromCalendar(eventId)
       mutate()
     } catch {
-      mutate({ ...event, is_saved: false }, false)
-      setSaveError('Failed to save — try again')
+      mutate({ ...event, is_saved: !nextSaved }, false)
+      setSaveError(nextSaved ? 'Failed to save — try again' : 'Failed to remove — try again')
     }
   }
 
@@ -53,11 +55,14 @@ export default function EventChip({ eventId }: { eventId: string }) {
           </>
         )}
         <button
-          onClick={handleSave}
-          disabled={event.is_saved}
-          className="ml-1 rounded bg-accent-gold text-bg-page px-2 py-0.5 text-[8px] font-semibold disabled:opacity-70"
+          onClick={handleToggle}
+          className={`ml-1 rounded px-2 py-0.5 text-[8px] font-semibold ${
+            event.is_saved
+              ? 'bg-accent-gold-light text-accent-gold'
+              : 'bg-accent-gold text-bg-page'
+          }`}
         >
-          {event.is_saved ? 'Saved ✓' : 'Save'}
+          {event.is_saved ? 'Slot Out' : 'Slot in'}
         </button>
       </span>
       {saveError && <span className="text-[8px] text-red-500">{saveError}</span>}

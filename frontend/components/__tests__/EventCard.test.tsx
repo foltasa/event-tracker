@@ -50,13 +50,13 @@ describe('EventCard feed variant', () => {
   it('calls onSave when Save clicked', () => {
     const onSave = vi.fn()
     render(<EventCard variant="feed" data={mockEventCtx} onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={onSave} />)
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getByText('Slot in'))
     expect(onSave).toHaveBeenCalledWith('evt_001', true)
   })
 
   it('shows Saved when is_saved is true', () => {
     render(<EventCard variant="feed" data={{ ...mockEventCtx, is_saved: true }} onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={vi.fn()} />)
-    expect(screen.getByText('Saved ✓')).toBeInTheDocument()
+    expect(screen.getByText('Slot Out')).toBeInTheDocument()
   })
 
   it('applies gold border when liked', () => {

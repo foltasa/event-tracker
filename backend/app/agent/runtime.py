@@ -114,3 +114,29 @@ async def heal_orphan_tool_calls(agent, thread_id: str) -> int:
     if synthetic:
         await agent.aupdate_state(config, {"messages": synthetic})
     return len(synthetic)
+
+async def clear_session_checkpoint(thread_id: str) -> None:
+    """Wipe every persisted checkpoint for a LangGraph thread so the next turn
+    starts with an empty message history.
+
+    Falls back to a `RemoveMessage`-based reset if the checkpointer doesn't
+    expose `adelete_thread` (older langgraph versions)."""
+    from langchain_core.messages import RemoveMessage
+
+    checkpointer = await _get_async_checkpointer()
+    config = {"configurable": {"thread_id": thread_id}}
+
+    delete_thread = getattr(checkpointer, "adelete_thread", None)
+    if callable(delete_thread):
+        await delete_thread(thread_id)
+        return
+
+    agent = await build_async_agent()
+    snapshot = await agent.aget_state(config)
+    messages = snapshot.values.get("messages", []) if snapshot and snapshot.values else []
+    if not messages:
+        return
+    await agent.aupdate_state(
+        config,
+        {"messages": [RemoveMessage(id=m.id) for m in messages if getattr(m, "id", None)]},
+    )

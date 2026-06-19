@@ -57,10 +57,8 @@ function EventDetailOverlayLoader({
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const active: 'dashboard' | 'calendar' | 'settings' =
-    pathname?.startsWith('/calendar') ? 'calendar'
-    : pathname?.startsWith('/settings') ? 'settings'
-    : 'dashboard'
+  const active: 'timetable' | 'explore' =
+    pathname?.startsWith('/explore') ? 'explore' : 'timetable'
   const dateLabel = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
@@ -134,8 +132,6 @@ function Shell({ children }: { children: ReactNode }) {
           </div>
           <ChatPanel
             sessionId="dashboard"
-            model="gpt-4o-mini"
-            dailyCost={0}
             onCardClick={openOverlay}
             onFeedback={handleFeedback}
             onSave={handleSave}

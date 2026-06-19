@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -189,3 +190,47 @@ def test_chat_resets_turn_budget(client, user, monkeypatch):
         b"".join(r.iter_bytes())
 
     assert calls == [(4, 6)], f"expected one reset to defaults, got {calls!r}"
+
+
+def test_delete_chat_history_deletes_rows(client, user, db_session, monkeypatch):
+    """DELETE /chat/history?session_id=X removes all ChatMessage rows for that
+    user + session_id, leaves other sessions alone, and returns 204."""
+    from app.api import routes_chat
+
+    async def _noop_clear(thread_id):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(routes_chat, "clear_session_checkpoint", _noop_clear)
+
+    db_session.add_all([
+        ChatMessage(id="m1", session_id="s1", user_id="local", role="user",
+                    content="hi", created_at=datetime.now(timezone.utc)),
+        ChatMessage(id="m2", session_id="s1", user_id="local", role="assistant",
+                    content="hello", created_at=datetime.now(timezone.utc)),
+        ChatMessage(id="m3", session_id="s2", user_id="local", role="user",
+                    content="other session", created_at=datetime.now(timezone.utc)),
+    ])
+    db_session.commit()
+
+    res = client.delete("/chat/history?session_id=s1")
+    assert res.status_code == 204
+
+    remaining = db_session.query(ChatMessage).order_by(ChatMessage.id).all()
+    assert [r.id for r in remaining] == ["m3"]
+
+
+def test_delete_chat_history_clears_checkpoint(client, user, db_session, monkeypatch):
+    """The endpoint must also clear the LangGraph checkpoint for that thread,
+    or the next turn would still see the deleted conversation in agent state."""
+    from app.api import routes_chat
+
+    called_with: list[str] = []
+
+    async def _spy_clear(thread_id: str) -> None:
+        called_with.append(thread_id)
+
+    monkeypatch.setattr(routes_chat, "clear_session_checkpoint", _spy_clear)
+
+    res = client.delete("/chat/history?session_id=demo-1")
+    assert res.status_code == 204
+    assert called_with == ["demo-1"]

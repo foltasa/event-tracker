@@ -78,11 +78,6 @@ function EventChat({ eventId }: { eventId: string }) {
                     : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
                 )}
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
-                {msg.tokenUsage && (
-                  <p className="text-[8px] text-text-muted mt-1 text-right">
-                    {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
-                  </p>
-                )}
               </div>
             </Fragment>
           )
@@ -215,9 +210,13 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave }: P
             </button>
             <button
               onClick={() => onSave(event.id, !isSaved)}
-              className="rounded bg-accent-gold text-bg-page text-[10px] font-semibold px-3 py-1"
+              className={`rounded text-[10px] font-semibold px-3 py-1 ${
+                isSaved
+                  ? 'bg-accent-gold-light text-accent-gold'
+                  : 'bg-accent-gold text-bg-page'
+              }`}
             >
-              {isSaved ? 'Saved ✓' : 'Save to Calendar'}
+              {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
           </div>
         </div>
