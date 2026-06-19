@@ -1,5 +1,5 @@
 'use client'
-import { Fragment, useRef, useEffect } from 'react'
+import { Fragment, useRef, useEffect, useState } from 'react'
 import { useChat } from '@/hooks/useChat'
 import type { Sentiment } from '@/lib/types'
 import { parseMessageContent } from '@/lib/parseMessageContent'
@@ -13,12 +13,20 @@ interface Props {
 }
 
 export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }: Props) {
-  const { messages, isStreaming, currentTool, error, clearSession } = useChat(sessionId)
+  const { messages, isStreaming, currentTool, error, sendMessage, clearSession } = useChat(sessionId)
+  const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, currentTool])
+
+  function handleSubmit() {
+    const text = input.trim()
+    if (!text || isStreaming) return
+    setInput('')
+    sendMessage(text)
+  }
 
   async function handleDelete() {
     if (!window.confirm('Delete the entire chat history?')) return
@@ -75,15 +83,24 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
         <div ref={bottomRef} />
       </div>
 
-      {/* Input — disabled for demo; trash button clears the chat instead */}
+      {/* Input */}
       <div className="flex gap-1.5 px-3 py-2 border-t border-border">
         <input
-          value=""
-          disabled
-          readOnly
+          value={input}
+          disabled={isStreaming}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder="Ask anything about events…"
-          className="flex-1 text-[10px] border border-border rounded px-2 py-1.5 bg-bg-surface"
+          className="flex-1 text-[10px] border border-border rounded px-2 py-1.5 bg-white disabled:bg-bg-surface"
         />
+        <button
+          aria-label="send"
+          disabled={isStreaming}
+          onClick={handleSubmit}
+          className="bg-accent-gold text-bg-page rounded px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50"
+        >
+          ↑
+        </button>
         <button
           aria-label="Delete chat"
           onClick={handleDelete}
