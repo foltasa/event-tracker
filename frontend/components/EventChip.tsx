@@ -1,19 +1,26 @@
 'use client'
-import useSWR from 'swr'
-import { useState } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
+import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { getEventDetail, removeFromCalendar, saveToCalendar } from '@/lib/api'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-DE', {
     weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
   })
 }
 
-export default function EventChip({ eventId }: { eventId: string }) {
+interface Props {
+  eventId: string
+  onCardClick?: (id: string) => void
+}
+
+export default function EventChip({ eventId, onCardClick }: Props) {
   const { data: event, error, mutate } = useSWR(
     `/events/${eventId}`,
     () => getEventDetail(eventId),
   )
+  const { mutate: globalMutate } = useSWRConfig()
   const [saveError, setSaveError] = useState<string | null>(null)
 
   if (error) return <span className="text-[9px] text-text-muted">[event not found]</span>
@@ -21,12 +28,13 @@ export default function EventChip({ eventId }: { eventId: string }) {
     return (
       <span
         data-testid="chip-skeleton"
-        className="inline-block h-5 w-48 rounded bg-bg-surface animate-pulse"
+        className="block h-10 w-full rounded bg-bg-surface animate-pulse my-1"
       />
     )
   }
 
-  async function handleToggle() {
+  async function handleToggle(e: MouseEvent) {
+    e.stopPropagation()
     if (!event) return
     const nextSaved = !event.is_saved
     setSaveError(null)
@@ -35,37 +43,58 @@ export default function EventChip({ eventId }: { eventId: string }) {
       if (nextSaved) await saveToCalendar(eventId)
       else            await removeFromCalendar(eventId)
       mutate()
+      globalMutate('/calendar')
+      globalMutate('/digest')
+      globalMutate((key) => Array.isArray(key) && key[0] === '/events')
+      globalMutate((key) => Array.isArray(key) && key[0] === '/appointments')
     } catch {
       mutate({ ...event, is_saved: !nextSaved }, false)
       setSaveError(nextSaved ? 'Failed to save — try again' : 'Failed to remove — try again')
     }
   }
 
+  function handleOpen() {
+    onCardClick?.(eventId)
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (!onCardClick) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleOpen()
+    }
+  }
+
+  const interactive = Boolean(onCardClick)
+
   return (
-    <span className="inline-flex items-center gap-1.5 flex-wrap my-0.5">
-      <span className="inline-flex items-center gap-1.5 bg-accent-gold-light border border-accent-gold/30 rounded px-2 py-1 text-[9px] text-text-primary">
-        <span className="uppercase tracking-wider font-semibold text-accent-gold">{event.category}</span>
-        <span className="font-semibold">{event.title}</span>
-        <span className="text-text-muted">·</span>
-        <span className="text-text-muted">{formatDate(event.start_datetime)}</span>
-        {event.venue_name && (
-          <>
-            <span className="text-text-muted">·</span>
-            <span className="text-text-muted">{event.venue_name}</span>
-          </>
-        )}
+    <span
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? handleOpen : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
+      className={`block w-full max-w-full bg-accent-gold-light border border-accent-gold/30 rounded px-2 py-1 my-1 text-[9px] text-text-primary box-border ${
+        interactive ? 'cursor-pointer hover:border-accent-gold/60' : ''
+      }`}
+    >
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="uppercase tracking-wider font-semibold text-accent-gold flex-shrink-0">{event.category}</span>
+        <span className="font-semibold truncate min-w-0 flex-1">{event.title}</span>
         <button
           onClick={handleToggle}
-          className={`ml-1 rounded px-2 py-0.5 text-[8px] font-semibold ${
+          className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[8px] font-semibold ${
             event.is_saved
-              ? 'bg-accent-gold-light text-accent-gold'
+              ? 'bg-accent-gold-light text-accent-gold border border-accent-gold/40'
               : 'bg-accent-gold text-bg-page'
           }`}
         >
           {event.is_saved ? 'Slot Out' : 'Slot in'}
         </button>
       </span>
-      {saveError && <span className="text-[8px] text-red-500">{saveError}</span>}
+      <span className="block text-text-muted truncate mt-0.5">
+        {formatDate(event.start_datetime)}{event.venue_name ? ` · ${event.venue_name}` : ''}
+      </span>
+      {saveError && <span className="block text-[8px] text-red-500 mt-0.5">{saveError}</span>}
     </span>
   )
 }

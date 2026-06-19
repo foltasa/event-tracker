@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EVENT_CATEGORIES = frozenset({
     "music", "arts", "food", "sports", "tech",
@@ -19,6 +19,17 @@ LLMProvider = Literal["openai", "anthropic"]
 class _JsonBase(BaseModel):
     """Base model that serializes datetimes as ISO 8601 with `Z` suffix when UTC."""
     model_config = ConfigDict(ser_json_timedelta="iso8601")
+
+    @model_validator(mode="after")
+    def _ensure_aware_datetimes(self):
+        # SQLite stores timezone-aware datetimes but SQLAlchemy returns them naive.
+        # Treat any naive datetime as UTC so JSON output carries a 'Z' suffix and
+        # browsers parse the absolute instant correctly instead of as local time.
+        for name in type(self).model_fields:
+            value = getattr(self, name, None)
+            if isinstance(value, datetime) and value.tzinfo is None:
+                setattr(self, name, value.replace(tzinfo=timezone.utc))
+        return self
 
 
 class EventCard(_JsonBase):

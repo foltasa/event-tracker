@@ -36,7 +36,7 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
   const lastIdx = messages.length - 1
 
   return (
-    <div className="flex flex-col w-[280px] flex-shrink-0 bg-bg-chat border-l border-border">
+    <div className="flex flex-col w-[350px] flex-shrink-0 bg-bg-chat border-l border-border">
       {/* Header */}
       <div className="px-3.5 py-2.5 border-b border-border bg-accent-gold-light flex-shrink-0">
         <p className="font-serif font-bold text-xs text-text-primary">Chat Assistant</p>
@@ -66,14 +66,14 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
                   <span className="text-[9px] italic text-accent-gold">{indicatorText}</span>
                 </div>
               )}
-              <div className="self-start max-w-[92%] rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
-                <p className="leading-relaxed whitespace-pre-wrap">
+              <div className="self-start max-w-[92%] min-w-0 rounded-lg rounded-bl-sm border border-border bg-white px-2.5 py-1.5 text-[10px] text-text-primary">
+                <div className="leading-relaxed whitespace-pre-wrap">
                   {parseMessageContent(msg.content).map((seg, si) =>
                     seg.type === 'event'
-                      ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} />
+                      ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} onCardClick={onCardClick} />
                       : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
                   )}
-                </p>
+                </div>
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
               </div>
             </Fragment>

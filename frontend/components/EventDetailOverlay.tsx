@@ -28,7 +28,7 @@ function formatPrice(min: number | null, max: number | null, isFree: boolean) {
   return `€${min}`
 }
 
-function EventChat({ eventId }: { eventId: string }) {
+function EventChat({ eventId, onCardClick }: { eventId: string; onCardClick: (id: string) => void }) {
   const { messages, isStreaming, currentTool, error, sendMessage } = useChat(`event_${eventId}`)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -71,10 +71,10 @@ function EventChat({ eventId }: { eventId: string }) {
                   <span className="text-[9px] italic text-accent-gold">{indicatorText}</span>
                 </div>
               )}
-              <div className="self-start max-w-[90%] rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary leading-relaxed">
+              <div className="self-start max-w-[90%] min-w-0 rounded-lg rounded-bl-sm border border-border bg-white px-3 py-1.5 text-[10px] text-text-primary leading-relaxed">
                 {parseMessageContent(msg.content).map((seg, si) =>
                   seg.type === 'event'
-                    ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} />
+                    ? <EventChip key={`${msg.id}-ev-${si}`} eventId={seg.id} onCardClick={onCardClick} />
                     : <span key={`${msg.id}-tx-${si}`}>{seg.value}</span>
                 )}
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
@@ -111,7 +111,7 @@ function EventChat({ eventId }: { eventId: string }) {
 }
 
 function OverlayContent({ event, justification, onClose, onFeedback, onSave }: Props) {
-  const { isOptimisticallySaved, optimisticSentimentFor } = useAppShell()
+  const { isOptimisticallySaved, optimisticSentimentFor, openOverlay } = useAppShell()
   const optSent = optimisticSentimentFor(event.id)
   const sentiment: Sentiment | null = optSent !== undefined ? optSent : (event.user_sentiment ?? null)
   const optSaved = isOptimisticallySaved(event.id)
@@ -244,7 +244,7 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave }: P
               <p className="text-[9px] uppercase tracking-widest text-accent-gold">Chat about this event</p>
               <p className="text-[9px] text-text-muted mt-0.5">Ask questions or leave a note for the agent</p>
             </div>
-            <EventChat eventId={event.id} />
+            <EventChat eventId={event.id} onCardClick={openOverlay} />
           </div>
         </div>
       </div>
