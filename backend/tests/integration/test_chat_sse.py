@@ -1,7 +1,8 @@
 """End-to-end /chat exercise: fake LLM yields tokens and a tool call,
 SSE stream contains expected events, chat_messages rows are written."""
 import json
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -33,6 +34,8 @@ def test_chat_yields_token_tool_done(mock_get_agent, client, user, db_session):
         yield ("messages", (AIMessage(content="Nothing matched.", tool_calls=[]), {}))
 
     fake = MagicMock()
+    fake.aget_state = AsyncMock(return_value=SimpleNamespace(values={"messages": []}))
+    fake.aupdate_state = AsyncMock(return_value=None)
     fake.astream = stream
     mock_get_agent.return_value = fake
 
