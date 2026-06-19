@@ -210,7 +210,11 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave }: P
             </button>
             <button
               onClick={() => onSave(event.id, !isSaved)}
-              className="rounded bg-accent-gold text-bg-page text-[10px] font-semibold px-3 py-1"
+              className={`rounded text-[10px] font-semibold px-3 py-1 ${
+                isSaved
+                  ? 'bg-accent-gold-light text-accent-gold'
+                  : 'bg-accent-gold text-bg-page'
+              }`}
             >
               {isSaved ? 'Slot Out' : 'Slot in'}
             </button>
