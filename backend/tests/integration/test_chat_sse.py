@@ -29,11 +29,32 @@ def test_chat_yields_token_tool_done(mock_get_agent, client, user, db_session):
 
     async def stream(*args, **kwargs):
         # stream_mode="messages" yields (message_chunk, metadata) 2-tuples
-        # directly — no channel-name prefix in langgraph 1.x.
-        yield (AIMessage(content="Sure, let me check. ", tool_calls=[]), {})
-        yield (AIMessage(content="", tool_calls=[{"name": "search_events", "args": {}, "id": "t1"}]), {})
+        # directly — no channel-name prefix in langgraph 1.x. The reasoning
+        # text and the tool_call belong to the same logical AIMessage in real
+        # langgraph streams; we mirror that here so the route's per-message
+        # buffering can correctly classify it as intermediate.
+        yield (
+            AIMessage(content="Sure, let me check. ", id="m1"),
+            {},
+        )
+        yield (
+            AIMessage(
+                content="",
+                id="m1",
+                tool_calls=[{"name": "search_events", "args": {}, "id": "t1"}],
+                response_metadata={"finish_reason": "tool_calls"},
+            ),
+            {},
+        )
         yield (ToolMessage(content="[]", tool_call_id="t1", name="search_events"), {})
-        yield (AIMessage(content="Nothing matched.", tool_calls=[]), {})
+        yield (
+            AIMessage(
+                content="Nothing matched.",
+                id="m2",
+                response_metadata={"finish_reason": "stop"},
+            ),
+            {},
+        )
 
     fake = MagicMock()
     fake.aget_state = AsyncMock(return_value=SimpleNamespace(values={"messages": []}))
