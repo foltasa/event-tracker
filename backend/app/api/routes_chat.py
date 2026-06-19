@@ -15,7 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.memory import get_current_user_id, record_message
 from app.agent.prompts import build_conversational_prompt
-from app.agent.runtime import heal_orphan_tool_calls
+from app.agent.runtime import clear_session_checkpoint, heal_orphan_tool_calls
 from app.agent.turn_budget import set_turn_budget
 from app.api.deps import DbSession
 from app.db.models import ChatMessage, User
@@ -149,3 +149,15 @@ def chat_history(session_id: str, db: DbSession) -> list[ChatMessageResponse]:
             created_at=r.created_at,
         ))
     return out
+
+
+@router.delete("/chat/history", status_code=204)
+async def delete_chat_history(session_id: str, db: DbSession) -> None:
+    """Wipe persisted chat for one session: ChatMessage rows + LangGraph checkpoint."""
+    user_id = get_current_user_id()
+    db.query(ChatMessage).filter(
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id == session_id,
+    ).delete(synchronize_session=False)
+    db.commit()
+    await clear_session_checkpoint(session_id)
