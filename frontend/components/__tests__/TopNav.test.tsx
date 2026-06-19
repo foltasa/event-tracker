@@ -11,7 +11,7 @@ vi.mock('next/link', () => ({
 describe('TopNav', () => {
   it('renders brand name', () => {
     render(<TopNav active="dashboard" date="Hamburg · June 8" />)
-    expect(screen.getByText('Event Tracker')).toBeInTheDocument()
+    expect(screen.getByText('SlotIn')).toBeInTheDocument()
   })
 
   it('applies active style to current page link', () => {

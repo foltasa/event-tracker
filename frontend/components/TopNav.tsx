@@ -12,7 +12,7 @@ export default function TopNav({ active, date }: { active: ActivePage; date: str
   return (
     <nav className="sticky top-0 z-30 flex items-center gap-1 px-5 py-2.5 bg-bg-surface border-b border-border">
       <span className="font-serif font-bold text-base text-text-primary mr-5">
-        Event Tracker
+        SlotIn
       </span>
       {LINKS.map(({ href, label, page }) => (
         <Link
