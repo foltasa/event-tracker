@@ -134,7 +134,7 @@ async def clear_session_checkpoint(thread_id: str) -> None:
 
     agent = await build_async_agent()
     snapshot = await agent.aget_state(config)
-    messages = snapshot.values.get("messages", []) if snapshot else []
+    messages = snapshot.values.get("messages", []) if snapshot and snapshot.values else []
     if not messages:
         return
     await agent.aupdate_state(
