@@ -329,8 +329,27 @@ def test_ingest_event_from_url_tool_returns_report(db_session, monkeypatch):
 
 
 def test_tools_registered_in_all_tools():
+    # ALL_TOOLS is the master registry — web-search tools stay listed here so
+    # the option to reactivate them stays trivial (flip the settings flag).
     from app.agent.tools import ALL_TOOLS
     names = [t.name for t in ALL_TOOLS]
+    assert "web_search" in names
+    assert "ingest_event_from_url" in names
+
+
+def test_select_tools_default_omits_web_search_when_disabled(monkeypatch):
+    monkeypatch.setattr("app.agent.tools.settings.web_search_enabled", False)
+    from app.agent.tools import select_tools
+    names = {t.name for t in select_tools()}
+    assert "web_search" not in names
+    assert "ingest_event_from_url" not in names
+    assert "search_events" in names
+
+
+def test_select_tools_default_includes_web_search_when_enabled(monkeypatch):
+    monkeypatch.setattr("app.agent.tools.settings.web_search_enabled", True)
+    from app.agent.tools import select_tools
+    names = {t.name for t in select_tools()}
     assert "web_search" in names
     assert "ingest_event_from_url" in names
 

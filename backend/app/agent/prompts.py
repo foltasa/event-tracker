@@ -122,6 +122,6 @@ def build_conversational_prompt(
         facts_md=facts_md,
         taste_summary=taste_summary,
     )
-    if settings.tavily_api_key:
+    if settings.web_search_enabled:
         return base + _WEB_SEARCH_STRATEGY
     return base

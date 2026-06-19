@@ -27,10 +27,20 @@ def test_settings_env_file_points_to_repo_root():
 def test_settings_have_web_search_defaults():
     from app.config import Settings
     s = Settings(_env_file=None)  # ignore .env so we see pure defaults
+    # Master switch defaults to False — agent must not get web tools until
+    # the feature is explicitly reactivated via WEB_SEARCH_ENABLED.
+    assert s.web_search_enabled is False
     assert s.tavily_api_key is None
     assert s.web_search_extractor_model is None
     assert s.web_search_max_results == 5
     assert s.web_search_allowed_domains == ""
+
+
+def test_web_search_enabled_can_be_toggled_via_env(monkeypatch):
+    from app.config import Settings
+    monkeypatch.setenv("WEB_SEARCH_ENABLED", "true")
+    s = Settings(_env_file=None)
+    assert s.web_search_enabled is True
 
 
 def test_settings_pick_up_tavily_from_env(monkeypatch):

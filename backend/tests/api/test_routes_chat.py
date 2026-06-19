@@ -39,8 +39,10 @@ def test_chat_streams_tokens_and_done(mock_get_agent, client, user, db_session):
     _stub_agent_state(fake_agent)
 
     async def fake_astream(*args, **kwargs):
-        yield ("messages", (AIMessage(content="Hello "), {"langgraph_node": "agent"}))
-        yield ("messages", (AIMessage(content="there!"), {"langgraph_node": "agent"}))
+        # stream_mode="messages" yields (message_chunk, metadata) 2-tuples
+        # directly — no channel-name prefix in langgraph 1.x.
+        yield (AIMessage(content="Hello "), {"langgraph_node": "agent"})
+        yield (AIMessage(content="there!"), {"langgraph_node": "agent"})
 
     fake_agent.astream = fake_astream
     mock_get_agent.return_value = fake_agent
@@ -61,7 +63,7 @@ def test_chat_mirrors_user_and_assistant_messages_to_db(mock_get_agent, client, 
     _stub_agent_state(fake_agent)
 
     async def fake_astream(*args, **kwargs):
-        yield ("messages", (AIMessage(content="reply"), {"langgraph_node": "agent"}))
+        yield (AIMessage(content="reply"), {"langgraph_node": "agent"})
 
     fake_agent.astream = fake_astream
     mock_get_agent.return_value = fake_agent
@@ -103,7 +105,7 @@ def test_chat_prompt_includes_memory_blocks(mock_get_agent, client, user):
 
     async def fake_astream(payload, *args, **kwargs):
         captured["system"] = payload["messages"][0].content
-        yield ("messages", (AIMessage(content="ok"), {"langgraph_node": "agent"}))
+        yield (AIMessage(content="ok"), {"langgraph_node": "agent"})
 
     fake_agent.astream = fake_astream
     mock_get_agent.return_value = fake_agent
@@ -140,7 +142,7 @@ def test_chat_heals_orphan_tool_calls_before_streaming(client, user, monkeypatch
 
     async def fake_astream(*args, **kwargs):
         call_order.append("astream")
-        yield ("messages", (AIMessage(content="ok"), {"langgraph_node": "agent"}))
+        yield (AIMessage(content="ok"), {"langgraph_node": "agent"})
 
     fake_agent.astream = fake_astream
 
@@ -177,7 +179,7 @@ def test_chat_resets_turn_budget(client, user, monkeypatch):
     _stub_agent_state(fake_agent)
 
     async def fake_astream(*args, **kwargs):
-        yield ("messages", (AIMessage(content="ok"), {"langgraph_node": "agent"}))
+        yield (AIMessage(content="ok"), {"langgraph_node": "agent"})
 
     fake_agent.astream = fake_astream
 
