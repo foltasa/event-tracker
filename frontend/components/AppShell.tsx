@@ -132,8 +132,6 @@ function Shell({ children }: { children: ReactNode }) {
           </div>
           <ChatPanel
             sessionId="dashboard"
-            model="gpt-4o-mini"
-            dailyCost={0}
             onCardClick={openOverlay}
             onFeedback={handleFeedback}
             onSave={handleSave}

@@ -7,14 +7,12 @@ import EventChip from '@/components/EventChip'
 
 interface Props {
   sessionId: string
-  model: string
-  dailyCost: number
   onCardClick: (id: string) => void
   onFeedback: (id: string, sentiment: Sentiment | null) => void
   onSave: (id: string, save: boolean) => void
 }
 
-export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, onFeedback, onSave }: Props) {
+export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }: Props) {
   const { messages, isStreaming, currentTool, error, sendMessage } = useChat(sessionId)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -37,7 +35,6 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
       {/* Header */}
       <div className="px-3.5 py-2.5 border-b border-border bg-accent-gold-light flex-shrink-0">
         <p className="font-serif font-bold text-xs text-text-primary">Chat Assistant</p>
-        <p className="text-[9px] text-accent-gold mt-0.5">{model} · ${dailyCost.toFixed(4)} today</p>
       </div>
 
       {/* Messages */}
@@ -73,11 +70,6 @@ export default function ChatPanel({ sessionId, model, dailyCost, onCardClick, on
                   )}
                 </p>
                 {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-3 bg-text-muted animate-pulse ml-0.5" />}
-                {msg.tokenUsage && (
-                  <p className="text-[8px] text-text-muted mt-1 text-right">
-                    {msg.tokenUsage.input_tokens} in · {msg.tokenUsage.output_tokens} out · ${msg.tokenUsage.estimated_cost_usd.toFixed(4)}
-                  </p>
-                )}
               </div>
             </Fragment>
           )
