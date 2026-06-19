@@ -2,7 +2,7 @@
 import {
   createContext, useCallback, useContext, useEffect, useState, type ReactNode,
 } from 'react'
-import { getChatHistory, postChat } from '@/lib/api'
+import { deleteChatHistory, getChatHistory, postChat } from '@/lib/api'
 import type { ChatTokenUsage } from '@/lib/types'
 
 export interface LocalMessage {
@@ -26,6 +26,7 @@ interface ChatCtxValue {
   sessions: Record<string, SessionState>
   sendMessage: (sessionId: string, text: string) => Promise<void>
   ensureHydrated: (sessionId: string) => void
+  clearSession: (sessionId: string) => Promise<void>
 }
 
 const ChatCtx = createContext<ChatCtxValue | null>(null)
@@ -123,8 +124,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     })
   }, [update])
 
+  const clearSession = useCallback(async (sessionId: string) => {
+    await deleteChatHistory(sessionId)
+    setSessions((all) => ({ ...all, [sessionId]: EMPTY }))
+    // Drop the hydrated marker so a future remount can refetch (it would
+    // return an empty list, but this keeps the data path consistent).
+    setHydrated((s) => { const n = new Set(s); n.delete(sessionId); return n })
+  }, [])
+
   return (
-    <ChatCtx.Provider value={{ sessions, sendMessage, ensureHydrated }}>{children}</ChatCtx.Provider>
+    <ChatCtx.Provider value={{ sessions, sendMessage, ensureHydrated, clearSession }}>{children}</ChatCtx.Provider>
   )
 }
 
@@ -136,11 +145,11 @@ function useChatCtx(): ChatCtxValue {
 
 export function useChatSession(sessionId: string) {
   const ctx = useChatCtx()
-  // First call for this sessionId triggers a backend history fetch.
   useEffect(() => { ctx.ensureHydrated(sessionId) }, [sessionId, ctx])
   const session = ctx.sessions[sessionId] ?? EMPTY
   return {
     ...session,
     sendMessage: (text: string) => ctx.sendMessage(sessionId, text),
+    clearSession: () => ctx.clearSession(sessionId),
   }
 }
