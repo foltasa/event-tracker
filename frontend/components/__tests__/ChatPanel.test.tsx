@@ -5,7 +5,7 @@ vi.mock('@/lib/api', () => ({ postChat: vi.fn() }))
 vi.mock('@/hooks/useChat', () => ({
   useChat: vi.fn(() => ({
     messages: [], isStreaming: false, error: null,
-    sendMessage: vi.fn(),
+    sendMessage: vi.fn(), clearSession: vi.fn(),
   })),
 }))
 import { useChat } from '@/hooks/useChat'
@@ -17,24 +17,20 @@ describe('ChatPanel', () => {
     expect(screen.getByText('Chat Assistant')).toBeInTheDocument()
   })
 
-  it('disables input while streaming', () => {
-    vi.mocked(useChat).mockReturnValue({
-      messages: [], isStreaming: true, error: null, sendMessage: vi.fn(),
-    })
+  it('disables the message input', () => {
     render(<ChatPanel sessionId="dashboard" onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={vi.fn()} />)
     expect(screen.getByPlaceholderText(/Ask anything/)).toBeDisabled()
   })
 
-  it('calls sendMessage on submit', async () => {
-    const sendMessage = vi.fn()
+  it('calls clearSession when the Delete chat button is clicked and confirmed', async () => {
+    const clearSession = vi.fn().mockResolvedValue(undefined)
     vi.mocked(useChat).mockReturnValue({
-      messages: [], isStreaming: false, error: null, sendMessage,
-    })
+      messages: [], isStreaming: false, error: null, sendMessage: vi.fn(), clearSession,
+    } as any)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<ChatPanel sessionId="dashboard" onCardClick={vi.fn()} onFeedback={vi.fn()} onSave={vi.fn()} />)
-    const input = screen.getByPlaceholderText(/Ask anything/)
-    fireEvent.change(input, { target: { value: 'hello' } })
-    fireEvent.click(screen.getByRole('button', { name: /send/i }))
-    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('hello'))
+    fireEvent.click(screen.getByRole('button', { name: /delete chat/i }))
+    await waitFor(() => expect(clearSession).toHaveBeenCalledOnce())
   })
 
   it('renders assistant messages', () => {

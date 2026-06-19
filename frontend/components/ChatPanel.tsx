@@ -1,5 +1,5 @@
 'use client'
-import { Fragment, useRef, useEffect, useState } from 'react'
+import { Fragment, useRef, useEffect } from 'react'
 import { useChat } from '@/hooks/useChat'
 import type { Sentiment } from '@/lib/types'
 import { parseMessageContent } from '@/lib/parseMessageContent'
@@ -13,19 +13,16 @@ interface Props {
 }
 
 export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }: Props) {
-  const { messages, isStreaming, currentTool, error, sendMessage } = useChat(sessionId)
-  const [input, setInput] = useState('')
+  const { messages, isStreaming, currentTool, error, clearSession } = useChat(sessionId)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, currentTool])
 
-  function handleSubmit() {
-    const text = input.trim()
-    if (!text || isStreaming) return
-    setInput('')
-    sendMessage(text)
+  async function handleDelete() {
+    if (!window.confirm('Delete the entire chat history?')) return
+    await clearSession()
   }
 
   const lastIdx = messages.length - 1
@@ -78,23 +75,21 @@ export default function ChatPanel({ sessionId, onCardClick, onFeedback, onSave }
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Input — disabled for demo; trash button clears the chat instead */}
       <div className="flex gap-1.5 px-3 py-2 border-t border-border">
         <input
-          value={input}
-          disabled={isStreaming}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          value=""
+          disabled
+          readOnly
           placeholder="Ask anything about events…"
-          className="flex-1 text-[10px] border border-border rounded px-2 py-1.5 bg-white disabled:bg-bg-surface"
+          className="flex-1 text-[10px] border border-border rounded px-2 py-1.5 bg-bg-surface"
         />
         <button
-          aria-label="send"
-          disabled={isStreaming}
-          onClick={handleSubmit}
-          className="bg-accent-gold text-bg-page rounded px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50"
+          aria-label="Delete chat"
+          onClick={handleDelete}
+          className="bg-red-600 text-white rounded px-2.5 py-1.5 text-xs font-semibold hover:bg-red-700"
         >
-          ↑
+          🗑
         </button>
       </div>
     </div>
