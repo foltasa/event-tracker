@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { SWRConfig } from 'swr'
-import DashboardPage from '@/app/page'
+import DashboardPage from '@/app/explore/page'
 
 vi.mock('@/lib/api', () => ({
   getDigest: vi.fn().mockResolvedValue({ date: '2026-06-08', picks: [], generated_at: '', is_cached: true }),
