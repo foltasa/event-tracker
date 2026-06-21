@@ -20,11 +20,11 @@ export default function EventBlock({
   const leftPct = item.column * widthPct
 
   const isRec = item.kind === 'recommendation'
-  const borderColor =
-    isRec ? 'border-text-muted' :
-    item.kind === 'event' ? 'border-accent-gold' : 'border-text-secondary'
-  const bgColor = isRec ? 'bg-gray-100' : 'bg-white'
+  const bgColor = isRec ? 'bg-gray-300' : 'bg-white'
   const titleClass = isRec ? 'text-text-secondary' : 'text-text-primary'
+  const borderClasses = isRec
+    ? 'border border-border'
+    : `border border-border border-l-[3px] ${item.kind === 'event' ? 'border-accent-gold' : 'border-text-secondary'}`
 
   return (
     <button
@@ -35,7 +35,7 @@ export default function EventBlock({
         top: startPx, height: heightPx,
         left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
       }}
-      className={`absolute z-10 text-left rounded-md ${bgColor} border border-border border-l-[3px] ${borderColor} px-2 py-1 overflow-hidden hover:shadow-sm`}
+      className={`absolute z-10 text-left rounded-md ${bgColor} ${borderClasses} px-2 py-1 overflow-hidden hover:shadow-sm cursor-pointer`}
     >
       {isRec && (
         <p className="text-[9px] uppercase tracking-wider font-semibold text-accent-gold leading-none mb-0.5">
