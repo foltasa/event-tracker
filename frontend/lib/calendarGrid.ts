@@ -2,7 +2,7 @@ import type { Appointment, CalendarEntry, EventCard } from '@/lib/types'
 
 export interface GridItem {
   id: string
-  kind: 'appointment' | 'event'
+  kind: 'appointment' | 'event' | 'recommendation'
   title: string
   day: string                         // YYYY-MM-DD (local)
   startMinutes: number | null         // minutes from midnight on `day`
@@ -53,8 +53,9 @@ export function toGridItem(input: GridInput): GridItem {
   const e: EventCard = input.raw.event
   const start = new Date(e.start_datetime)
   const end = e.end_datetime ? new Date(e.end_datetime) : null
+  const kind: GridItem['kind'] = input.raw.kind === 'recommendation' ? 'recommendation' : 'event'
   return {
-    id: e.id, kind: 'event', title: e.title, day: toLocalDayKey(start),
+    id: e.id, kind, title: e.title, day: toLocalDayKey(start),
     startMinutes: minutesFromMidnight(start),
     endMinutes: end ? minutesFromMidnight(end) : null,
     raw: input.raw,
