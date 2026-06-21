@@ -83,7 +83,8 @@ class TicketmasterAdapter:
 
     def _parse(self, raw: dict) -> NormalizedEvent | None:
         try:
-            start_str = raw["dates"]["start"]["dateTime"]
+            start_info = raw["dates"]["start"]
+            start_str = start_info.get("dateTime") or start_info["localDate"] + "T00:00:00+02:00"
             venues = raw.get("_embedded", {}).get("venues", [{}])
             venue = venues[0] if venues else {}
             loc = venue.get("location", {})
