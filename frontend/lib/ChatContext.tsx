@@ -2,6 +2,7 @@
 import {
   createContext, useCallback, useContext, useEffect, useState, type ReactNode,
 } from 'react'
+import { useSWRConfig } from 'swr'
 import { deleteChatHistory, getChatHistory, postChat } from '@/lib/api'
 import type { ChatTokenUsage } from '@/lib/types'
 
@@ -36,10 +37,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Tracks which sessions we've already requested history for, so the same
   // useChatSession hook firing on multiple mounts doesn't refetch.
   const [hydrated, setHydrated] = useState<Set<string>>(new Set())
+  const { mutate: swrMutate } = useSWRConfig()
 
   const update = useCallback((sessionId: string, fn: (s: SessionState) => SessionState) => {
     setSessions((all) => ({ ...all, [sessionId]: fn(all[sessionId] ?? EMPTY) }))
   }, [])
+
+  // Invalidate caches that may have been mutated server-side by a chat turn —
+  // most importantly the chat-route hook that auto-stores recommendations in
+  // /calendar after the reply is rendered.
+  const invalidatePostTurnCaches = useCallback(() => {
+    swrMutate('/calendar')
+    swrMutate((key) => typeof key === 'string' && key.startsWith('/events/'))
+    swrMutate((key) => Array.isArray(key) && key[0] === '/events')
+  }, [swrMutate])
 
   const ensureHydrated = useCallback((sessionId: string) => {
     let alreadyMarked = false
@@ -110,6 +121,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             m.id === assistantId ? { ...m, isStreaming: false, tokenUsage: chunk.token_usage } : m
           ),
         }))
+        invalidatePostTurnCaches()
       } else if (chunk.type === 'error') {
         update(sessionId, (s) => ({
           ...s,
@@ -122,7 +134,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }))
       }
     })
-  }, [update])
+  }, [update, invalidatePostTurnCaches])
 
   const clearSession = useCallback(async (sessionId: string) => {
     await deleteChatHistory(sessionId)
