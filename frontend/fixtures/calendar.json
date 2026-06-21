@@ -11,7 +11,9 @@
         "venue_name": "Mojo Club",
         "venue_address": "Reeperbahn 1, 20359 Hamburg",
         "category": "music",
-        "tags": ["jazz"],
+        "tags": [
+          "jazz"
+        ],
         "price_min": 18.0,
         "price_max": 24.0,
         "is_free": false,
@@ -21,7 +23,8 @@
         "source": "eventbrite",
         "is_active": true
       },
-      "saved_at": "2026-06-07T11:02:00+02:00"
+      "saved_at": "2026-06-07T11:02:00+02:00",
+      "kind": "saved"
     },
     {
       "id": "sav_002",
@@ -34,7 +37,10 @@
         "venue_name": "Schanzenviertel",
         "venue_address": "Sternschanze, 20357 Hamburg",
         "category": "food",
-        "tags": ["food", "market"],
+        "tags": [
+          "food",
+          "market"
+        ],
         "price_min": null,
         "price_max": null,
         "is_free": true,
@@ -44,20 +50,23 @@
         "source": "eventbrite",
         "is_active": true
       },
-      "saved_at": "2026-06-06T18:30:00+02:00"
+      "saved_at": "2026-06-06T18:30:00+02:00",
+      "kind": "saved"
     },
     {
       "id": "sav_003",
       "event": {
         "id": "evt_099",
         "title": "Cancelled: Hafenfest Mini-Concert",
-        "summary": "Originally scheduled at the Landungsbrücken",
+        "summary": "Originally scheduled at the Landungsbr\u00c3\u00bccken",
         "start_datetime": "2026-06-05T18:00:00+02:00",
         "end_datetime": "2026-06-05T20:00:00+02:00",
-        "venue_name": "Landungsbrücken",
-        "venue_address": "Landungsbrücken, 20359 Hamburg",
+        "venue_name": "Landungsbr\u00c3\u00bccken",
+        "venue_address": "Landungsbr\u00c3\u00bccken, 20359 Hamburg",
         "category": "music",
-        "tags": ["concert"],
+        "tags": [
+          "concert"
+        ],
         "price_min": null,
         "price_max": null,
         "is_free": true,
@@ -67,7 +76,8 @@
         "source": "hamburg_scraper",
         "is_active": false
       },
-      "saved_at": "2026-06-01T09:14:00+02:00"
+      "saved_at": "2026-06-01T09:14:00+02:00",
+      "kind": "saved"
     }
   ]
 }

@@ -130,8 +130,8 @@ export async function saveToCalendar(eventId: string): Promise<CalendarEntry> {
   if (MOCK) {
     console.info("[mock] POST /calendar", eventId);
     const detail = (await import("@/fixtures/event-detail.json")).default as EventWithContext;
-    const { user_sentiment, user_comment, is_saved, ...card } = detail;
-    return { id: `sav_mock_${Date.now()}`, event: card, saved_at: new Date().toISOString() };
+    const { user_sentiment, user_comment, is_saved, calendar_kind, ...card } = detail;
+    return { id: `sav_mock_${Date.now()}`, event: card, saved_at: new Date().toISOString(), kind: 'saved' };
   }
   return jsonFetch<CalendarEntry>('/calendar', { method: 'POST', body: JSON.stringify({ event_id: eventId }) });
 }
@@ -246,6 +246,7 @@ export async function updateSettings(body: SettingsUpdate): Promise<UserSettings
       tool_toggles: { ...current.tool_toggles, ...(body.tool_toggles ?? {}) },
       llm_provider: body.llm_provider ?? current.llm_provider,
       llm_model: body.llm_model ?? current.llm_model,
+      auto_recommendations_enabled: body.auto_recommendations_enabled ?? current.auto_recommendations_enabled,
     };
   }
   return jsonFetch<UserSettings>("/settings", { method: "PUT", body: JSON.stringify(body) });
