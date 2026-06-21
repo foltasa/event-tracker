@@ -56,6 +56,7 @@ class EventWithContext(EventCard):
     user_sentiment: Sentiment | None = None
     user_comment: str | None = None
     is_saved: bool = False
+    calendar_kind: Literal["saved", "recommendation"] | None = None
 
 
 class UserSettings(_JsonBase):
