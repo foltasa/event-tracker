@@ -13,6 +13,7 @@ interface Props {
   onClose: () => void
   onFeedback: (id: string, sentiment: Sentiment | null) => void
   onSave: (id: string, save: boolean) => void
+  onSlotIn: (id: string) => void
 }
 
 function formatDate(iso: string) {
@@ -110,12 +111,15 @@ function EventChat({ eventId, onCardClick }: { eventId: string; onCardClick: (id
   )
 }
 
-function OverlayContent({ event, justification, onClose, onFeedback, onSave }: Props) {
-  const { isOptimisticallySaved, optimisticSentimentFor, openOverlay } = useAppShell()
+function OverlayContent({ event, justification, onClose, onFeedback, onSave, onSlotIn }: Props) {
+  const { isOptimisticallySaved, optimisticSentimentFor, optimisticCalendarKindFor, openOverlay } = useAppShell()
   const optSent = optimisticSentimentFor(event.id)
   const sentiment: Sentiment | null = optSent !== undefined ? optSent : (event.user_sentiment ?? null)
   const optSaved = isOptimisticallySaved(event.id)
   const isSaved = optSaved !== undefined ? optSaved : event.is_saved
+  const optKind = optimisticCalendarKindFor(event.id)
+  const calendarKind: 'saved' | 'recommendation' | null =
+    optKind !== undefined ? optKind : (event.calendar_kind ?? (isSaved ? 'saved' : null))
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -208,16 +212,33 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave }: P
             >
               👎
             </button>
-            <button
-              onClick={() => onSave(event.id, !isSaved)}
-              className={`rounded text-[11px] font-semibold px-3 py-1 ${
-                isSaved
-                  ? 'bg-accent-gold-light text-accent-gold'
-                  : 'bg-accent-gold text-bg-page'
-              }`}
-            >
-              {isSaved ? 'Slot Out' : 'Slot in'}
-            </button>
+            {calendarKind === 'recommendation' ? (
+              <>
+                <button
+                  onClick={() => onSlotIn(event.id)}
+                  className="rounded text-[11px] font-semibold px-3 py-1 bg-accent-gold text-bg-page"
+                >
+                  Slot in
+                </button>
+                <button
+                  onClick={() => onSave(event.id, false)}
+                  className="rounded text-[11px] font-semibold px-3 py-1 border border-accent-gold text-accent-gold bg-transparent"
+                >
+                  Slot out
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => onSave(event.id, calendarKind !== 'saved')}
+                className={`rounded text-[11px] font-semibold px-3 py-1 ${
+                  calendarKind === 'saved'
+                    ? 'bg-accent-gold-light text-accent-gold'
+                    : 'bg-accent-gold text-bg-page'
+                }`}
+              >
+                {calendarKind === 'saved' ? 'Slot Out' : 'Slot in'}
+              </button>
+            )}
           </div>
         </div>
 

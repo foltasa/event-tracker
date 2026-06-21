@@ -9,6 +9,7 @@ import {
   postFeedback,
   removeFromCalendar,
   saveToCalendar,
+  slotInRecommendation,
 } from '@/lib/api'
 import type { Sentiment } from '@/lib/types'
 import TopNav from '@/components/TopNav'
@@ -18,11 +19,11 @@ import EventDetailOverlay from '@/components/EventDetailOverlay'
 interface AppShellCtxValue {
   openOverlay: (eventId: string, justification?: string | null) => void
   handleSave: (eventId: string, shouldBeSaved: boolean) => Promise<void>
+  handleSlotIn: (eventId: string) => Promise<void>
   handleFeedback: (eventId: string, sentiment: Sentiment | null) => Promise<void>
-  // Returns the optimistic override if present, otherwise undefined (caller
-  // should fall back to the cached `is_saved` field).
   isOptimisticallySaved: (eventId: string) => boolean | undefined
   optimisticSentimentFor: (eventId: string) => Sentiment | null | undefined
+  optimisticCalendarKindFor: (eventId: string) => 'saved' | 'recommendation' | null | undefined
 }
 
 const AppShellCtx = createContext<AppShellCtxValue | null>(null)
@@ -34,12 +35,13 @@ export function useAppShell(): AppShellCtxValue {
 }
 
 function EventDetailOverlayLoader({
-  eventId, justification, onClose, onSave, onFeedback,
+  eventId, justification, onClose, onSave, onSlotIn, onFeedback,
 }: {
   eventId: string
   justification: string | null
   onClose: () => void
   onSave: (id: string, save: boolean) => void
+  onSlotIn: (id: string) => void
   onFeedback: (id: string, sentiment: Sentiment | null) => void
 }) {
   const { data: event } = useSWR(`/events/${eventId}`, () => getEventDetail(eventId))
@@ -51,14 +53,17 @@ function EventDetailOverlayLoader({
       onClose={onClose}
       onFeedback={onFeedback}
       onSave={onSave}
+      onSlotIn={onSlotIn}
     />
   )
 }
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const active: 'timetable' | 'explore' =
-    pathname?.startsWith('/explore') ? 'explore' : 'timetable'
+  const active: 'timetable' | 'explore' | 'settings' =
+    pathname?.startsWith('/explore') ? 'explore'
+    : pathname?.startsWith('/settings') ? 'settings'
+    : 'timetable'
   const dateLabel = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
@@ -68,6 +73,7 @@ function Shell({ children }: { children: ReactNode }) {
   // means "override the server-truth"; absence means "trust the cache".
   const [optSaved, setOptSaved] = useState<Map<string, boolean>>(new Map())
   const [optSentiment, setOptSentiment] = useState<Map<string, Sentiment | null>>(new Map())
+  const [optCalendarKind, setOptCalendarKind] = useState<Map<string, 'saved' | 'recommendation' | null>>(new Map())
   const { mutate } = useSWRConfig()
 
   const openOverlay = useCallback((eventId: string, justification: string | null = null) => {
@@ -101,12 +107,26 @@ function Shell({ children }: { children: ReactNode }) {
 
   const handleSave = useCallback(async (eventId: string, shouldBeSaved: boolean) => {
     setOptSaved((m) => new Map(m).set(eventId, shouldBeSaved))
+    setOptCalendarKind((m) => new Map(m).set(eventId, shouldBeSaved ? 'saved' : null))
     try {
       if (shouldBeSaved) await saveToCalendar(eventId)
       else                await removeFromCalendar(eventId)
       fanOutEventCaches(eventId)
     } catch {
       setOptSaved((m) => { const n = new Map(m); n.delete(eventId); return n })
+      setOptCalendarKind((m) => { const n = new Map(m); n.delete(eventId); return n })
+    }
+  }, [fanOutEventCaches])
+
+  const handleSlotIn = useCallback(async (eventId: string) => {
+    setOptSaved((m) => new Map(m).set(eventId, true))
+    setOptCalendarKind((m) => new Map(m).set(eventId, 'saved'))
+    try {
+      await slotInRecommendation(eventId)
+      fanOutEventCaches(eventId)
+    } catch {
+      setOptSaved((m) => { const n = new Map(m); n.delete(eventId); return n })
+      setOptCalendarKind((m) => { const n = new Map(m); n.delete(eventId); return n })
     }
   }, [fanOutEventCaches])
 
@@ -120,9 +140,18 @@ function Shell({ children }: { children: ReactNode }) {
     [optSentiment],
   )
 
+  const optimisticCalendarKindFor = useCallback(
+    (eventId: string) =>
+      optCalendarKind.has(eventId) ? optCalendarKind.get(eventId) : undefined,
+    [optCalendarKind],
+  )
+
   return (
     <AppShellCtx.Provider
-      value={{ openOverlay, handleSave, handleFeedback, isOptimisticallySaved, optimisticSentimentFor }}
+      value={{
+        openOverlay, handleSave, handleSlotIn, handleFeedback,
+        isOptimisticallySaved, optimisticSentimentFor, optimisticCalendarKindFor,
+      }}
     >
       <div className="flex flex-col h-screen overflow-hidden bg-bg-page">
         <TopNav active={active} date={`Hamburg · ${dateLabel}`} />
@@ -144,6 +173,7 @@ function Shell({ children }: { children: ReactNode }) {
           justification={activeJustification}
           onClose={closeOverlay}
           onSave={handleSave}
+          onSlotIn={handleSlotIn}
           onFeedback={handleFeedback}
         />
       )}

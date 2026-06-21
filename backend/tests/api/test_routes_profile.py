@@ -42,3 +42,22 @@ def test_post_onboard_idempotent_updates_existing(client, user, db_session):
     assert r.status_code == 200
     fresh = db_session.query(User).filter_by(id="local").one()
     assert fresh.interest_tags == ["tech"]
+
+
+def test_get_profile_settings_default_auto_recommendations_true(client, user):
+    body = client.get("/profile").json()
+    assert body["settings"]["auto_recommendations_enabled"] is True
+
+
+def test_put_profile_settings_persists_flag(client, user, db_session):
+    r = client.put("/profile/settings", json={"auto_recommendations_enabled": False})
+    assert r.status_code == 200
+    assert r.json()["settings"]["auto_recommendations_enabled"] is False
+    body = client.get("/profile").json()
+    assert body["settings"]["auto_recommendations_enabled"] is False
+
+
+def test_put_profile_settings_partial_update_keeps_other_keys(client, user, db_session):
+    client.put("/profile/settings", json={"auto_recommendations_enabled": False})
+    r = client.put("/profile/settings", json={"auto_recommendations_enabled": True})
+    assert r.json()["settings"]["auto_recommendations_enabled"] is True

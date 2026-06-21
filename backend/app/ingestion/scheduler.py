@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.db.models import Event
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
-from app.ingestion.eventbrite import EventbriteAdapter
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
 from app.ingestion.ticketmaster import TicketmasterAdapter
@@ -39,7 +38,7 @@ def embed_new_events(session: Session) -> None:
 
 
 def _default_adapters() -> list[SourceAdapter]:
-    return [EventbriteAdapter(), TicketmasterAdapter(), HamburgScraper()]
+    return [TicketmasterAdapter(), HamburgScraper()]
 
 
 def run_ingestion(

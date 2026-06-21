@@ -35,3 +35,21 @@ def test_saved_event_unique_per_user_event(db_session):
     db_session.add(SavedEvent(id="sav_2", user_id="local", event_id="evt_1"))
     with pytest.raises(IntegrityError):
         db_session.commit()
+
+
+def test_saved_event_kind_defaults_to_saved(db_session):
+    _seed(db_session)
+    s = SavedEvent(id="sav_1", user_id="local", event_id="evt_1")
+    db_session.add(s)
+    db_session.commit()
+    db_session.refresh(s)
+    assert s.kind == "saved"
+
+
+def test_saved_event_kind_can_be_recommendation(db_session):
+    _seed(db_session)
+    s = SavedEvent(id="sav_1", user_id="local", event_id="evt_1", kind="recommendation")
+    db_session.add(s)
+    db_session.commit()
+    db_session.refresh(s)
+    assert s.kind == "recommendation"

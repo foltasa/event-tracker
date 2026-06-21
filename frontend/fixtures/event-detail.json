@@ -18,5 +18,6 @@
   "is_active": true,
   "user_sentiment": "like",
   "user_comment": "loved this venue last time",
-  "is_saved": true
+  "is_saved": true,
+  "calendar_kind": "saved"
 }

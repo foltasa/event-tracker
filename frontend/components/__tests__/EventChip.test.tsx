@@ -8,10 +8,12 @@ vi.mock('swr', () => ({
 vi.mock('@/lib/api', () => ({
   getEventDetail: vi.fn(),
   saveToCalendar: vi.fn(),
+  slotInRecommendation: vi.fn(),
+  removeFromCalendar: vi.fn(),
 }))
 
 import useSWR from 'swr'
-import { saveToCalendar } from '@/lib/api'
+import { saveToCalendar, slotInRecommendation } from '@/lib/api'
 
 const mockEvent = {
   id: 'evt-1', title: 'Tango Festival', summary: null,
@@ -20,6 +22,7 @@ const mockEvent = {
   tags: [], price_min: null, price_max: null, is_free: false, currency: 'EUR',
   image_url: null, source_url: 'https://example.com', source: 'test',
   is_active: true, user_sentiment: null, user_comment: null, is_saved: false,
+  calendar_kind: null as 'saved' | 'recommendation' | null,
 }
 
 describe('EventChip', () => {
@@ -44,25 +47,50 @@ describe('EventChip', () => {
     expect(screen.getByText(/Fabrik/)).toBeInTheDocument()
   })
 
-  it('shows Slot in button when is_saved is false', () => {
+  it('shows Slot in button when calendar_kind is null', () => {
     vi.mocked(useSWR).mockReturnValue({ data: mockEvent, error: undefined, mutate: vi.fn() } as any)
     render(<EventChip eventId="evt-1" />)
     expect(screen.getByRole('button', { name: /slot in/i })).toBeInTheDocument()
     expect(screen.queryByText(/slot out/i)).not.toBeInTheDocument()
   })
 
-  it('shows Slot Out when is_saved is true', () => {
-    vi.mocked(useSWR).mockReturnValue({ data: { ...mockEvent, is_saved: true }, error: undefined, mutate: vi.fn() } as any)
+  it('shows Slot in button when calendar_kind is "recommendation"', () => {
+    vi.mocked(useSWR).mockReturnValue({
+      data: { ...mockEvent, is_saved: true, calendar_kind: 'recommendation' },
+      error: undefined, mutate: vi.fn(),
+    } as any)
+    render(<EventChip eventId="evt-1" />)
+    expect(screen.getByRole('button', { name: /slot in/i })).toBeInTheDocument()
+    expect(screen.queryByText(/slot out/i)).not.toBeInTheDocument()
+  })
+
+  it('shows Slot Out when calendar_kind is "saved"', () => {
+    vi.mocked(useSWR).mockReturnValue({
+      data: { ...mockEvent, is_saved: true, calendar_kind: 'saved' },
+      error: undefined, mutate: vi.fn(),
+    } as any)
     render(<EventChip eventId="evt-1" />)
     expect(screen.getByRole('button', { name: /slot out/i })).toBeInTheDocument()
   })
 
-  it('calls saveToCalendar with the event id on Slot in click', async () => {
+  it('calls saveToCalendar on Slot in click when event is not in calendar', async () => {
     const mutate = vi.fn()
     vi.mocked(useSWR).mockReturnValue({ data: mockEvent, error: undefined, mutate } as any)
     vi.mocked(saveToCalendar).mockResolvedValue({} as any)
     render(<EventChip eventId="evt-1" />)
     fireEvent.click(screen.getByRole('button', { name: /slot in/i }))
     await waitFor(() => expect(saveToCalendar).toHaveBeenCalledWith('evt-1'))
+  })
+
+  it('calls slotInRecommendation on Slot in click when event is a recommendation', async () => {
+    const mutate = vi.fn()
+    vi.mocked(useSWR).mockReturnValue({
+      data: { ...mockEvent, is_saved: true, calendar_kind: 'recommendation' },
+      error: undefined, mutate,
+    } as any)
+    vi.mocked(slotInRecommendation).mockResolvedValue({} as any)
+    render(<EventChip eventId="evt-1" />)
+    fireEvent.click(screen.getByRole('button', { name: /slot in/i }))
+    await waitFor(() => expect(slotInRecommendation).toHaveBeenCalledWith('evt-1'))
   })
 })

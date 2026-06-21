@@ -49,3 +49,44 @@ def test_list_events_includes_user_context(client, setup, db_session):
     assert events["e0"]["user_comment"] == "great"
     assert events["e0"]["is_saved"] is True
     assert events["e2"]["is_saved"] is False
+
+
+def test_event_detail_calendar_kind_null_when_not_in_calendar(client, db_session):
+    from datetime import datetime, timezone
+    from app.db.models import Event, User
+    db_session.add(User(id="local", interest_tags=[]))
+    db_session.add(Event(id="evt", external_id="x", source="eventbrite",
+                         title="t", category="music", source_url="http://x",
+                         start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
+    db_session.commit()
+    r = client.get("/events/evt")
+    assert r.status_code == 200
+    assert r.json()["calendar_kind"] is None
+
+
+def test_event_detail_calendar_kind_saved(client, db_session):
+    from datetime import datetime, timezone
+    from app.db.models import Event, SavedEvent, User
+    db_session.add(User(id="local", interest_tags=[]))
+    db_session.add(Event(id="evt", external_id="x", source="eventbrite",
+                         title="t", category="music", source_url="http://x",
+                         start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
+    db_session.add(SavedEvent(id="s1", user_id="local", event_id="evt"))
+    db_session.commit()
+    body = client.get("/events/evt").json()
+    assert body["calendar_kind"] == "saved"
+    assert body["is_saved"] is True
+
+
+def test_event_detail_calendar_kind_recommendation(client, db_session):
+    from datetime import datetime, timezone
+    from app.db.models import Event, SavedEvent, User
+    db_session.add(User(id="local", interest_tags=[]))
+    db_session.add(Event(id="evt", external_id="x", source="eventbrite",
+                         title="t", category="music", source_url="http://x",
+                         start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
+    db_session.add(SavedEvent(id="s1", user_id="local", event_id="evt", kind="recommendation"))
+    db_session.commit()
+    body = client.get("/events/evt").json()
+    assert body["calendar_kind"] == "recommendation"
+    assert body["is_saved"] is True

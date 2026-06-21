@@ -11,7 +11,7 @@ from app.schemas.events import EventsFeedResponse
 router = APIRouter(prefix="/events", tags=["events"])
 
 
-def _hydrate(e: Event, sentiment, comment, is_saved: bool) -> EventWithContext:
+def _hydrate(e: Event, sentiment, comment, calendar_kind) -> EventWithContext:
     return EventWithContext(
         id=e.id, title=e.title, summary=e.summary,
         start_datetime=e.start_datetime, end_datetime=e.end_datetime,
@@ -23,7 +23,8 @@ def _hydrate(e: Event, sentiment, comment, is_saved: bool) -> EventWithContext:
         is_active=e.is_active,
         user_sentiment=sentiment,
         user_comment=comment,
-        is_saved=is_saved,
+        is_saved=calendar_kind is not None,
+        calendar_kind=calendar_kind,
     )
 
 
@@ -72,9 +73,11 @@ def list_events(
         f.event_id: f
         for f in db.query(Feedback).filter(Feedback.user_id == user_id, Feedback.event_id.in_(ids)).all()
     }
-    saved_set = {
-        s.event_id
-        for s in db.query(SavedEvent).filter(SavedEvent.user_id == user_id, SavedEvent.event_id.in_(ids)).all()
+    saved_map = {
+        s.event_id: s.kind
+        for s in db.query(SavedEvent).filter(
+            SavedEvent.user_id == user_id, SavedEvent.event_id.in_(ids)
+        ).all()
     }
 
     events = [
@@ -82,7 +85,7 @@ def list_events(
             r,
             fb_map.get(r.id).sentiment if fb_map.get(r.id) else None,
             fb_map.get(r.id).comment if fb_map.get(r.id) else None,
-            r.id in saved_set,
+            saved_map.get(r.id),
         )
         for r in rows
     ]
@@ -102,15 +105,14 @@ def get_event(event_id: str, db: DbSession) -> EventWithContext:
         .filter(Feedback.user_id == user_id, Feedback.event_id == event_id)
         .first()
     )
-    is_saved = (
+    saved_row = (
         db.query(SavedEvent)
         .filter(SavedEvent.user_id == user_id, SavedEvent.event_id == event_id)
         .first()
-        is not None
     )
     return _hydrate(
         e,
         fb.sentiment if fb else None,
         fb.comment if fb else None,
-        is_saved,
+        saved_row.kind if saved_row else None,
     )

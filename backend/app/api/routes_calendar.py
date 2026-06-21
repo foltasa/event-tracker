@@ -40,7 +40,7 @@ def get_calendar(db: DbSession) -> CalendarResponse:
         .all()
     )
     entries = [
-        CalendarEntry(id=s.id, event=_event_to_card(e), saved_at=s.saved_at)
+        CalendarEntry(id=s.id, event=_event_to_card(e), saved_at=s.saved_at, kind=s.kind)
         for s, e in rows
     ]
     return CalendarResponse(entries=entries)
@@ -58,7 +58,10 @@ def save_to_calendar(payload: SaveRequest, db: DbSession) -> CalendarEntry:
         db.add(existing)
         db.commit()
         db.refresh(existing)
-    return CalendarEntry(id=existing.id, event=_event_to_card(e), saved_at=existing.saved_at)
+    return CalendarEntry(
+        id=existing.id, event=_event_to_card(e),
+        saved_at=existing.saved_at, kind=existing.kind,
+    )
 
 
 @router.delete("/{event_id}", status_code=204)
@@ -69,3 +72,24 @@ def unsave(event_id: str, db: DbSession) -> Response:
         db.delete(row)
         db.commit()
     return Response(status_code=204)
+
+
+@router.post("/{event_id}/slot-in", response_model=CalendarEntry)
+def slot_in(event_id: str, db: DbSession) -> CalendarEntry:
+    user_id = get_current_user_id()
+    row = (
+        db.query(SavedEvent)
+        .filter_by(user_id=user_id, event_id=event_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    e = db.query(Event).filter_by(id=event_id).one()
+    if row.kind != "saved":
+        row.kind = "saved"
+        db.commit()
+        db.refresh(row)
+    return CalendarEntry(
+        id=row.id, event=_event_to_card(e),
+        saved_at=row.saved_at, kind=row.kind,
+    )

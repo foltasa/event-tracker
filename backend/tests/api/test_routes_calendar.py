@@ -52,3 +52,44 @@ def test_get_calendar_returns_entries(client, setup, db_session):
     body = r.json()
     assert len(body["entries"]) == 1
     assert body["entries"][0]["event"]["id"] == "e1"
+
+
+def test_get_calendar_includes_kind_saved_by_default(client, setup, db_session):
+    client.post("/calendar", json={"event_id": "e1"})
+    body = client.get("/calendar").json()
+    assert body["entries"][0]["kind"] == "saved"
+
+
+def test_get_calendar_returns_recommendation_kind(client, setup, db_session):
+    import uuid
+    from app.db.models import SavedEvent
+    db_session.add(SavedEvent(id=str(uuid.uuid4()), user_id="local",
+                              event_id="e1", kind="recommendation"))
+    db_session.commit()
+    body = client.get("/calendar").json()
+    assert body["entries"][0]["kind"] == "recommendation"
+
+
+def test_slot_in_promotes_recommendation_to_saved(client, setup, db_session):
+    import uuid
+    from app.db.models import SavedEvent
+    db_session.add(SavedEvent(id=str(uuid.uuid4()), user_id="local",
+                              event_id="e1", kind="recommendation"))
+    db_session.commit()
+    r = client.post("/calendar/e1/slot-in")
+    assert r.status_code == 200
+    assert r.json()["kind"] == "saved"
+    fresh = db_session.query(SavedEvent).filter_by(event_id="e1").one()
+    assert fresh.kind == "saved"
+
+
+def test_slot_in_idempotent_on_already_saved(client, setup, db_session):
+    client.post("/calendar", json={"event_id": "e1"})  # creates kind='saved'
+    r = client.post("/calendar/e1/slot-in")
+    assert r.status_code == 200
+    assert r.json()["kind"] == "saved"
+
+
+def test_slot_in_404_when_no_row(client, setup):
+    r = client.post("/calendar/e1/slot-in")
+    assert r.status_code == 404

@@ -73,7 +73,7 @@ export default function CalendarPage() {
   }
 
   function onItemClick(item: LaidOutItem) {
-    if (item.kind === 'event') {
+    if (item.kind === 'event' || item.kind === 'recommendation') {
       openOverlay(item.id)
       return
     }

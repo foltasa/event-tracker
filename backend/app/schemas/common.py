@@ -56,12 +56,14 @@ class EventWithContext(EventCard):
     user_sentiment: Sentiment | None = None
     user_comment: str | None = None
     is_saved: bool = False
+    calendar_kind: Literal["saved", "recommendation"] | None = None
 
 
 class UserSettings(_JsonBase):
     tool_toggles: dict[str, bool] = Field(default_factory=dict)
     llm_provider: LLMProvider = "openai"
     llm_model: str | None = None
+    auto_recommendations_enabled: bool = True
 
 
 class ChatTokenUsage(_JsonBase):

@@ -17,4 +17,5 @@ class SavedEvent(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False)
     event_id: Mapped[str] = mapped_column(String, ForeignKey("events.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False, default="saved")
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)

@@ -86,3 +86,42 @@ describe('layoutDayColumn', () => {
     expect(laid[0].id).toBe('b')
   })
 })
+
+import type { CalendarEntry } from '@/lib/types'
+
+describe('toGridItem recommendation', () => {
+  it('returns kind="recommendation" when CalendarEntry.kind is "recommendation"', () => {
+    const entry: CalendarEntry = {
+      id: 'sav-1',
+      saved_at: '2026-06-21T00:00:00Z',
+      kind: 'recommendation',
+      event: {
+        id: 'evt-1', title: 'Jazz', summary: null,
+        start_datetime: '2026-06-21T18:00:00Z',
+        end_datetime: '2026-06-21T20:00:00Z',
+        venue_name: null, venue_address: null,
+        category: 'music', tags: [],
+        price_min: null, price_max: null, is_free: true, currency: 'EUR',
+        image_url: null, source_url: 'http://x', source: 's', is_active: true,
+      },
+    }
+    const item = toGridItem({ kind: 'event', raw: entry })
+    expect(item.kind).toBe('recommendation')
+  })
+
+  it('returns kind="event" when CalendarEntry.kind is "saved"', () => {
+    const entry: CalendarEntry = {
+      id: 'sav-2', saved_at: '2026-06-21T00:00:00Z', kind: 'saved',
+      event: {
+        id: 'evt-2', title: 'Talk', summary: null,
+        start_datetime: '2026-06-21T18:00:00Z',
+        end_datetime: '2026-06-21T20:00:00Z',
+        venue_name: null, venue_address: null,
+        category: 'tech', tags: [],
+        price_min: null, price_max: null, is_free: true, currency: 'EUR',
+        image_url: null, source_url: 'http://x', source: 's', is_active: true,
+      },
+    }
+    expect(toGridItem({ kind: 'event', raw: entry }).kind).toBe('event')
+  })
+})

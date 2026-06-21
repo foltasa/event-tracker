@@ -4,7 +4,12 @@ from app.agent.memory import get_current_user_id
 from app.api.deps import DbSession
 from app.db.models import User
 from app.schemas.common import UserSettings
-from app.schemas.profile import OnboardingRequest, UserProfileResponse, UserProfileUpdate
+from app.schemas.profile import (
+    OnboardingRequest,
+    SettingsUpdate,
+    UserProfileResponse,
+    UserProfileUpdate,
+)
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -52,6 +57,21 @@ def onboard(payload: OnboardingRequest, db: DbSession) -> UserProfileResponse:
         db.add(u)
     u.interest_tags = payload.interest_tags
     u.about_me = payload.about_me
+    db.commit()
+    db.refresh(u)
+    return _to_response(u)
+
+
+@router.put("/settings", response_model=UserProfileResponse)
+def update_settings(payload: SettingsUpdate, db: DbSession) -> UserProfileResponse:
+    user_id = get_current_user_id()
+    u = db.query(User).filter_by(id=user_id).one_or_none()
+    if u is None:
+        raise HTTPException(status_code=404, detail="user not onboarded")
+    current = dict(u.settings or {})
+    update = payload.model_dump(exclude_unset=True)
+    current.update(update)
+    u.settings = current
     db.commit()
     db.refresh(u)
     return _to_response(u)

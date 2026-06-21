@@ -1,7 +1,7 @@
 'use client'
 import useSWR, { useSWRConfig } from 'swr'
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { getEventDetail, removeFromCalendar, saveToCalendar } from '@/lib/api'
+import { getEventDetail, removeFromCalendar, saveToCalendar, slotInRecommendation } from '@/lib/api'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-DE', {
@@ -36,20 +36,28 @@ export default function EventChip({ eventId, onCardClick }: Props) {
   async function handleToggle(e: MouseEvent) {
     e.stopPropagation()
     if (!event) return
-    const nextSaved = !event.is_saved
+    const prev = event
+    const kind = event.calendar_kind
     setSaveError(null)
-    mutate({ ...event, is_saved: nextSaved }, false)
+    const action: 'save' | 'slot-in' | 'remove' =
+      kind === 'saved' ? 'remove' : kind === 'recommendation' ? 'slot-in' : 'save'
+    const optimistic =
+      action === 'remove'
+        ? { ...event, is_saved: false, calendar_kind: null }
+        : { ...event, is_saved: true, calendar_kind: 'saved' as const }
+    mutate(optimistic, false)
     try {
-      if (nextSaved) await saveToCalendar(eventId)
-      else            await removeFromCalendar(eventId)
+      if (action === 'save')         await saveToCalendar(eventId)
+      else if (action === 'slot-in') await slotInRecommendation(eventId)
+      else                            await removeFromCalendar(eventId)
       mutate()
       globalMutate('/calendar')
       globalMutate('/digest')
       globalMutate((key) => Array.isArray(key) && key[0] === '/events')
       globalMutate((key) => Array.isArray(key) && key[0] === '/appointments')
     } catch {
-      mutate({ ...event, is_saved: !nextSaved }, false)
-      setSaveError(nextSaved ? 'Failed to save — try again' : 'Failed to remove — try again')
+      mutate(prev, false)
+      setSaveError(action === 'remove' ? 'Failed to remove — try again' : 'Failed to save — try again')
     }
   }
 
@@ -83,12 +91,12 @@ export default function EventChip({ eventId, onCardClick }: Props) {
         <button
           onClick={handleToggle}
           className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold ${
-            event.is_saved
+            event.calendar_kind === 'saved'
               ? 'bg-accent-gold-light text-accent-gold border border-accent-gold/40'
               : 'bg-accent-gold text-bg-page'
           }`}
         >
-          {event.is_saved ? 'Slot Out' : 'Slot in'}
+          {event.calendar_kind === 'saved' ? 'Slot Out' : 'Slot in'}
         </button>
       </span>
       <span className="block text-text-muted truncate mt-0.5">

@@ -95,3 +95,42 @@ describe('appointments API', () => {
     expect(out).toEqual({ message: 'Currently not implemented' })
   })
 })
+
+describe('slotInRecommendation', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...mockEntry, kind: 'saved' }),
+    } as Response)
+  })
+
+  it('POSTs /calendar/{id}/slot-in', async () => {
+    const { slotInRecommendation } = await import('@/lib/api')
+    await slotInRecommendation('evt-1')
+    const [url, init] = vi.mocked(global.fetch).mock.calls[0]
+    expect(String(url)).toMatch(/\/calendar\/evt-1\/slot-in$/)
+    expect(init?.method).toBe('POST')
+  })
+})
+
+describe('updateProfileSettings', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        city: 'Hamburg', interest_tags: [], about_me: null, taste_summary: null,
+        settings: { tool_toggles: {}, llm_provider: 'openai', llm_model: null,
+                    auto_recommendations_enabled: false },
+      }),
+    } as Response)
+  })
+
+  it('PUTs /profile/settings with the partial body', async () => {
+    const { updateProfileSettings } = await import('@/lib/api')
+    await updateProfileSettings({ auto_recommendations_enabled: false })
+    const [url, init] = vi.mocked(global.fetch).mock.calls[0]
+    expect(String(url)).toMatch(/\/profile\/settings$/)
+    expect(init?.method).toBe('PUT')
+    expect(JSON.parse(init!.body as string)).toEqual({ auto_recommendations_enabled: false })
+  })
+})
