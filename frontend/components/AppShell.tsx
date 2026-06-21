@@ -51,6 +51,7 @@ function EventDetailOverlayLoader({
       onClose={onClose}
       onFeedback={onFeedback}
       onSave={onSave}
+      onSlotIn={() => {}}
     />
   )
 }
