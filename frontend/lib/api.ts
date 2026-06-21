@@ -146,6 +146,19 @@ export async function removeFromCalendar(eventId: string): Promise<void> {
   });
 }
 
+export async function slotInRecommendation(eventId: string): Promise<CalendarEntry> {
+  if (MOCK) {
+    console.info('[mock] POST /calendar/', eventId, '/slot-in')
+    const detail = (await import('@/fixtures/event-detail.json')).default as EventWithContext
+    const { user_sentiment, user_comment, is_saved, calendar_kind, ...card } = detail
+    return { id: `sav_mock_${Date.now()}`, event: card, saved_at: new Date().toISOString(), kind: 'saved' }
+  }
+  return jsonFetch<CalendarEntry>(
+    `/calendar/${encodeURIComponent(eventId)}/slot-in`,
+    { method: 'POST' },
+  )
+}
+
 // ---------- Appointments ----------
 
 export async function listAppointments(from: string, to: string): Promise<AppointmentsResponse> {
@@ -236,6 +249,20 @@ export async function updateSettings(body: SettingsUpdate): Promise<UserSettings
     };
   }
   return jsonFetch<UserSettings>("/settings", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function updateProfileSettings(body: SettingsUpdate): Promise<UserProfileResponse> {
+  if (MOCK) {
+    console.info('[mock] PUT /profile/settings', body)
+    const current = (await import('@/fixtures/profile.json')).default as UserProfileResponse
+    return {
+      ...current,
+      settings: { ...current.settings, ...body } as UserSettings,
+    }
+  }
+  return jsonFetch<UserProfileResponse>('/profile/settings', {
+    method: 'PUT', body: JSON.stringify(body),
+  })
 }
 
 // ---------- Usage ----------
