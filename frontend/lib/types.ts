@@ -34,12 +34,14 @@ export interface EventWithContext extends EventCard {
   user_sentiment: Sentiment | null;
   user_comment: string | null;
   is_saved: boolean;
+  calendar_kind: 'saved' | 'recommendation' | null;
 }
 
 export interface UserSettings {
   tool_toggles: Record<string, boolean>;
   llm_provider: LLMProvider;
   llm_model: string | null;
+  auto_recommendations_enabled: boolean;
 }
 
 export interface ChatTokenUsage {
@@ -86,6 +88,7 @@ export interface CalendarEntry {
   id: string;
   event: EventCard;
   saved_at: string;
+  kind: 'saved' | 'recommendation';
 }
 
 export interface CalendarResponse {
@@ -114,6 +117,7 @@ export interface SettingsUpdate {
   tool_toggles?: Record<string, boolean>;
   llm_provider?: LLMProvider;
   llm_model?: string | null;
+  auto_recommendations_enabled?: boolean;
 }
 
 export interface ChatRequest {
