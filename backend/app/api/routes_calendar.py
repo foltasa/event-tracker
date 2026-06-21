@@ -40,7 +40,7 @@ def get_calendar(db: DbSession) -> CalendarResponse:
         .all()
     )
     entries = [
-        CalendarEntry(id=s.id, event=_event_to_card(e), saved_at=s.saved_at)
+        CalendarEntry(id=s.id, event=_event_to_card(e), saved_at=s.saved_at, kind=s.kind)
         for s, e in rows
     ]
     return CalendarResponse(entries=entries)
@@ -58,7 +58,10 @@ def save_to_calendar(payload: SaveRequest, db: DbSession) -> CalendarEntry:
         db.add(existing)
         db.commit()
         db.refresh(existing)
-    return CalendarEntry(id=existing.id, event=_event_to_card(e), saved_at=existing.saved_at)
+    return CalendarEntry(
+        id=existing.id, event=_event_to_card(e),
+        saved_at=existing.saved_at, kind=existing.kind,
+    )
 
 
 @router.delete("/{event_id}", status_code=204)

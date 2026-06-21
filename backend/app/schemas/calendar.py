@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -9,6 +10,7 @@ class CalendarEntry(_JsonBase):
     id: str
     event: EventCard
     saved_at: datetime
+    kind: Literal["saved", "recommendation"] = "saved"
 
 
 class CalendarResponse(_JsonBase):
