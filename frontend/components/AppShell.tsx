@@ -60,8 +60,10 @@ function EventDetailOverlayLoader({
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const active: 'timetable' | 'explore' =
-    pathname?.startsWith('/explore') ? 'explore' : 'timetable'
+  const active: 'timetable' | 'explore' | 'settings' =
+    pathname?.startsWith('/explore') ? 'explore'
+    : pathname?.startsWith('/settings') ? 'settings'
+    : 'timetable'
   const dateLabel = new Date().toLocaleDateString('en-DE', { month: 'long', day: 'numeric' })
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null)

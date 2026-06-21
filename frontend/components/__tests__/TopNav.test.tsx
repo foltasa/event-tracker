@@ -29,8 +29,8 @@ describe('TopNav', () => {
     expect(screen.getByText('Hamburg · June 8')).toBeInTheDocument()
   })
 
-  it('does not render a Settings link', () => {
+  it('renders Settings link', () => {
     render(<TopNav active="timetable" date="Hamburg · June 8" />)
-    expect(screen.queryByText('Settings')).not.toBeInTheDocument()
+    expect(screen.getByText('Settings')).toBeInTheDocument()
   })
 })
