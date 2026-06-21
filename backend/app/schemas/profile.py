@@ -25,3 +25,4 @@ class SettingsUpdate(_JsonBase):
     tool_toggles: dict[str, bool] | None = None
     llm_provider: LLMProvider | None = None
     llm_model: str | None = None
+    auto_recommendations_enabled: bool | None = None
