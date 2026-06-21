@@ -112,13 +112,14 @@ function EventChat({ eventId, onCardClick }: { eventId: string; onCardClick: (id
 }
 
 function OverlayContent({ event, justification, onClose, onFeedback, onSave, onSlotIn }: Props) {
-  const { isOptimisticallySaved, optimisticSentimentFor, openOverlay } = useAppShell()
+  const { isOptimisticallySaved, optimisticSentimentFor, optimisticCalendarKindFor, openOverlay } = useAppShell()
   const optSent = optimisticSentimentFor(event.id)
   const sentiment: Sentiment | null = optSent !== undefined ? optSent : (event.user_sentiment ?? null)
   const optSaved = isOptimisticallySaved(event.id)
   const isSaved = optSaved !== undefined ? optSaved : event.is_saved
+  const optKind = optimisticCalendarKindFor(event.id)
   const calendarKind: 'saved' | 'recommendation' | null =
-    event.calendar_kind ?? (isSaved ? 'saved' : null)
+    optKind !== undefined ? optKind : (event.calendar_kind ?? (isSaved ? 'saved' : null))
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }

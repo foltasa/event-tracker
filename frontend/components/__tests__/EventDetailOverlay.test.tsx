@@ -12,6 +12,7 @@ vi.mock('@/components/AppShell', () => ({
   useAppShell: vi.fn(() => ({
     isOptimisticallySaved: vi.fn(() => undefined),
     optimisticSentimentFor: vi.fn(() => undefined),
+    optimisticCalendarKindFor: vi.fn(() => undefined),
     openOverlay: vi.fn(),
   })),
 }))
