@@ -18,7 +18,14 @@ export default function EventBlock({
   const heightPx = Math.max(20, ((endMinutes - item.startMinutes!) / 60) * HOUR_PX)
   const widthPct = 100 / item.columnCount
   const leftPct = item.column * widthPct
-  const borderColor = item.kind === 'event' ? 'border-accent-gold' : 'border-text-secondary'
+
+  const isRec = item.kind === 'recommendation'
+  const borderColor =
+    isRec ? 'border-text-muted' :
+    item.kind === 'event' ? 'border-accent-gold' : 'border-text-secondary'
+  const bgColor = isRec ? 'bg-gray-100' : 'bg-white'
+  const titleClass = isRec ? 'text-text-secondary' : 'text-text-primary'
+
   return (
     <button
       data-testid={`event-block-${item.id}`}
@@ -28,9 +35,14 @@ export default function EventBlock({
         top: startPx, height: heightPx,
         left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
       }}
-      className={`absolute z-10 text-left rounded-md bg-white border border-border border-l-[3px] ${borderColor} px-2 py-1 overflow-hidden hover:shadow-sm`}
+      className={`absolute z-10 text-left rounded-md ${bgColor} border border-border border-l-[3px] ${borderColor} px-2 py-1 overflow-hidden hover:shadow-sm`}
     >
-      <p className="text-[11px] font-semibold text-text-primary truncate">{item.title}</p>
+      {isRec && (
+        <p className="text-[9px] uppercase tracking-wider font-semibold text-accent-gold leading-none mb-0.5">
+          Recommendation:
+        </p>
+      )}
+      <p className={`text-[11px] font-semibold truncate ${titleClass}`}>{item.title}</p>
       <p className="text-[10px] text-text-muted">
         {fmtTime(item.startMinutes!)}{item.endMinutes != null ? ` – ${fmtTime(item.endMinutes)}` : ''}
       </p>
