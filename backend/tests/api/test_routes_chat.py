@@ -7,7 +7,7 @@ import pytest
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.db.models import ChatMessage, User
+from app.db.models import ChatMessage, Event, SavedEvent, User
 
 
 def _stub_agent_state(agent) -> None:
@@ -313,3 +313,139 @@ def test_delete_chat_history_clears_checkpoint(client, user, db_session, monkeyp
     res = client.delete("/chat/history?session_id=demo-1")
     assert res.status_code == 204
     assert called_with == ["demo-1"]
+
+
+def _seed_events(db_session, ids: list[str]) -> None:
+    for i, eid in enumerate(ids):
+        db_session.add(Event(
+            id=eid, external_id=f"x{i}", source="eventbrite",
+            title=f"t{i}", category="music", source_url=f"http://{eid}",
+            start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc),
+        ))
+    db_session.commit()
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_persists_recommendations_from_event_refs(
+    mock_get_agent, client, user, db_session,
+):
+    _seed_events(db_session, ["e1", "e2"])
+    fake_agent = MagicMock()
+    _stub_agent_state(fake_agent)
+
+    async def fake_astream(*args, **kwargs):
+        yield (
+            AIMessage(
+                content="Try Jazz [event:e1] or Theatre [event:e2].",
+                id="m1",
+                response_metadata={"finish_reason": "stop"},
+            ),
+            {"langgraph_node": "agent"},
+        )
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "what?"}) as r:
+        b"".join(r.iter_bytes())
+
+    rows = db_session.query(SavedEvent).filter_by(user_id="local").all()
+    assert {(r.event_id, r.kind) for r in rows} == {
+        ("e1", "recommendation"), ("e2", "recommendation"),
+    }
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_skips_recommendations_when_setting_disabled(
+    mock_get_agent, client, user, db_session,
+):
+    _seed_events(db_session, ["e1"])
+    u = db_session.query(User).filter_by(id="local").one()
+    u.settings = {"auto_recommendations_enabled": False}
+    db_session.commit()
+
+    fake_agent = MagicMock()
+    _stub_agent_state(fake_agent)
+
+    async def fake_astream(*args, **kwargs):
+        yield (AIMessage(content="Try [event:e1].", id="m1",
+                         response_metadata={"finish_reason": "stop"}),
+               {"langgraph_node": "agent"})
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "?"}) as r:
+        b"".join(r.iter_bytes())
+
+    assert db_session.query(SavedEvent).count() == 0
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_skips_unknown_event_ids(mock_get_agent, client, user, db_session):
+    _seed_events(db_session, ["e1"])
+    fake_agent = MagicMock()
+    _stub_agent_state(fake_agent)
+
+    async def fake_astream(*args, **kwargs):
+        yield (AIMessage(content="See [event:e1] and [event:ghost].", id="m1",
+                         response_metadata={"finish_reason": "stop"}),
+               {"langgraph_node": "agent"})
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "?"}) as r:
+        b"".join(r.iter_bytes())
+
+    rows = db_session.query(SavedEvent).all()
+    assert [r.event_id for r in rows] == ["e1"]
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_does_not_downgrade_already_saved_event(
+    mock_get_agent, client, user, db_session,
+):
+    _seed_events(db_session, ["e1"])
+    db_session.add(SavedEvent(id="pre", user_id="local", event_id="e1", kind="saved"))
+    db_session.commit()
+
+    fake_agent = MagicMock()
+    _stub_agent_state(fake_agent)
+
+    async def fake_astream(*args, **kwargs):
+        yield (AIMessage(content="[event:e1]", id="m1",
+                         response_metadata={"finish_reason": "stop"}),
+               {"langgraph_node": "agent"})
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "?"}) as r:
+        b"".join(r.iter_bytes())
+
+    rows = db_session.query(SavedEvent).filter_by(event_id="e1").all()
+    assert len(rows) == 1
+    assert rows[0].kind == "saved"
+
+
+@patch("app.api.routes_chat.get_agent")
+def test_chat_recommendation_insert_is_idempotent_on_re_mention(
+    mock_get_agent, client, user, db_session,
+):
+    _seed_events(db_session, ["e1"])
+    fake_agent = MagicMock()
+    _stub_agent_state(fake_agent)
+
+    async def fake_astream(*args, **kwargs):
+        yield (AIMessage(content="[event:e1] [event:e1]", id="m1",
+                         response_metadata={"finish_reason": "stop"}),
+               {"langgraph_node": "agent"})
+
+    fake_agent.astream = fake_astream
+    mock_get_agent.return_value = fake_agent
+
+    with client.stream("POST", "/chat", json={"session_id": "s1", "message": "?"}) as r:
+        b"".join(r.iter_bytes())
+
+    assert db_session.query(SavedEvent).filter_by(event_id="e1").count() == 1

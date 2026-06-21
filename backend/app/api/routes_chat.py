@@ -6,6 +6,8 @@ to the `chat_messages` table for history.
 """
 import json
 import logging
+import re
+import uuid
 from datetime import date
 from typing import AsyncIterator
 
@@ -18,12 +20,51 @@ from app.agent.prompts import build_conversational_prompt
 from app.agent.runtime import clear_session_checkpoint, heal_orphan_tool_calls
 from app.agent.turn_budget import set_turn_budget
 from app.api.deps import DbSession
-from app.db.models import ChatMessage, User
+from app.db.models import ChatMessage, Event, SavedEvent, User
 from app.schemas.chat import ChatMessageResponse, ChatRequest
 from app.schemas.common import ChatTokenUsage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
+
+_EVENT_REF_RE = re.compile(r"\[event:([^\]]+)\]")
+
+
+def _persist_recommendations(db, user_id: str, full_text: str) -> None:
+    """Scrape [event:ID] refs from the assistant's final answer and insert
+    a recommendation row for each. Idempotent: skips events already in the
+    calendar (saved or recommendation), skips unknown IDs, no-ops when the
+    user disabled the feature."""
+    user = db.query(User).filter_by(id=user_id).one_or_none()
+    if user is None:
+        return
+    if not (user.settings or {}).get("auto_recommendations_enabled", True):
+        return
+    ids = list(dict.fromkeys(_EVENT_REF_RE.findall(full_text)))
+    if not ids:
+        return
+    existing_event_ids = {
+        row.id for row in db.query(Event.id).filter(Event.id.in_(ids)).all()
+    }
+    already_in_calendar = {
+        row.event_id for row in db.query(SavedEvent.event_id)
+        .filter(SavedEvent.user_id == user_id, SavedEvent.event_id.in_(ids))
+        .all()
+    }
+    added = False
+    for eid in ids:
+        if eid not in existing_event_ids or eid in already_in_calendar:
+            continue
+        db.add(SavedEvent(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            event_id=eid,
+            kind="recommendation",
+        ))
+        added = True
+    if added:
+        db.commit()
+
 
 _agent_singleton = None
 
@@ -165,6 +206,10 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
     if full_text:
         record_message(db, payload.session_id, user_id, "assistant", full_text)
         db.commit()
+        try:
+            _persist_recommendations(db, user_id, full_text)
+        except Exception:
+            logger.exception("failed to persist recommendations")
 
     yield {
         "event": "message",
