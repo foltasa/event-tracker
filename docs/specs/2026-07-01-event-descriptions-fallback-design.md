@@ -1,7 +1,7 @@
 # Event Descriptions — Ticketmaster Page Scrape + Hide-Empty Design
 
 **Date:** 2026-07-01
-**Status:** Approved (brainstorming), pending user spec review
+**Status:** Approved. Amended mid-Task 1 with Playwright decision — see "Amendment" section at the bottom.
 
 ## Problem
 
@@ -222,3 +222,33 @@ Plan Task 1: fetch one real ticketmaster.de event page, save the response HTML i
 - No user-facing endpoint returns an event with `description IS NULL OR description = ''`.
 - No Chroma vector points to an invisible event.
 - All new and existing tests pass.
+
+---
+
+## Amendment (2026-07-01) — Playwright required for the scrape
+
+**Trigger:** During plan execution Task 1, `httpx.get` on every ticketmaster.de `/event/*` URL returned HTTP 401 with an Imperva-style JS challenge page (~5900 bytes) regardless of User-Agent, header spoofing, or cookie warmup via the homepage. The `/event/` path is pre-emptively gated by a server-side check for a JS-executed challenge token. No plain-HTTP client can bypass it.
+
+**Decision:** Use Playwright with headless Chromium to fetch event pages. Every other part of the design (extractor, backfill, hide-filter, Chroma cleanup) stays the same — only the fetch layer changes.
+
+**Impact:**
+
+- **New dependency:** `playwright` in `pyproject.toml`; operator must run `playwright install chromium` once.
+- **New module:** `backend/app/ingestion/browser.py` exposes a `PageFetcher` protocol and a `PlaywrightPageFetcher` context-manager implementation (start browser on `__enter__`, close on `__exit__`, `.fetch(url) -> str | None` returns rendered HTML or None on failure/challenge).
+- **Adapter wiring:** `TicketmasterAdapter.__init__` gains an optional `page_fetcher: PageFetcher | None` parameter. Tests inject a fake fetcher; scheduler and backfill wire a real `PlaywrightPageFetcher` around the adapter/backfill call.
+- **Ingestion cost:** Each page render takes ~2–5 s (browser navigation + wait for challenge to clear). For 340 events → ~10–25 min per full ingest. Acceptable for a nightly cron; unacceptable for on-demand calls (not currently used).
+- **Backfill cost:** ~10–25 min one-off for the 318 existing events.
+- **Risks:** Playwright process crashes → mitigate with per-page timeouts (30 s) and `.fetch` returning None on any failure. Browser dependency drift → pin Playwright version.
+
+**Extraction stays JSON-LD-first → meta-description fallback** — Task 1 recon must still confirm which is present on the rendered page.
+
+**Rate-limiting risk mitigation revised:** the 200 ms `time.sleep` between events is removed (Playwright's own navigation latency + rendering wait provides throttling). Each event still fetches only once.
+
+**Tasks affected in the plan:**
+- Task 0 (new): Add Playwright to `pyproject.toml`, `playwright install chromium`, smoke-test the browser.
+- Task 1: Rewrite fetch step to use Playwright.
+- Task 3: Introduce `PageFetcher` protocol + `PlaywrightPageFetcher`. Adapter takes a fetcher, calls `.fetch(url)` instead of `self._client.get(source_url)`.
+- Task 7 (scheduler wiring — was implicit): explicitly wrap the adapter call in a `PlaywrightPageFetcher` context manager.
+- Task 8 (backfill): use `PlaywrightPageFetcher` context manager instead of httpx.
+
+Original tasks 2, 4, 5, 6, 9, 10 are unaffected.

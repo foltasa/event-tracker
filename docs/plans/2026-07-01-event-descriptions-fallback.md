@@ -6,9 +6,9 @@
 
 **Architecture:** New shared module `app.ingestion.ticketmaster_page` provides one HTML-extraction function used by both (a) an inline fallback added to `TicketmasterAdapter._parse`, and (b) a one-off backfill script. A new `visible_events_filter()` helper in `app.db.models.event` is applied at every user-facing `Event` query site and to the Chroma embedding feed, so events without descriptions are hidden from the UI, agent, and vector store.
 
-**Tech Stack:** Python 3.11, httpx, BeautifulSoup 4, SQLAlchemy 2.x, pytest — no new dependencies.
+**Tech Stack:** Python 3.11, Playwright (headless Chromium), BeautifulSoup 4, SQLAlchemy 2.x, pytest.
 
-**Spec:** `docs/specs/2026-07-01-event-descriptions-fallback-design.md`.
+**Spec:** `docs/specs/2026-07-01-event-descriptions-fallback-design.md`. **Note the "Amendment" section at the bottom** — the original httpx-based scrape was blocked by ticketmaster.de's JS challenge; Playwright is the chosen bypass.
 
 ---
 
@@ -16,18 +16,20 @@
 
 | Action | File | Responsibility |
 |---|---|---|
+| Modify | `backend/pyproject.toml` | Add `playwright` dep |
+| Create | `backend/app/ingestion/browser.py` | `PageFetcher` protocol + `PlaywrightPageFetcher` context manager |
 | Create | `backend/app/ingestion/ticketmaster_page.py` | Pure HTML → description text extraction |
-| Modify | `backend/app/ingestion/ticketmaster.py` | Add page-scrape fallback into `_parse` chain |
-| Create | `backend/scripts/backfill_tm_descriptions.py` | One-off backfill for existing DB rows |
+| Modify | `backend/app/ingestion/ticketmaster.py` | Add page-fetch fallback into `_parse` chain via injected `PageFetcher` |
+| Modify | `backend/app/ingestion/scheduler.py` | Apply visible filter; wrap adapters with a `PlaywrightPageFetcher` for the run |
+| Create | `backend/scripts/backfill_tm_descriptions.py` | One-off backfill using `PlaywrightPageFetcher` |
 | Modify | `backend/app/db/models/event.py` | Add `visible_events_filter()` helper |
 | Modify | `backend/app/api/routes_events.py` | Apply filter to list endpoint (leave detail route alone) |
-| Modify | `backend/app/api/routes_calendar.py` | (No changes to save/unsave — see spec Part C exclusions) — no query change needed here |
 | Modify | `backend/app/agent/tools.py` | Apply filter to `search_events`, `get_recommendations` |
-| Modify | `backend/app/ingestion/scheduler.py` | Apply filter to `embed_new_events`; extend stale-vector sweep |
 | Create | `backend/tests/fixtures/__init__.py` | Empty package marker |
-| Create | `backend/tests/fixtures/ticketmaster_page_sample.html` | Real ticketmaster.de page HTML (from recon) |
+| Create | `backend/tests/fixtures/ticketmaster_page_sample.html` | Real rendered ticketmaster.de page HTML |
+| Create | `backend/tests/ingestion/test_browser.py` | Smoke test for `PlaywrightPageFetcher` (marked slow, opt-in) |
 | Create | `backend/tests/ingestion/test_ticketmaster_page.py` | Unit tests for `extract_description` |
-| Modify | `backend/tests/ingestion/test_ticketmaster.py` | Tests for page-scrape fallback in adapter |
+| Modify | `backend/tests/ingestion/test_ticketmaster.py` | Tests for page-fetch fallback in adapter |
 | Create | `backend/tests/db/test_visible_events_filter.py` | Unit tests for the filter helper |
 | Create | `backend/tests/scripts/test_backfill_tm_descriptions.py` | Integration test for backfill script |
 | Modify | `backend/tests/ingestion/test_scheduler.py` | Verify `embed_new_events` skips description-less events |
@@ -38,13 +40,68 @@ Note on `routes_calendar.py`: the calendar reads `SavedEvent JOIN Event WHERE Sa
 
 ---
 
-## Task 1 — Recon: capture a real ticketmaster.de event page and identify the description selector
+## Task 0 — Install Playwright and Chromium
+
+**Files:**
+- Modify: `backend/pyproject.toml`
+
+- [ ] **Step 0.1: Add Playwright to `pyproject.toml`**
+
+In `backend/pyproject.toml`, in the `dependencies` list, append after `"tldextract>=5.1.0",`:
+
+```toml
+    "playwright>=1.44.0",
+```
+
+- [ ] **Step 0.2: Install the package**
+
+```
+cd backend
+pip install -e .
+```
+
+Expected: `playwright` installed. If pip is slow, `pip install playwright>=1.44.0` alone also works.
+
+- [ ] **Step 0.3: Install the Chromium browser binary**
+
+```
+python -m playwright install chromium
+```
+
+Expected: downloads Chromium (~150 MB). Progress bar to completion.
+
+- [ ] **Step 0.4: Smoke-test the browser**
+
+```
+python -c "
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    b = p.chromium.launch(headless=True)
+    page = b.new_page()
+    page.goto('https://example.com', timeout=15000)
+    print('title:', page.title())
+    b.close()
+"
+```
+
+Expected: prints `title: Example Domain`.
+
+- [ ] **Step 0.5: Commit**
+
+```
+git add backend/pyproject.toml
+git commit -m "chore(deps): add playwright for ticketmaster.de page rendering"
+```
+
+---
+
+## Task 1 — Recon: capture a real ticketmaster.de event page (via Playwright) and identify the description selector
 
 **Files:**
 - Create: `backend/tests/fixtures/__init__.py`
 - Create: `backend/tests/fixtures/ticketmaster_page_sample.html`
 
-The description selector is not knowable from source alone. This task captures one real page as the fixture and records the selector for use in Task 2.
+The description selector is not knowable from source alone. Use Playwright (installed in Task 0) to fetch a real rendered page and inspect it.
 
 - [ ] **Step 1.1: Pick an event URL from the DB**
 
@@ -61,26 +118,32 @@ Pick one row and note the `source_url`. Prefer a music event since they dominate
 
 Create `backend/tests/fixtures/__init__.py` as an empty file.
 
-- [ ] **Step 1.3: Download the page HTML**
+- [ ] **Step 1.3: Render the page with Playwright and save the HTML**
 
 Run (replace `<URL>` with the chosen source_url):
 
 ```
 python -c "
-import httpx, pathlib
+from playwright.sync_api import sync_playwright
+import pathlib
 url = '<URL>'
-r = httpx.get(url, headers={'User-Agent': 'EventTrackerBot/1.0'}, follow_redirects=True, timeout=15)
-r.raise_for_status()
-pathlib.Path('tests/fixtures/ticketmaster_page_sample.html').write_text(r.text, encoding='utf-8')
-print('saved', len(r.text), 'chars, status', r.status_code)
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    ctx = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+    page = ctx.new_page()
+    page.goto(url, timeout=30000, wait_until='networkidle')
+    # Additional wait for the challenge to clear if present.
+    page.wait_for_timeout(2000)
+    html = page.content()
+    browser.close()
+pathlib.Path('tests/fixtures/ticketmaster_page_sample.html').write_text(html, encoding='utf-8')
+print('saved', len(html), 'chars')
 "
 ```
 
-Expected: prints a byte count and status 200. If the response is < 5000 chars it's likely a bot-detection stub — try a different event URL or add `follow_redirects=True`.
+Expected: prints `saved N chars` where N > 30000. If N is small (~6000), the challenge did not clear — try `wait_until='load'` and a longer `page.wait_for_timeout(5000)`.
 
 - [ ] **Step 1.4: Identify the description block**
-
-Open `backend/tests/fixtures/ticketmaster_page_sample.html` in an editor. Search for a marketing-style description sentence you'd expect on the page — try candidate selectors in this order:
 
 ```
 python -c "
@@ -108,18 +171,18 @@ for sel in ['div.about-event', 'div.event-description', 'div.eds-text--content',
 "
 ```
 
-Record which selector produced the description. **Decision rule:** prefer JSON-LD (`<script type="application/ld+json">` with `@type` = `Event` / `MusicEvent` / `TheaterEvent` / `SportsEvent`, and a `description` field) if present — it's structured data and less likely to change. Fall back to `<meta name="description">` if not.
+Record which selector produced the description. **Decision rule:** prefer JSON-LD if present (structured, less likely to change). Fall back to `<meta name="description">`.
 
 - [ ] **Step 1.5: Commit the fixture**
 
 ```
 git add backend/tests/fixtures/__init__.py backend/tests/fixtures/ticketmaster_page_sample.html
-git commit -m "test(fixtures): capture real ticketmaster.de event page for description extraction"
+git commit -m "test(fixtures): capture real ticketmaster.de event page via playwright"
 ```
 
 - [ ] **Step 1.6: Record the selector decision**
 
-Note it here as a comment in your session notes; Task 2 hardcodes it. If JSON-LD was present with description text, Task 2 uses JSON-LD-first with meta-description fallback. If only meta-description was present, Task 2 uses meta-only.
+Report in your final message which selector was found. Task 2 hardcodes it. If both JSON-LD and meta are present, extractor tries JSON-LD first. If neither is present, escalate BLOCKED — the strategy hinges on this fixture.
 
 ---
 
@@ -305,15 +368,144 @@ git commit -m "feat(ticketmaster): add page-HTML description extractor"
 
 ---
 
-## Task 3 — Wire the page-scrape fallback into `TicketmasterAdapter`
+## Task 3 — `PageFetcher` protocol + Playwright impl + wire into `TicketmasterAdapter`
 
 **Files:**
+- Create: `backend/app/ingestion/browser.py`
 - Modify: `backend/app/ingestion/ticketmaster.py`
+- Create: `backend/tests/ingestion/test_browser.py`
 - Modify: `backend/tests/ingestion/test_ticketmaster.py`
 
-Add `_fetch_page_description(source_url)` and extend the `_parse` fallback chain. Adds one HTTP request per event that lacks a description after the detail-endpoint check.
+Two moving parts: the `PageFetcher` abstraction (allows testing without a real browser) and the adapter wiring that calls it as a fallback.
 
-- [ ] **Step 3.1: Write failing tests for the page-scrape fallback**
+- [ ] **Step 3.1: Create `browser.py` with the protocol and Playwright impl**
+
+Create `backend/app/ingestion/browser.py`:
+
+```python
+"""Headless-browser page fetching for sites that block plain-HTTP clients.
+
+`PageFetcher` is the interface adapters depend on. `PlaywrightPageFetcher`
+is the concrete implementation using headless Chromium — used as a context
+manager so the browser process is started once per ingestion run and
+guaranteed to close on exit. Tests inject a fake `PageFetcher`."""
+import logging
+from typing import Protocol
+
+logger = logging.getLogger(__name__)
+
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
+_NAV_TIMEOUT_MS = 30000
+_POST_NAV_WAIT_MS = 2000
+
+
+class PageFetcher(Protocol):
+    def fetch(self, url: str) -> str | None: ...
+
+
+class PlaywrightPageFetcher:
+    """Context-managed Playwright fetcher. Reuses one browser + context across calls.
+
+    Usage:
+        with PlaywrightPageFetcher() as fetcher:
+            html = fetcher.fetch(url)
+    """
+
+    def __init__(self):
+        self._pw = None
+        self._browser = None
+        self._context = None
+
+    def __enter__(self):
+        from playwright.sync_api import sync_playwright
+        self._pw = sync_playwright().start()
+        self._browser = self._pw.chromium.launch(headless=True)
+        self._context = self._browser.new_context(user_agent=_USER_AGENT)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._context is not None:
+            self._context.close()
+        if self._browser is not None:
+            self._browser.close()
+        if self._pw is not None:
+            self._pw.stop()
+
+    def fetch(self, url: str) -> str | None:
+        if not url or self._context is None:
+            return None
+        page = self._context.new_page()
+        try:
+            page.goto(url, timeout=_NAV_TIMEOUT_MS, wait_until="networkidle")
+            page.wait_for_timeout(_POST_NAV_WAIT_MS)
+            return page.content()
+        except Exception:
+            logger.warning("PlaywrightPageFetcher: fetch failed for %s", url)
+            return None
+        finally:
+            page.close()
+```
+
+- [ ] **Step 3.2: Add an opt-in smoke test for the real browser**
+
+Create `backend/tests/ingestion/test_browser.py`:
+
+```python
+"""Smoke test for PlaywrightPageFetcher. Requires network + `playwright install chromium`.
+
+Marked `slow`: skipped by default. Run with `pytest -m slow` when validating."""
+import pytest
+
+from app.ingestion.browser import PlaywrightPageFetcher
+
+
+@pytest.mark.slow
+def test_playwright_fetcher_renders_example_com():
+    with PlaywrightPageFetcher() as fetcher:
+        html = fetcher.fetch("https://example.com")
+    assert html is not None
+    assert "Example Domain" in html
+
+
+@pytest.mark.slow
+def test_playwright_fetcher_returns_none_on_bad_url():
+    with PlaywrightPageFetcher() as fetcher:
+        html = fetcher.fetch("http://this-domain-does-not-resolve-abc123.invalid")
+    assert html is None
+```
+
+Register the `slow` marker. Append to `backend/pyproject.toml`'s `[tool.pytest.ini_options]` section:
+
+```toml
+markers = [
+    "slow: marks tests that require network / real browser (deselect with -m 'not slow')",
+]
+```
+
+Update the default selection to skip slow tests: change:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+```
+
+to:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: marks tests that require network / real browser (deselect with -m 'not slow')",
+]
+```
+
+- [ ] **Step 3.3: Write failing tests for the page-fetch fallback in the adapter**
 
 Append to `backend/tests/ingestion/test_ticketmaster.py`:
 
@@ -329,112 +521,124 @@ _PAGE_HTML_WITH_DESC = """
 _PAGE_HTML_NO_DESC = "<html><head></head><body></body></html>"
 
 
-class _FakeClientWithPages:
-    """URL-aware fake supporting list JSON, detail JSON, and ticketmaster.de page HTML."""
+class _FakePageFetcher:
+    """Stand-in for PageFetcher — maps URL -> HTML, records calls."""
 
-    def __init__(self, list_pages, detail_map=None, page_map=None):
-        self._list_iter = iter(list_pages)
-        self._detail_map = detail_map or {}
+    def __init__(self, page_map: dict[str, str] | None = None):
         self._page_map = page_map or {}
-        self.page_calls: list[str] = []
+        self.calls: list[str] = []
 
-    def get(self, url: str, **kwargs) -> httpx.Response:
-        if url.endswith("/events.json"):
-            data = next(self._list_iter)
-            return httpx.Response(200, json=data, request=httpx.Request("GET", url))
-        if "app.ticketmaster.com" in url:
-            event_id = url.rsplit("/", 1)[-1].removesuffix(".json")
-            data = self._detail_map.get(event_id, {})
-            return httpx.Response(200, json=data, request=httpx.Request("GET", url))
-        # Otherwise it's a ticketmaster.de page URL.
-        self.page_calls.append(url)
-        html = self._page_map.get(url, "")
-        status = 200 if url in self._page_map else 404
-        return httpx.Response(status, text=html, request=httpx.Request("GET", url))
+    def fetch(self, url: str) -> str | None:
+        self.calls.append(url)
+        return self._page_map.get(url)
 
 
 def test_description_from_ticketmaster_de_page_when_detail_empty():
-    client = _FakeClientWithPages(
-        [_SINGLE_PAGE],
-        detail_map={},
-        page_map={_EVENT_1["url"]: _PAGE_HTML_WITH_DESC},
+    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_WITH_DESC})
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([_SINGLE_PAGE]),
+        page_fetcher=fetcher,
     )
-    adapter = TicketmasterAdapter(client=client)
     events = list(adapter.fetch())
     assert events[0].description == "From ticketmaster.de page."
-    assert client.page_calls == [_EVENT_1["url"]]
+    assert fetcher.calls == [_EVENT_1["url"]]
 
 
-def test_page_scrape_not_called_when_detail_has_description():
-    client = _FakeClientWithPages(
-        [_SINGLE_PAGE],
-        detail_map={"tm_001": _DETAIL_WITH_INFO},
-        page_map={_EVENT_1["url"]: _PAGE_HTML_WITH_DESC},
+def test_page_fetch_not_called_when_detail_has_description():
+    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_WITH_DESC})
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_WITH_INFO}),
+        page_fetcher=fetcher,
     )
-    adapter = TicketmasterAdapter(client=client)
     events = list(adapter.fetch())
     assert events[0].description == "An evening of hard rock classics."
-    assert client.page_calls == []
+    assert fetcher.calls == []
 
 
-def test_description_none_when_page_scrape_finds_nothing():
-    client = _FakeClientWithPages(
-        [_SINGLE_PAGE],
-        detail_map={},
-        page_map={_EVENT_1["url"]: _PAGE_HTML_NO_DESC},
+def test_description_none_when_page_fetch_returns_no_description_content():
+    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_NO_DESC})
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([_SINGLE_PAGE]),
+        page_fetcher=fetcher,
     )
-    adapter = TicketmasterAdapter(client=client)
     events = list(adapter.fetch())
     assert events[0].description is None
 
 
-def test_description_none_when_page_scrape_http_error():
-    client = _FakeClientWithPages(
-        [_SINGLE_PAGE],
-        detail_map={},
-        page_map={},  # 404 for any page URL
+def test_description_none_when_page_fetcher_returns_none():
+    fetcher = _FakePageFetcher()  # returns None for any url
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([_SINGLE_PAGE]),
+        page_fetcher=fetcher,
     )
-    adapter = TicketmasterAdapter(client=client)
     events = list(adapter.fetch())
     assert len(events) == 1
     assert events[0].description is None
+
+
+def test_no_page_fetch_when_page_fetcher_is_none():
+    """Existing default behavior — adapter without page_fetcher does not error."""
+    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE]))
+    events = list(adapter.fetch())
+    assert events[0].description is None
 ```
 
-- [ ] **Step 3.2: Run new tests to confirm they fail**
-
-Run:
+- [ ] **Step 3.4: Run new tests to confirm they fail**
 
 ```
-python -m pytest tests/ingestion/test_ticketmaster.py::test_description_from_ticketmaster_de_page_when_detail_empty \
-    tests/ingestion/test_ticketmaster.py::test_page_scrape_not_called_when_detail_has_description \
-    tests/ingestion/test_ticketmaster.py::test_description_none_when_page_scrape_finds_nothing \
-    tests/ingestion/test_ticketmaster.py::test_description_none_when_page_scrape_http_error -v
+cd backend
+python -m pytest tests/ingestion/test_ticketmaster.py -k "page_fetch or ticketmaster_de_page or fetcher_returns_none or fetcher_is_none" -v
 ```
 
-Expected: 4 FAIL.
+Expected: FAIL — `TicketmasterAdapter.__init__` does not accept `page_fetcher`.
 
-Note: the first test using `_FakeClientWithPages` will surface a signature mismatch on `_FakeClient` if used incorrectly. The tests use a NEW class `_FakeClientWithPages`, so existing tests using `_FakeClient` are unaffected.
+- [ ] **Step 3.5: Implement the adapter changes**
 
-- [ ] **Step 3.3: Implement the fallback in the adapter**
+In `backend/app/ingestion/ticketmaster.py`:
 
-Replace the `_parse` method and add `_fetch_page_description` in `backend/app/ingestion/ticketmaster.py`. After the existing `_fetch_detail` method (around line 96), insert:
+Add to top imports:
+
+```python
+from app.ingestion.browser import PageFetcher
+from app.ingestion.ticketmaster_page import extract_description
+```
+
+Change `TicketmasterAdapter.__init__` from:
+
+```python
+    def __init__(self, client: httpx.Client | None = None):
+        self._client = client or httpx.Client(timeout=15)
+        self._api_key = settings.ticketmaster_api_key
+```
+
+to:
+
+```python
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        page_fetcher: PageFetcher | None = None,
+    ):
+        self._client = client or httpx.Client(timeout=15)
+        self._api_key = settings.ticketmaster_api_key
+        self._page_fetcher = page_fetcher
+```
+
+Add a new method after `_fetch_detail`:
 
 ```python
     def _fetch_page_description(self, source_url: str) -> str | None:
-        """Fallback: scrape the public ticketmaster.de event page."""
-        if not source_url:
+        """Fallback: fetch the public ticketmaster.de event page via the injected
+        PageFetcher and extract its description."""
+        if not source_url or self._page_fetcher is None:
             return None
-        try:
-            resp = self._client.get(source_url)
-            resp.raise_for_status()
-        except Exception:
-            logger.warning("TM page-scrape failed for %s", source_url)
+        html = self._page_fetcher.fetch(source_url)
+        if not html:
             return None
-        from app.ingestion.ticketmaster_page import extract_description
-        return extract_description(resp.text)
+        return extract_description(html)
 ```
 
-Then modify `_parse` to extend the fallback chain. Replace the description-computation block (currently lines 113-117):
+Replace the description-computation block in `_parse` (currently lines 113-117):
 
 ```python
             description: str | None = None
@@ -456,21 +660,19 @@ with:
                 description = self._fetch_page_description(raw.get("url", ""))
 ```
 
-- [ ] **Step 3.4: Run all TM tests**
-
-Run:
+- [ ] **Step 3.6: Run all TM adapter tests**
 
 ```
 python -m pytest tests/ingestion/test_ticketmaster.py -v
 ```
 
-Expected: all previously-passing tests still pass; 4 new tests now pass. Total: 16 tests pass.
+Expected: all previously-passing tests still pass; 5 new tests now pass.
 
-- [ ] **Step 3.5: Commit**
+- [ ] **Step 3.7: Commit**
 
 ```
-git add backend/app/ingestion/ticketmaster.py backend/tests/ingestion/test_ticketmaster.py
-git commit -m "feat(ticketmaster): add page-scrape fallback for description"
+git add backend/app/ingestion/browser.py backend/app/ingestion/ticketmaster.py backend/tests/ingestion/test_browser.py backend/tests/ingestion/test_ticketmaster.py backend/pyproject.toml
+git commit -m "feat(ticketmaster): page-fetch fallback via injected PageFetcher (playwright impl)"
 ```
 
 ---
@@ -876,13 +1078,16 @@ git commit -m "feat(agent): hide events without description from search and reco
 
 ---
 
-## Task 7 — Apply filter to the embedding feed (`scheduler.embed_new_events`)
+## Task 7 — Apply visible filter to embedding feed AND wire `PlaywrightPageFetcher` into ingestion
 
 **Files:**
 - Modify: `backend/app/ingestion/scheduler.py`
 - Modify: `backend/tests/ingestion/test_scheduler.py`
 
-Two changes: only embed events matching `visible_events_filter()`, and update the stale-sweep keep-set to match — so Chroma never contains vectors for hidden events.
+Three changes to `scheduler.py`:
+1. Only embed events matching `visible_events_filter()`.
+2. Update the stale-sweep keep-set to match (so Chroma never contains vectors for hidden events).
+3. Wrap the ingestion loop in a `PlaywrightPageFetcher` context manager and pass the fetcher into `TicketmasterAdapter`.
 
 - [ ] **Step 7.1: Inspect existing scheduler tests**
 
@@ -979,12 +1184,13 @@ python -m pytest tests/ingestion/test_scheduler.py::test_embed_new_events_skips_
 
 Expected: 2 FAIL.
 
-- [ ] **Step 7.4: Implement**
+- [ ] **Step 7.4: Implement embedding-filter changes**
 
-In `backend/app/ingestion/scheduler.py`, add the import (after existing `Event` import):
+In `backend/app/ingestion/scheduler.py`, add the imports (after existing `Event` import):
 
 ```python
 from app.db.models.event import visible_events_filter
+from app.ingestion.browser import PlaywrightPageFetcher
 ```
 
 Replace the `embed_new_events` function body. Current version (lines 20-51):
@@ -1045,21 +1251,150 @@ def embed_new_events(session: Session) -> None:
     logger.info("embed_new_events: embedded %d events", len(payload))
 ```
 
-- [ ] **Step 7.5: Run tests**
+- [ ] **Step 7.5: Wire PlaywrightPageFetcher into `run_ingestion`**
 
-Run:
+Change `_default_adapters()` (line 54-55) from:
+
+```python
+def _default_adapters() -> list[SourceAdapter]:
+    return [TicketmasterAdapter(), HamburgScraper()]
+```
+
+to accept a page fetcher:
+
+```python
+def _default_adapters(page_fetcher=None) -> list[SourceAdapter]:
+    return [TicketmasterAdapter(page_fetcher=page_fetcher), HamburgScraper()]
+```
+
+Change `run_ingestion` body. Find the section (around line 71-83):
+
+```python
+    try:
+        all_events = []
+        for adapter in adapters:
+            try:
+                batch = list(adapter.fetch())
+                all_events.extend(batch)
+                logger.info("%s: fetched %d events", adapter.name, len(batch))
+            except Exception:
+                logger.exception("%s: fetch failed, skipping", adapter.name)
+
+        report = upsert_events(session, all_events)
+        deactivate_past_events(session)
+        embed_new_events(session)
+```
+
+Change the `if adapters is None:` block above it (around line 63-64) from:
+
+```python
+    if adapters is None:
+        adapters = _default_adapters()
+```
+
+to leave that unset and wrap the fetch loop in the page fetcher. The full new `run_ingestion` body block becomes:
+
+```python
+    own_session = session is None
+    if own_session:
+        run_migrations()
+        session = SessionLocal()
+
+    try:
+        with PlaywrightPageFetcher() as page_fetcher:
+            active_adapters = adapters if adapters is not None else _default_adapters(page_fetcher=page_fetcher)
+
+            all_events = []
+            for adapter in active_adapters:
+                try:
+                    batch = list(adapter.fetch())
+                    all_events.extend(batch)
+                    logger.info("%s: fetched %d events", adapter.name, len(batch))
+                except Exception:
+                    logger.exception("%s: fetch failed, skipping", adapter.name)
+
+        report = upsert_events(session, all_events)
+        deactivate_past_events(session)
+        embed_new_events(session)
+```
+
+Rationale: adapters passed by tests already have their own fetcher (or none) — respect the injection. When called with no `adapters` argument (production), we build the default with the browser attached, and close the browser as soon as the fetch loop finishes.
+
+- [ ] **Step 7.6: Add a test that adapters injection still works and does NOT start Playwright**
+
+Append to `backend/tests/ingestion/test_scheduler.py`:
+
+```python
+def test_run_ingestion_with_explicit_adapters_does_not_start_playwright(db_session, monkeypatch):
+    """When tests inject adapters, run_ingestion must not touch Playwright."""
+    from app.ingestion import scheduler
+
+    started = {"count": 0}
+
+    class _Sentinel:
+        def __enter__(self):
+            started["count"] += 1
+            raise AssertionError("Playwright should not start when adapters are injected")
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(scheduler, "PlaywrightPageFetcher", _Sentinel)
+
+    # With adapters=[_OkAdapter()], PlaywrightPageFetcher context manager is still
+    # entered (it wraps the whole fetch loop) — but the adapters passed in do not
+    # need it. The current design DOES enter the context manager. To make this
+    # opt-out for tests, `run_ingestion` should skip the context entirely when
+    # `adapters is not None`.
+    # (This test drives that requirement.)
+    scheduler.run_ingestion(adapters=[_OkAdapter()], session=db_session)
+    assert started["count"] == 0
+```
+
+This test exposes the fact that even with injected adapters, the current `run_ingestion` enters the Playwright context. To make the test pass, rewrite the `try:` block to only enter the context manager when adapters are default:
+
+```python
+    try:
+        if adapters is None:
+            with PlaywrightPageFetcher() as page_fetcher:
+                active_adapters = _default_adapters(page_fetcher=page_fetcher)
+                all_events = _fetch_all(active_adapters)
+        else:
+            all_events = _fetch_all(adapters)
+
+        report = upsert_events(session, all_events)
+        deactivate_past_events(session)
+        embed_new_events(session)
+```
+
+Where `_fetch_all` is a small helper (extract from the loop):
+
+```python
+def _fetch_all(adapters: list[SourceAdapter]) -> list:
+    all_events = []
+    for adapter in adapters:
+        try:
+            batch = list(adapter.fetch())
+            all_events.extend(batch)
+            logger.info("%s: fetched %d events", adapter.name, len(batch))
+        except Exception:
+            logger.exception("%s: fetch failed, skipping", adapter.name)
+    return all_events
+```
+
+- [ ] **Step 7.7: Run tests**
 
 ```
 python -m pytest tests/ingestion/test_scheduler.py -v
 ```
 
-Expected: all tests pass.
+Expected: all tests pass, including the new no-Playwright-on-injection test.
 
-- [ ] **Step 7.6: Commit**
+- [ ] **Step 7.8: Commit**
 
 ```
 git add backend/app/ingestion/scheduler.py backend/tests/ingestion/test_scheduler.py
-git commit -m "feat(scheduler): embed only visible events and purge stale vectors"
+git commit -m "feat(scheduler): visible-only embeddings + PlaywrightPageFetcher for prod ingest"
 ```
 
 ---
@@ -1079,22 +1414,18 @@ Create `backend/tests/scripts/test_backfill_tm_descriptions.py`:
 ```python
 from datetime import datetime, timezone
 
-import httpx
-
 from app.db.models import Event
 from scripts import backfill_tm_descriptions
 
 
-class _FakeClient:
-    def __init__(self, page_map):
+class _FakePageFetcher:
+    def __init__(self, page_map: dict[str, str]):
         self._page_map = page_map
         self.calls: list[str] = []
 
-    def get(self, url: str, **kwargs) -> httpx.Response:
+    def fetch(self, url: str) -> str | None:
         self.calls.append(url)
-        if url not in self._page_map:
-            return httpx.Response(404, request=httpx.Request("GET", url))
-        return httpx.Response(200, text=self._page_map[url], request=httpx.Request("GET", url))
+        return self._page_map.get(url)
 
 
 def _seed(session, id_: str, description, source_url: str, source: str = "ticketmaster"):
@@ -1120,18 +1451,18 @@ def test_backfill_updates_missing_descriptions(db_session):
     _seed(db_session, "e3", "Already has one.", "https://ticketmaster.de/e3")
     _seed(db_session, "e4", None, "https://ticketmaster.de/e4", source="eventbrite")
 
-    client = _FakeClient({
+    fetcher = _FakePageFetcher({
         "https://ticketmaster.de/e1": _HTML_OK,
         "https://ticketmaster.de/e2": _HTML_OK,
         # e4 also has HTML available, but it's not TM so must not be visited
         "https://ticketmaster.de/e4": _HTML_OK,
     })
-    report = backfill_tm_descriptions.run(db_session, client=client, delay=0.0)
+    report = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
 
     assert report["scanned"] == 2   # e1, e2
     assert report["updated"] == 2
     assert report["failed"] == 0
-    assert {c for c in client.calls} == {
+    assert set(fetcher.calls) == {
         "https://ticketmaster.de/e1",
         "https://ticketmaster.de/e2",
     }
@@ -1143,11 +1474,11 @@ def test_backfill_updates_missing_descriptions(db_session):
     assert db_session.query(Event).filter_by(id="e4").one().description is None
 
 
-def test_backfill_handles_http_errors(db_session):
+def test_backfill_handles_fetch_failures(db_session):
     _seed(db_session, "e1", None, "https://ticketmaster.de/e1")
 
-    client = _FakeClient({})  # all fetches 404
-    report = backfill_tm_descriptions.run(db_session, client=client, delay=0.0)
+    fetcher = _FakePageFetcher({})  # always returns None
+    report = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
 
     assert report["scanned"] == 1
     assert report["updated"] == 0
@@ -1158,10 +1489,10 @@ def test_backfill_handles_http_errors(db_session):
 
 def test_backfill_is_idempotent(db_session):
     _seed(db_session, "e1", None, "https://ticketmaster.de/e1")
-    client = _FakeClient({"https://ticketmaster.de/e1": _HTML_OK})
+    fetcher = _FakePageFetcher({"https://ticketmaster.de/e1": _HTML_OK})
 
-    first = backfill_tm_descriptions.run(db_session, client=client, delay=0.0)
-    second = backfill_tm_descriptions.run(db_session, client=client, delay=0.0)
+    first = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
+    second = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
 
     assert first["updated"] == 1
     assert second["scanned"] == 0  # already has description on re-run
@@ -1183,34 +1514,30 @@ Expected: FAIL — module `scripts.backfill_tm_descriptions` does not exist.
 Create `backend/scripts/backfill_tm_descriptions.py`:
 
 ```python
-"""Backfill missing description for existing Ticketmaster events.
+"""Backfill missing description for existing Ticketmaster events using Playwright.
 
-Iterates every event row where source='ticketmaster' AND description is
-null or empty, fetches its public ticketmaster.de source_url, extracts the
-description via app.ingestion.ticketmaster_page.extract_description, and
-writes the result back. Idempotent: re-running only touches rows that are
-still without a description.
+Iterates every event row where source='ticketmaster' AND description is null
+or empty, renders its public ticketmaster.de source_url via a headless-Chromium
+PageFetcher, extracts the description with app.ingestion.ticketmaster_page.
+extract_description, and writes the result back. Commits after every successful
+row so partial progress is preserved. Idempotent: re-running only touches rows
+that are still without a description.
 
 Usage from backend/:  python -m scripts.backfill_tm_descriptions
 """
 from __future__ import annotations
 
 import logging
-import sys
-import time
 
-import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Event
 from app.db.session import SessionLocal
+from app.ingestion.browser import PageFetcher, PlaywrightPageFetcher
 from app.ingestion.ticketmaster_page import extract_description
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_DELAY = 0.2  # seconds between page fetches — matches ingestion adapter
-_USER_AGENT = "EventTrackerBot/1.0"
 
 
 def _missing_desc_rows(session: Session) -> list[Event]:
@@ -1222,19 +1549,11 @@ def _missing_desc_rows(session: Session) -> list[Event]:
     )
 
 
-def run(
-    session: Session,
-    client: httpx.Client | None = None,
-    delay: float = _DEFAULT_DELAY,
-) -> dict:
+def run(session: Session, page_fetcher: PageFetcher) -> dict:
     """Backfill descriptions. Commits after every successful row.
 
     Returns a report dict: {scanned, updated, failed}.
     """
-    own_client = client is None
-    if own_client:
-        client = httpx.Client(timeout=15, headers={"User-Agent": _USER_AGENT})
-
     rows = _missing_desc_rows(session)
     scanned = len(rows)
     updated = 0
@@ -1242,31 +1561,19 @@ def run(
 
     logger.info("backfill: %d ticketmaster events missing description", scanned)
 
-    try:
-        for i, row in enumerate(rows, start=1):
-            desc: str | None = None
-            try:
-                resp = client.get(row.source_url)
-                resp.raise_for_status()
-                desc = extract_description(resp.text)
-            except Exception:
-                logger.warning("backfill: fetch failed for %s (%s)", row.id, row.source_url)
+    for i, row in enumerate(rows, start=1):
+        html = page_fetcher.fetch(row.source_url)
+        desc = extract_description(html) if html else None
 
-            if desc:
-                row.description = desc
-                session.commit()
-                updated += 1
-            else:
-                failed += 1
+        if desc:
+            row.description = desc
+            session.commit()
+            updated += 1
+        else:
+            failed += 1
 
-            if i % 25 == 0:
-                logger.info("backfill: progress %d/%d (updated=%d)", i, scanned, updated)
-
-            if delay > 0:
-                time.sleep(delay)
-    finally:
-        if own_client:
-            client.close()
+        if i % 25 == 0:
+            logger.info("backfill: progress %d/%d (updated=%d)", i, scanned, updated)
 
     logger.info(
         "backfill complete — scanned=%d updated=%d failed=%d", scanned, updated, failed
@@ -1278,7 +1585,8 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     session = SessionLocal()
     try:
-        report = run(session)
+        with PlaywrightPageFetcher() as fetcher:
+            report = run(session, page_fetcher=fetcher)
     finally:
         session.close()
     print(
@@ -1359,7 +1667,7 @@ cd backend
 python -m scripts.backfill_tm_descriptions
 ```
 
-Expected: logs progress every 25 events. Runs at ~5 events/sec (0.2s delay), so ~318 events → ~65s. Final line prints `scanned=... updated=... failed=...`.
+Expected: logs progress every 25 events. Runs at ~1 event / 3–5 s (Playwright navigation + wait), so ~318 events → ~15–25 min. Final line prints `scanned=... updated=... failed=...`.
 
 - [ ] **Step 10.4: Record coverage after**
 
