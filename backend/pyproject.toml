@@ -24,6 +24,7 @@ dependencies = [
     "numpy>=1.26.0",
     "sse-starlette>=2.1.0",
     "tldextract>=5.1.0",
+    "playwright>=1.44.0",
 ]
 
 [project.optional-dependencies]
