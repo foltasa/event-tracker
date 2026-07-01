@@ -1,3 +1,4 @@
+
 # Slot In
 
 A personal AI event concierge for Hamburg: a calendar ("timetable") wired
@@ -80,7 +81,7 @@ Three persistent surfaces in addition to the relational store:
   user (cap: 20 lines), edited via `edit_taste_summary`.
 - **How the agent sees memory.** On every turn both blocks are rendered
   directly into the agent's system prompt, so the agent always has them in
-  context without having to call a tool first. 
+  context without having to call a tool first.
 
 Short-term chat state is held in LangGraph's SQLite checkpointer; chat
 messages are also mirrored into the relational DB for inspection.
@@ -145,17 +146,17 @@ on is still narrow, and the agent is not forced to use it.
 
 ## Tech stack
 
-| Layer        | Choice                                                      |
-| ------------ | ----------------------------------------------------------- |
-| Frontend     | Next.js 14 (App Router, TypeScript), Tailwind CSS, SWR      |
-| Backend      | FastAPI (Python 3.11+), Uvicorn                             |
-| Agent        | LangGraph + LangChain, OpenRouter                           |
-| Database     | SQLite + SQLAlchemy + Alembic                               |
-| Vector store | Chroma (local, embedded)                                    |
-| Embeddings   | OpenAI `text-embedding-3-small` (via OpenRouter / OpenAI) |
-| Scheduling   | APScheduler                                                 |
-| Transport    | REST + Server-Sent Events for chat                          |
-| Tests        | pytest (backend), Vitest + Testing Library (frontend)       |
+| Layer        | Choice                                                     |
+| ------------ | ---------------------------------------------------------- |
+| Frontend     | Next.js 14 (App Router, TypeScript), Tailwind CSS, SWR     |
+| Backend      | FastAPI (Python 3.11+), Uvicorn                            |
+| Agent        | LangGraph + LangChain, OpenRouter                          |
+| Database     | SQLite + SQLAlchemy + Alembic                              |
+| Vector store | Chroma (local, embedded)                                   |
+| Embeddings   | OpenAI`text-embedding-3-small` (via OpenRouter / OpenAI) |
+| Scheduling   | APScheduler                                                |
+| Transport    | REST + Server-Sent Events for chat                         |
+| Tests        | pytest (backend), Vitest + Testing Library (frontend)      |
 
 ---
 
@@ -209,18 +210,18 @@ cp .env.example .env
 
 Required environment variables (full list in `.env.example`):
 
-| Variable                 | Purpose                                                          |
-| ------------------------ | ---------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`   | LLM + embeddings access (required)                               |
-| `AGENT_MODEL`          | OpenRouter model id (default `openai/gpt-4o-mini`)             |
-| `DATABASE_URL`         | SQLAlchemy URL (default `sqlite:///./event_tracker.db`)        |
-| `DEFAULT_USER_ID`      | Single-user MVP identity (default `local`)                     |
-| `EVENTBRITE_TOKEN`     | Optional — enables Eventbrite ingestion                         |
-| `TICKETMASTER_API_KEY` | Optional — enables Ticketmaster ingestion                       |
-| `WEB_SEARCH_ENABLED`   | Off by default;`true` registers the web-search tools           |
-| `TAVILY_API_KEY`       | Required only if web search is enabled                           |
-| `NEXT_PUBLIC_API_URL`  | Frontend → backend base URL (default `http://localhost:8000`) |
-| `NEXT_PUBLIC_USER_ID`  | Frontend identity header (default `local`)                     |
+| Variable                 | Purpose                                                         |
+| ------------------------ | --------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`   | LLM + embeddings access (required)                              |
+| `AGENT_MODEL`          | OpenRouter model id (default`openai/gpt-4o-mini`)             |
+| `DATABASE_URL`         | SQLAlchemy URL (default`sqlite:///./event_tracker.db`)        |
+| `DEFAULT_USER_ID`      | Single-user MVP identity (default`local`)                     |
+| `EVENTBRITE_TOKEN`     | Optional — enables Eventbrite ingestion                        |
+| `TICKETMASTER_API_KEY` | Optional — enables Ticketmaster ingestion                      |
+| `WEB_SEARCH_ENABLED`   | Off by default;`true` registers the web-search tools          |
+| `TAVILY_API_KEY`       | Required only if web search is enabled                          |
+| `NEXT_PUBLIC_API_URL`  | Frontend → backend base URL (default`http://localhost:8000`) |
+| `NEXT_PUBLIC_USER_ID`  | Frontend identity header (default`local`)                     |
 
 ### 2. Backend
 

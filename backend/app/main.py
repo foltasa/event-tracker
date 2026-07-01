@@ -1,16 +1,14 @@
 import logging
 import logging.config
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from alembic import command
-from alembic.config import Config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import routes_appointments, routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
 from app.api.deps import current_user_id_middleware
 from app.config import settings
+from app.db import run_migrations
 from app.db.models import User
 from app.db.session import SessionLocal
 from app.ingestion.scheduler import create_scheduler, run_ingestion
@@ -32,15 +30,6 @@ logging.config.dictConfig({
 
 logger = logging.getLogger(__name__)
 
-_ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
-
-
-def _run_migrations() -> None:
-    logger.info("Applying database migrations…")
-    command.upgrade(Config(_ALEMBIC_INI), "head")
-    logger.info("Database migrations up to date")
-
-
 def _ensure_default_user() -> None:
     user_id = settings.default_user_id
     with SessionLocal() as db:
@@ -53,7 +42,7 @@ def _ensure_default_user() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _run_migrations()
+    run_migrations()
     _ensure_default_user()
     logger.info("Starting ingestion scheduler…")
     scheduler = create_scheduler()

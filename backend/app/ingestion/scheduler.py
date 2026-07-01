@@ -3,6 +3,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.db import run_migrations
 from app.db.models import Event
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
@@ -51,6 +52,7 @@ def run_ingestion(
 
     own_session = session is None
     if own_session:
+        run_migrations()
         session = SessionLocal()
 
     try:

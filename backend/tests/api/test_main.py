@@ -10,7 +10,7 @@ from app.main import _ensure_default_user, app
 @pytest.fixture
 def client():
     with patch("app.main.create_scheduler") as mock_sched, \
-         patch("app.main._run_migrations"), \
+         patch("app.main.run_migrations"), \
          patch("app.main._ensure_default_user"):
         mock_sched.return_value = MagicMock()
         with TestClient(app) as c:
@@ -55,7 +55,7 @@ def test_ingestion_run_returns_500_on_failure(client):
 def test_lifespan_starts_and_stops_scheduler():
     mock_scheduler = MagicMock()
     with patch("app.main.create_scheduler", return_value=mock_scheduler), \
-         patch("app.main._run_migrations"), \
+         patch("app.main.run_migrations"), \
          patch("app.main._ensure_default_user"):
         with TestClient(app):
             mock_scheduler.start.assert_called_once()
