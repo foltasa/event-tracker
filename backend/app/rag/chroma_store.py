@@ -100,3 +100,16 @@ def get_embeddings_for_ids(event_ids: list[str]) -> dict[str, list[float]]:
         return {}
     result = coll.get(ids=event_ids, include=["embeddings"])
     return dict(zip(result["ids"], result["embeddings"]))
+
+
+def all_ids() -> set[str]:
+    coll = _get_collection()
+    if coll.count() == 0:
+        return set()
+    return set(coll.get(include=[])["ids"])
+
+
+def delete_by_ids(event_ids: list[str]) -> None:
+    if not event_ids:
+        return
+    _get_collection().delete(ids=event_ids)

@@ -10,6 +10,7 @@ from app.ingestion.base import SourceAdapter
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
 from app.ingestion.ticketmaster import TicketmasterAdapter
+from app.rag import chroma_store
 from app.rag.chroma_store import EventForEmbedding
 from app.rag.chroma_store import upsert_events as chroma_upsert_events
 
@@ -17,7 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 def embed_new_events(session: Session) -> None:
-    """Embed all currently-active events into Chroma. Idempotent: upsert by id."""
+    """Embed all currently-active events into Chroma and drop stale vectors.
+
+    Stale = a Chroma id that no longer exists in the events table. Without
+    this sweep, wiping event_tracker.db (or any other event-removal path)
+    leaves orphan vectors that outrank live ones in get_recommendations and
+    cause the tool to return an empty list after the SQL hydration step.
+    Idempotent: upsert by id, delete by id."""
+    all_event_ids = {row[0] for row in session.query(Event.id).all()}
+    stale = list(chroma_store.all_ids() - all_event_ids)
+    if stale:
+        chroma_store.delete_by_ids(stale)
+        logger.info("embed_new_events: purged %d stale Chroma vector(s)", len(stale))
+
     rows = session.query(Event).filter(Event.is_active == True).all()  # noqa: E712
     if not rows:
         logger.info("embed_new_events: no active events")
