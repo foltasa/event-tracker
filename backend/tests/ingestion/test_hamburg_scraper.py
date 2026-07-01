@@ -122,6 +122,12 @@ def test_description_none_when_element_absent():
     assert events[0].description is None
 
 
+def test_description_empty_meta_content_is_none():
+    detail = '<html><head><meta name="description" content="  "></head><body></body></html>'
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=detail)).fetch())
+    assert events[0].description is None
+
+
 def test_description_none_on_detail_http_error():
     class _ListOkDetailFail:
         def get(self, url, **kwargs):

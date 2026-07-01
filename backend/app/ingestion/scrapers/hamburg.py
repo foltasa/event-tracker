@@ -102,6 +102,10 @@ class HamburgScraper:
         try:
             resp = self._client.get(url)
             resp.raise_for_status()
+        except Exception:
+            logger.warning("Hamburg detail fetch failed for %s", slug)
+            return None
+        try:
             soup = BeautifulSoup(resp.text, "html.parser")
             # heuteinhamburg.de is a Next.js app; description text is not in a
             # dedicated body element but is reliably present in the page-level
@@ -112,7 +116,7 @@ class HamburgScraper:
                 return text or None
             return None
         except Exception:
-            logger.warning("Hamburg detail fetch failed for %s", slug)
+            logger.exception("Hamburg detail parse failed for %s", slug)
             return None
 
     def _parse_card(
@@ -146,11 +150,13 @@ class HamburgScraper:
                         return tag
                 return None
 
+            # Category from nearest preceding /kategorie/ link
             cat_link = title_link.find_previous("a", href=lambda h: h and "/kategorie/" in h)
             cat_text = cat_link.get_text(strip=True) if cat_link else ""
             category = _map_category(cat_text)
             tags = [cat_text.lower()] if cat_text else []
 
+            # Image: preceding anchor to same event href that wraps an img
             image_url: str | None = None
             img_anchor = title_link.find_previous("a", href=f"/event/{slug}")
             if img_anchor:
@@ -160,6 +166,7 @@ class HamburgScraper:
                     if src and "icon" not in src:
                         image_url = src if src.startswith("http") else _BASE_URL + src
 
+            # Time from nearest following clock icon
             clock = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-clock.svg"}))
             start_datetime: datetime
             if clock and clock.next_sibling:
@@ -168,11 +175,13 @@ class HamburgScraper:
             else:
                 start_datetime = datetime.combine(today, time(0, 0), tzinfo=_BERLIN)
 
+            # Venue from nearest following map icon's parent anchor
             venue_name: str | None = None
             map_img = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-map.svg"}))
             if map_img:
                 venue_name = map_img.parent.get_text(strip=True) or None
 
+            # Price from nearest following ticket icon's parent anchor
             is_free, price_min, price_max = False, None, None
             ticket_img = _before_boundary(title_link.find_next("img", attrs={"src": "/icons/icon-ticket.svg"}))
             if ticket_img:
