@@ -70,7 +70,8 @@ class TicketmasterAdapter:
             data = resp.json()
 
             for raw in data.get("_embedded", {}).get("events", []):
-                event = self._parse(raw)
+                detail = self._fetch_detail(raw.get("id", ""))
+                event = self._parse(raw, detail)
                 if event:
                     yield event
 
@@ -81,7 +82,19 @@ class TicketmasterAdapter:
                 break
             params["page"] = current + 1
 
-    def _parse(self, raw: dict) -> NormalizedEvent | None:
+    def _fetch_detail(self, event_id: str) -> dict:
+        if not event_id:
+            return {}
+        params = {"apikey": self._api_key} if self._api_key else {}
+        try:
+            resp = self._client.get(f"{_BASE_URL}/events/{event_id}.json", params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            logger.warning("TM detail fetch failed for event %s", event_id)
+            return {}
+
+    def _parse(self, raw: dict, detail: dict | None = None) -> NormalizedEvent | None:
         try:
             start_info = raw["dates"]["start"]
             start_str = start_info.get("dateTime") or start_info["localDate"] + "T00:00:00+02:00"
@@ -96,10 +109,17 @@ class TicketmasterAdapter:
             price_min = min((p["min"] for p in ranges if "min" in p), default=None)
             price_max = max((p["max"] for p in ranges if "max" in p), default=None)
 
+            description: str | None = None
+            if detail:
+                description = (
+                    detail.get("info") or detail.get("additionalInfo") or detail.get("pleaseNote")
+                ) or None
+
             return NormalizedEvent(
                 external_id=str(raw["id"]),
                 source=self.name,
                 title=raw["name"],
+                description=description,
                 start_datetime=datetime.fromisoformat(start_str.replace("Z", "+00:00")),
                 venue_name=venue.get("name"),
                 venue_address=venue_address,

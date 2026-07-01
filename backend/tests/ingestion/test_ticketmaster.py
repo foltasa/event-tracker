@@ -48,12 +48,17 @@ _EMPTY = {"page": {"totalPages": 0, "number": 0, "size": 200, "totalElements": 0
 
 
 class _FakeClient:
-    def __init__(self, pages: list[dict]):
-        self._pages = iter(pages)
+    def __init__(self, list_pages: list[dict], detail_map: dict[str, dict] | None = None):
+        self._list_iter = iter(list_pages)
+        self._detail_map = detail_map or {}
 
     def get(self, url: str, **kwargs) -> httpx.Response:
-        return httpx.Response(200, json=next(self._pages),
-                              request=httpx.Request("GET", url))
+        if url.endswith("/events.json"):
+            data = next(self._list_iter)
+        else:
+            event_id = url.rsplit("/", 1)[-1].removesuffix(".json")
+            data = self._detail_map.get(event_id, {})
+        return httpx.Response(200, json=data, request=httpx.Request("GET", url))
 
 
 def test_fetch_maps_music_event():
@@ -128,3 +133,63 @@ def test_fetch_raises_on_http_error():
     adapter = TicketmasterAdapter(client=_ErrorClient())
     with pytest.raises(httpx.HTTPStatusError):
         list(adapter.fetch())
+
+
+_DETAIL_WITH_INFO = {
+    "id": "tm_001",
+    "name": "Rock Concert at Barclays",
+    "info": "An evening of hard rock classics.",
+}
+
+_DETAIL_WITH_ADDITIONAL = {
+    "id": "tm_001",
+    "additionalInfo": "Doors open at 19:00.",
+}
+
+_DETAIL_WITH_PLEASE_NOTE = {
+    "id": "tm_001",
+    "pleaseNote": "No re-entry after 22:00.",
+}
+
+_SINGLE_PAGE = {"_embedded": {"events": [_EVENT_1]}, "page": {"totalPages": 1, "number": 0}}
+
+
+def test_description_from_detail_info():
+    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_WITH_INFO}))
+    events = list(adapter.fetch())
+    assert events[0].description == "An evening of hard rock classics."
+
+
+def test_description_falls_back_to_additional_info():
+    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_WITH_ADDITIONAL}))
+    events = list(adapter.fetch())
+    assert events[0].description == "Doors open at 19:00."
+
+
+def test_description_falls_back_to_please_note():
+    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_WITH_PLEASE_NOTE}))
+    events = list(adapter.fetch())
+    assert events[0].description == "No re-entry after 22:00."
+
+
+def test_description_is_none_when_detail_empty():
+    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE]))
+    events = list(adapter.fetch())
+    assert events[0].description is None
+
+
+def test_description_none_on_detail_http_error():
+    class _ListOkDetailFail:
+        def get(self, url, **kwargs):
+            if url.endswith("/events.json"):
+                return httpx.Response(
+                    200,
+                    json=_SINGLE_PAGE,
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(500, request=httpx.Request("GET", url))
+
+    adapter = TicketmasterAdapter(client=_ListOkDetailFail())
+    events = list(adapter.fetch())
+    assert len(events) == 1
+    assert events[0].description is None
