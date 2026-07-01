@@ -32,14 +32,17 @@ _EMPTY_HTML = "<html><body><main></main></body></html>"
 
 
 class _FakeClient:
-    def __init__(self, html: str, status_code: int = 200):
+    def __init__(self, html: str, detail_html: str = "", status_code: int = 200):
         self._html = html
+        self._detail_html = detail_html
         self._status_code = status_code
 
     def get(self, url: str, **kwargs) -> httpx.Response:
+        is_detail = "/event/" in url
+        text = self._detail_html if is_detail else self._html
         return httpx.Response(
             self._status_code,
-            text=self._html,
+            text=text,
             request=httpx.Request("GET", url),
         )
 
@@ -96,6 +99,39 @@ def test_empty_page():
 def test_http_error_raises():
     with pytest.raises(httpx.HTTPStatusError):
         list(HamburgScraper(client=_FakeClient("", status_code=500)).fetch())
+
+
+# Detail-page HTML mirrors the real heuteinhamburg.de structure: description
+# is in <meta name="description"> (the site is Next.js / SSR, description text
+# is not in a separate <div class="description"> element).
+_DETAIL_HTML = """<!DOCTYPE html>
+<html><head>
+  <meta name="description" content="Hamburg's finest jazz musicians gather for an unforgettable evening.">
+</head><body><main>
+  <h1>Jazz Night at Mojo Club</h1>
+</main></body></html>"""
+
+
+def test_description_from_detail_page():
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=_DETAIL_HTML)).fetch())
+    assert events[0].description == "Hamburg's finest jazz musicians gather for an unforgettable evening."
+
+
+def test_description_none_when_element_absent():
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html="<html><body></body></html>")).fetch())
+    assert events[0].description is None
+
+
+def test_description_none_on_detail_http_error():
+    class _ListOkDetailFail:
+        def get(self, url, **kwargs):
+            if "/event/" in url:
+                return httpx.Response(500, request=httpx.Request("GET", url))
+            return httpx.Response(200, text=_HTML, request=httpx.Request("GET", url))
+
+    events = list(HamburgScraper(client=_ListOkDetailFail()).fetch())
+    assert len(events) == 2
+    assert all(e.description is None for e in events)
 
 
 def test_skips_malformed_and_continues():
