@@ -38,7 +38,7 @@ class _FakeClient:
         self._status_code = status_code
 
     def get(self, url: str, **kwargs) -> httpx.Response:
-        is_detail = "/event/" in url
+        is_detail = url != "https://heuteinhamburg.de"
         text = self._detail_html if is_detail else self._html
         return httpx.Response(
             self._status_code,

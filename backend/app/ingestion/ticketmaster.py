@@ -70,6 +70,7 @@ class TicketmasterAdapter:
             data = resp.json()
 
             for raw in data.get("_embedded", {}).get("events", []):
+                # One extra call per event to fetch description; acceptable for nightly batch at this scale.
                 detail = self._fetch_detail(raw.get("id", ""))
                 event = self._parse(raw, detail)
                 if event:

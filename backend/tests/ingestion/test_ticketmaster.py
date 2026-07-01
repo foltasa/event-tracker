@@ -151,6 +151,13 @@ _DETAIL_WITH_PLEASE_NOTE = {
     "pleaseNote": "No re-entry after 22:00.",
 }
 
+_DETAIL_ALL_THREE = {
+    "id": "tm_001",
+    "info": "Primary description.",
+    "additionalInfo": "Secondary info.",
+    "pleaseNote": "Please note this.",
+}
+
 _SINGLE_PAGE = {"_embedded": {"events": [_EVENT_1]}, "page": {"totalPages": 1, "number": 0}}
 
 
@@ -193,3 +200,11 @@ def test_description_none_on_detail_http_error():
     events = list(adapter.fetch())
     assert len(events) == 1
     assert events[0].description is None
+
+
+def test_description_prefers_info_over_additionalinfo_and_pleasenote():
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_ALL_THREE})
+    )
+    events = list(adapter.fetch())
+    assert events[0].description == "Primary description."
