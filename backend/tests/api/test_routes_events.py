@@ -93,7 +93,9 @@ def test_event_detail_calendar_kind_recommendation(client, db_session):
     assert body["is_saved"] is True
 
 
-def test_list_events_hides_events_without_description(client, db_session):
+def test_list_events_hides_events_without_description(client, db_session, monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
     from app.db.models import User
     db_session.add(User(id="local", interest_tags=[]))
     future = datetime.combine(date.today() + timedelta(days=2), time(12, 0), tzinfo=timezone.utc)

@@ -382,7 +382,9 @@ def test_ingest_event_from_url_raises_when_budget_exhausted(db_session, monkeypa
 def test_search_events_hides_no_description(db_session, user, monkeypatch):
     """Events without a description are filtered out of search_events."""
     from datetime import date as _date, timedelta as _td
+    from app.config import settings as app_settings
 
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
 
     today = _date.today()
