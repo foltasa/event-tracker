@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import run_migrations
 from app.db.models import Event
+from app.db.models.event import visible_events_filter
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
@@ -18,22 +19,23 @@ logger = logging.getLogger(__name__)
 
 
 def embed_new_events(session: Session) -> None:
-    """Embed all currently-active events into Chroma and drop stale vectors.
+    """Embed all currently-visible events into Chroma and drop stale vectors.
 
-    Stale = a Chroma id that no longer exists in the events table. Without
-    this sweep, wiping event_tracker.db (or any other event-removal path)
-    leaves orphan vectors that outrank live ones in get_recommendations and
-    cause the tool to return an empty list after the SQL hydration step.
-    Idempotent: upsert by id, delete by id."""
-    all_event_ids = {row[0] for row in session.query(Event.id).all()}
-    stale = list(chroma_store.all_ids() - all_event_ids)
+    Stale = a Chroma id whose event no longer passes visible_events_filter()
+    (deleted, deactivated, or — when the hide toggle is on — missing a
+    description). Idempotent: upsert by id, delete by id."""
+    visible_ids = {
+        row[0]
+        for row in session.query(Event.id).filter(visible_events_filter()).all()
+    }
+    stale = list(chroma_store.all_ids() - visible_ids)
     if stale:
         chroma_store.delete_by_ids(stale)
         logger.info("embed_new_events: purged %d stale Chroma vector(s)", len(stale))
 
-    rows = session.query(Event).filter(Event.is_active == True).all()  # noqa: E712
+    rows = session.query(Event).filter(visible_events_filter()).all()
     if not rows:
-        logger.info("embed_new_events: no active events")
+        logger.info("embed_new_events: no visible events")
         return
     payload = [
         EventForEmbedding(

@@ -109,3 +109,51 @@ def test_embed_new_events_upserts_active_events_to_chroma(monkeypatch, db_sessio
     payload = fake_upsert.call_args.args[0]
     assert len(payload) == 1
     assert payload[0].id == "e1"
+
+
+def test_embed_new_events_skips_events_without_description(db_session, monkeypatch):
+    from datetime import datetime, timezone
+    from app.db.models import Event
+    from app.ingestion import scheduler
+
+    now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
+    db_session.add_all([
+        Event(id="with_desc", external_id="a", source="ticketmaster", title="A",
+              description="Real.", start_datetime=now, category="music",
+              tags=[], source_url="https://x/a", raw_data={}),
+        Event(id="no_desc", external_id="b", source="ticketmaster", title="B",
+              description=None, start_datetime=now, category="music",
+              tags=[], source_url="https://x/b", raw_data={}),
+    ])
+    db_session.commit()
+
+    upserted: list = []
+    monkeypatch.setattr(scheduler, "chroma_upsert_events", lambda payload: upserted.extend(p.id for p in payload))
+    monkeypatch.setattr(scheduler.chroma_store, "all_ids", lambda: set())
+    monkeypatch.setattr(scheduler.chroma_store, "delete_by_ids", lambda ids: None)
+
+    scheduler.embed_new_events(db_session)
+    assert upserted == ["with_desc"]
+
+
+def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypatch):
+    from datetime import datetime, timezone
+    from app.db.models import Event
+    from app.ingestion import scheduler
+
+    now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
+    db_session.add(Event(
+        id="no_desc", external_id="b", source="ticketmaster", title="B",
+        description=None, start_datetime=now, category="music",
+        tags=[], source_url="https://x/b", raw_data={},
+    ))
+    db_session.commit()
+
+    deleted: list = []
+    monkeypatch.setattr(scheduler, "chroma_upsert_events", lambda payload: None)
+    monkeypatch.setattr(scheduler.chroma_store, "all_ids", lambda: {"no_desc", "gone"})
+    monkeypatch.setattr(scheduler.chroma_store, "delete_by_ids", lambda ids: deleted.extend(ids))
+
+    scheduler.embed_new_events(db_session)
+    # Both "gone" (not in DB) and "no_desc" (in DB but hidden) must be purged.
+    assert set(deleted) == {"no_desc", "gone"}
