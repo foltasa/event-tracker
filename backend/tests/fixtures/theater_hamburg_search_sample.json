@@ -1,0 +1,178 @@
+{
+  "data": {
+    "events": {
+      "nodes": [
+        {
+          "id": 1243812,
+          "title": "Lars Redlich",
+          "permaLink": "lars-redlich-6",
+          "categories": [
+            {
+              "id": 2,
+              "i18nName": "Theater & B\u00fchne"
+            },
+            {
+              "id": 10,
+              "i18nName": "Comedy"
+            }
+          ],
+          "location": {
+            "id": 309,
+            "title": "Schmidt Theater"
+          },
+          "eventDates": [
+            {
+              "date": "2026-12-01",
+              "startTime": "19:00:00",
+              "duration": null
+            }
+          ],
+          "geoInfo": {
+            "coordinates": {
+              "latitude": 53.5491576,
+              "longitude": 9.963374700000031
+            }
+          },
+          "bookingLink": null,
+          "shortDescription": "<p><strong>&bdquo;Lars Christmas&rdquo;</strong></p><p>Die Weihnachtsshow von und mit Lars Redlich, begleitet von Bijan Azadian</p><p>&bdquo;Mit Lars Redlich w&auml;chst gerade einer der kommenden gro&szlig;en, vielseitigen Entertainer dieses Landes heran&ldquo;, schreibt die Berliner Morgenpost &uuml;ber diesen Ausnahmek&uuml;nstler. Nachdem seine Comedy-Soloshows &bdquo;Lars But Not Least!&ldquo; und &bdquo;Ein bisschen Lars muss sein&ldquo; deutschlandweit von Presse und Publikum gefeiert und mit diversen renommierten Preisen ausgezeichnet wurde, folgt nun das Weihnachtsprogramm des sympathischen Berliners: Erleben Sie Konzert, Comedy und Showtime zur Weihnachtszeit und freuen Sie sich auf viel Neues und Lustiges rund um das Thema Weihnachten.</p><p>Augenzwinkernd aber auch besinnlich, alle kommen auf ihre Kosten und bekommen ihr Fett weg &ndash; und das schon vor den Feiertagen! Was passiert mit den &bdquo;ungekauften&ldquo; Schokonikol&auml;usen nach dem Fest? Was denken Schneem&auml;nner &uuml;ber den Sommer? Und warum war fr&uuml;her mehr Lametta? Fragen &uuml;ber Fragen, die Lars &ndash; begleitet am Gefl&uuml;gel von seinem kongenialen Pianisten, dem &bdquo;Tier am Klavier&ldquo; Bijan Azadian, &ndash; an diesem besonderen Abend kl&auml;ren wird. Auch das gef&uuml;hlt 500 Mal geh&ouml;rte &bdquo;Last Christmas&ldquo; darf nat&uuml;rlich nicht fehlen, allerdings in einer urkomisch-b&ouml;sen Version. Wenn Ihnen der vorweihnachtliche Stress zu viel wird, ist dieser Abend genau das Richtige.</p>"
+        },
+        {
+          "id": 1421064,
+          "title": "Kerim Pamuk - Kiffen, Kaffee & Kajal",
+          "permaLink": "kerim-pamuk-kiffen-kaffee-kajal-2",
+          "categories": [
+            {
+              "id": 2,
+              "i18nName": "Theater & B\u00fchne"
+            },
+            {
+              "id": 10,
+              "i18nName": "Comedy"
+            }
+          ],
+          "location": {
+            "id": 124,
+            "title": "Alma Hoppes Lustspielhaus"
+          },
+          "eventDates": [
+            {
+              "date": "2026-08-29",
+              "startTime": "20:00:00",
+              "duration": null
+            }
+          ],
+          "geoInfo": {
+            "coordinates": {
+              "latitude": 53.5930603,
+              "longitude": 9.99274509999998
+            }
+          },
+          "bookingLink": null,
+          "shortDescription": "<p>...oder warum wir alle Orientalen sind<br /><br />KIFFEN, KAFFEE &amp; KAJAL oder warum wir alle Orientalen sind &ndash; Ein Kabarett-Abend von und mit Kerim Pamuk &uuml;ber Globalisierung vor tausend Jahren und heute. &Uuml;ber den Wert von Austausch, Kommunikation und die lustigen Folgen der Abschottung. Sie werden viel lachen, staunen und erfahren, was unser korrekt abgewaschener Yoghurtbecher, den wir in die Recyclingtonne werfen mit dem Gro&szlig;machtstreben Chinas zu tun hat.<br /><br />Warum Europa Tausend Jahre lang kulinarisch, kulturell und wissenschaftlich nur der Hinterhof Asiens war. Warum Araber, Chinesen, Inder und Indonesier nicht ganz so gut auf Europ&auml;er zu sprechen sind und wie das schwarze Gold (Pfeffer) f&uuml;r Deutsche zum Allheilmittel gegen Verstopfung, Potenzst&ouml;rung und Melancholie wurde.<br /><br />K.K.&amp;K. - Ein unterhaltsamer Abend &uuml;ber kulturelle Einfl&uuml;sse und sprachliche Pferdek&uuml;sse. &Uuml;ber deutsche Heiligt&uuml;mer wie Kaffee und Sofa, die wir den Arabern verdanken und philologische Unf&auml;lle wie &bdquo;7/24&ldquo; und &bdquo;Ich bin fein damit&ldquo;, die wir Amerikanern verdanken.</p>"
+        },
+        {
+          "id": 1146987,
+          "title": "Abdelkarim - Plan Z - jetzt will ers wissen!",
+          "permaLink": "abdelkarim-plan-z-jetzt-will-ers-wissen-1",
+          "categories": [
+            {
+              "id": 2,
+              "i18nName": "Theater & B\u00fchne"
+            },
+            {
+              "id": 10,
+              "i18nName": "Comedy"
+            }
+          ],
+          "location": {
+            "id": 124,
+            "title": "Alma Hoppes Lustspielhaus"
+          },
+          "eventDates": [
+            {
+              "date": "2026-11-25",
+              "startTime": "20:00:00",
+              "duration": null
+            }
+          ],
+          "geoInfo": {
+            "coordinates": {
+              "latitude": 53.5930603,
+              "longitude": 9.99274509999998
+            }
+          },
+          "bookingLink": null,
+          "shortDescription": "<p><strong>Abdelkarim &ndash; Vorpremiere Neues Programm</strong><br /><br />Nach seinen ersten 3 Programmen \"Zwischen Ghetto und Germanen\", \"Staatsfreund Nr. 1\" und \"Wir beruhigen uns\", kommt der Marokkaner Deines Vertrauens nach zwischenzeitlichen Ausfl&uuml;gen zu Amazons \"Lol\" und \"Lets Dance&ldquo; nun mit einem Try-Out seines brandneuen 4. Programms zur Vorpremiere!<br /><br />Mit Gags und Geschichten, an deren Entstehung das Publikum noch mitwirkt und mitentscheidet, was es dauerhaft ins neue Programm schafft, oder was direkt wieder in der Versenkung verschwindet&hellip;<br /><br />Ein Programm also, wie es nur wenige zu sehen bekommen werden. Man darf gespannt sein!</p>"
+        },
+        {
+          "id": 1458551,
+          "title": "Johannes Fl\u00f6ck - Fr\u00fcher war ich j\u00fcnger",
+          "permaLink": "johannes-floeck-frueher-war-ich-juenger",
+          "categories": [
+            {
+              "id": 2,
+              "i18nName": "Theater & B\u00fchne"
+            },
+            {
+              "id": 10,
+              "i18nName": "Comedy"
+            }
+          ],
+          "location": {
+            "id": 124,
+            "title": "Alma Hoppes Lustspielhaus"
+          },
+          "eventDates": [
+            {
+              "date": "2027-03-18",
+              "startTime": "20:00:00",
+              "duration": null
+            }
+          ],
+          "geoInfo": {
+            "coordinates": {
+              "latitude": 53.5930603,
+              "longitude": 9.99274509999998
+            }
+          },
+          "bookingLink": null,
+          "shortDescription": "<p>Fr&uuml;her war ich j&uuml;nger - Wenn Happy und Birthday getrennte Wege gehen <br /><br />Fr&uuml;her war mehr Lametta &ndash; und vor allem war man j&uuml;nger. In seinem neuen Live-Programm nimmt Comedian und Wohlf&uuml;hl-Influencer Johannes Fl&ouml;ck sein Publikum mit auf eine ebenso humorvolle wie entspannte Reise durch die Stolperfallen des modernen Alltags &ndash; zwischen Selbstoptimierung, Achtsamkeitswahn und der leisen Erkenntnis von Johannes Fl&ouml;ck: &bdquo;Ich kann jetzt nicht mehr so, wie ich will, ich muss jetzt das wollen, was ich kann.&ldquo;<br /><br />Mit feinem Humor, pointierten Alltagsbeobachtungen und fast philosophischen Denkanst&ouml;&szlig;en erz&auml;hlt Fl&ouml;ck vom &Auml;lterwerden ohne Altersstarrsinn, vom E-Bike-Boom der Boomer, neuen Ern&auml;hrungstrends, aktiver Entspannung und der Kunst, das Leben nicht st&auml;ndig verbessern zu wollen. Statt h&ouml;her, schneller, weiter hei&szlig;t es bei ihm: bewusster, entspannter &ndash; und vor allem lustiger. <br /><br />Ein Programm zum Mitlachen, Durchatmen und Wiedererkennen &ndash; ehrlich, warmherzig und herrlich komisch.</p>"
+        },
+        {
+          "id": 1458565,
+          "title": "NightWash",
+          "permaLink": "nightwash-1",
+          "categories": [
+            {
+              "id": 52,
+              "i18nName": "Sonstige"
+            }
+          ],
+          "location": {
+            "id": 1019,
+            "title": "Laeiszhalle (Gro\u00dfer Saal)"
+          },
+          "eventDates": [
+            {
+              "date": "2027-05-26",
+              "startTime": "20:30:00",
+              "duration": 150
+            }
+          ],
+          "geoInfo": {
+            "coordinates": {
+              "latitude": 53.5553447,
+              "longitude": 9.979828600000019
+            }
+          },
+          "bookingLink": "https://www.elbphilharmonie.de/de/programm/nightwash/28742",
+          "shortDescription": "<p>Das mit dem Deutschen Comedypreis ausgezeichnete Stand-Up Comedy Format pr&auml;sentiert seit einem Vierteljahrhundert namhafte Comedians und Comediennes sowie die neuesten Talente der Comedyszene aus dem Waschsalon und bundesweit mit &uuml;ber 150 Live-Terminen. Heutige Stars und Sternchen wie Felix Lobrecht, O&#776;zcan Cosar, Chris Tall, Tahnee, Bastian Bielendorfer, Enissa Amani, Olaf Schubert, B&uuml;lent Ceylan, Torsten Str&auml;ter, Markus Krebs, Simon Sta&#776;blein, Maria Clara Groppler, Osan Yaran, Tutty Tran, Nico Stank, Negah Amiri, Carl Josef und viele mehr hatten im legend&auml;ren Kult-Comedy-Waschsalon ihre ersten B&uuml;hnenauftritte. NightWash bringt die frischeste Comedy angesagter Comedians und Newcomer, &uuml;berraschende Showeinlagen gepaart mit dem allerbesten Publikum auf die B&uuml;hne. Jede Show ein Unikat auf h&ouml;chstem Niveau. Hier bleibt garantiert kein Auge trocken! Comedy der Extraklasse!</p>"
+        }
+      ],
+      "pagination": {
+        "totalPages": 394,
+        "totalRecords": 1969
+      }
+    }
+  }
+}
