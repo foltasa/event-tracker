@@ -1,5 +1,6 @@
 import logging
 
+import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
@@ -53,8 +54,8 @@ def embed_new_events(session: Session) -> None:
     logger.info("embed_new_events: embedded %d events", len(payload))
 
 
-def _default_adapters() -> list[SourceAdapter]:
-    return [TicketmasterAdapter(), HamburgScraper()]
+def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAdapter]:
+    return [TicketmasterAdapter(wiki_client=wiki_client), HamburgScraper()]
 
 
 def run_ingestion(
@@ -62,8 +63,10 @@ def run_ingestion(
     session: Session | None = None,
 ) -> UpsertReport:
     """Fetch all sources, upsert to DB, deactivate past events."""
+    own_wiki_client = adapters is None
+    wiki_client = httpx.Client(timeout=15) if own_wiki_client else None
     if adapters is None:
-        adapters = _default_adapters()
+        adapters = _default_adapters(wiki_client=wiki_client)
 
     own_session = session is None
     if own_session:
@@ -100,6 +103,8 @@ def run_ingestion(
     finally:
         if own_session:
             session.close()
+        if own_wiki_client and wiki_client is not None:
+            wiki_client.close()
 
 
 def create_scheduler() -> BackgroundScheduler:
