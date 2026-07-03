@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.agent.memory import get_current_user_id
 from app.api.deps import DbSession
 from app.db.models import Event, Feedback, SavedEvent
+from app.db.models.event import visible_events_filter
 from app.schemas.common import EventWithContext
 from app.schemas.events import EventsFeedResponse
 
@@ -40,7 +41,7 @@ def list_events(
     q: str | None = None,
 ) -> EventsFeedResponse:
     user_id = get_current_user_id()
-    qry = db.query(Event).filter(Event.is_active == True)  # noqa: E712
+    qry = db.query(Event).filter(visible_events_filter())
     if category:
         qry = qry.filter(Event.category == category)
     # Default lower bound to today so the upcoming feed never shows past events.
