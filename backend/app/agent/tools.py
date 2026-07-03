@@ -17,6 +17,7 @@ from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.config import settings
 from app.db.models import Event, Feedback, SavedEvent, User
+from app.db.models.event import visible_events_filter
 from app.db.session import SessionLocal
 from app.rag import chroma_store
 from app.rag.embeddings import embed_one
@@ -80,7 +81,7 @@ def search_events(
             date_from = today_local.isoformat()
             date_to = (today_local + _td(days=3)).isoformat()
 
-        q = session.query(Event).filter(Event.is_active == True)  # noqa: E712
+        q = session.query(Event).filter(visible_events_filter())
         if date_from:
             q = q.filter(Event.start_datetime >= datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc))
         if date_to:
@@ -297,7 +298,12 @@ def get_recommendations(
             return []
 
         id_to_score = {h.event_id: h.similarity_score for h in hits}
-        rows = session.query(Event).filter(Event.id.in_(id_to_score.keys())).all()
+        rows = (
+            session.query(Event)
+            .filter(Event.id.in_(id_to_score.keys()))
+            .filter(visible_events_filter())
+            .all()
+        )
         return sorted(
             (_event_to_summary(r, similarity_score=id_to_score[r.id]) for r in rows),
             key=lambda d: d["similarity_score"] or 0.0,

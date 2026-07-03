@@ -220,12 +220,12 @@ def test_search_events_defaults_to_today_plus_3d(db_session, user, monkeypatch):
     out_window = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
 
     db_session.add(Event(
-        id="e_in", external_id="in1", source="x", title="Soon", description="",
+        id="e_in", external_id="in1", source="x", title="Soon", description="Real.",
         category="music", source_url="http://x",
         start_datetime=in_window, venue_name="v", is_free=True,
     ))
     db_session.add(Event(
-        id="e_out", external_id="out1", source="x", title="Later", description="",
+        id="e_out", external_id="out1", source="x", title="Later", description="Real.",
         category="music", source_url="http://x",
         start_datetime=out_window, venue_name="v", is_free=True,
     ))
@@ -244,7 +244,7 @@ def test_search_events_explicit_bounds_override_default(db_session, user, monkey
     today = _date.today()
     far = datetime.combine(today + _td(days=30), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     db_session.add(Event(
-        id="e_far", external_id="far1", source="x", title="Far", description="",
+        id="e_far", external_id="far1", source="x", title="Far", description="Real.",
         category="music", source_url="http://x",
         start_datetime=far, venue_name="v", is_free=True,
     ))
@@ -264,7 +264,7 @@ def test_search_events_one_bound_does_not_trigger_default(db_session, user, monk
     today = _date.today()
     later = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     db_session.add(Event(
-        id="e_later", external_id="later1", source="x", title="Later", description="",
+        id="e_later", external_id="later1", source="x", title="Later", description="Real.",
         category="music", source_url="http://x",
         start_datetime=later, venue_name="v", is_free=True,
     ))
@@ -377,3 +377,26 @@ def test_ingest_event_from_url_raises_when_budget_exhausted(db_session, monkeypa
         with pytest.raises(ToolError, match="ingest budget exhausted"):
             ingest_event_from_url.invoke({"url": "https://hafenklang.com/programm"})
     turn_budget._reset()
+
+
+def test_search_events_hides_no_description(db_session, user, monkeypatch):
+    """Events without a description are filtered out of search_events."""
+    from datetime import date as _date, timedelta as _td
+
+    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
+
+    today = _date.today()
+    when = datetime.combine(today + _td(days=1), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
+    db_session.add_all([
+        Event(id="visible", external_id="a", source="ticketmaster", title="Yes",
+              description="Real.", start_datetime=when, category="music",
+              tags=[], source_url="https://x/a", raw_data={}, is_free=True),
+        Event(id="hidden", external_id="b", source="ticketmaster", title="No",
+              description=None, start_datetime=when, category="music",
+              tags=[], source_url="https://x/b", raw_data={}, is_free=True),
+    ])
+    db_session.commit()
+
+    rows = tools.search_events.invoke({})
+    ids = {r["id"] for r in rows}
+    assert ids == {"visible"}
