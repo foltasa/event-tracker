@@ -29,3 +29,169 @@ class TestExtractJwt:
 
     def test_returns_none_when_graphql_bearer_token_key_present_but_value_not_jwt_shaped(self):
         assert _extract_jwt('graphqlBearerToken:"not-a-jwt"') is None
+
+
+from unittest.mock import MagicMock
+
+import httpx
+
+from app.ingestion.scrapers.theater_hamburg import (
+    TheaterHamburgAdapter,
+    _WIDGET_JS_URL,
+    _API_URL,
+)
+
+
+class _FakeClient:
+    """Records GET and POST calls; returns queued responses by URL prefix."""
+
+    def __init__(self, get_map: dict[str, str] | None = None, post_map: dict | None = None):
+        self.get_map = get_map or {}
+        self.post_map = post_map or {}
+        self.get_calls: list[str] = []
+        self.post_calls: list[tuple[str, dict, dict]] = []
+
+    def get(self, url: str, **kwargs):
+        self.get_calls.append(url)
+        for prefix, text in self.get_map.items():
+            if url.startswith(prefix):
+                return httpx.Response(200, text=text, request=httpx.Request("GET", url))
+        return httpx.Response(404, request=httpx.Request("GET", url))
+
+    def post(self, url: str, *, json: dict, headers: dict, **kwargs):
+        self.post_calls.append((url, json, headers))
+        for prefix, handler in self.post_map.items():
+            if url.startswith(prefix):
+                body = handler(json) if callable(handler) else handler
+                return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+        return httpx.Response(404, request=httpx.Request("POST", url))
+
+
+_WIDGET_JS_WITH_JWT = 'var config = { graphqlBearerToken:"eyAAA.BBB.CCC" };'
+
+
+def _list_response(nodes: list[dict], total_pages: int = 1) -> dict:
+    return {
+        "data": {
+            "events": {
+                "nodes": nodes,
+                "pagination": {"totalPages": total_pages, "totalRecords": len(nodes)},
+            }
+        }
+    }
+
+
+def _make_node(
+    permalink: str = "hamlet-thalia",
+    title: str = "Hamlet",
+    venue_id: int = 99,
+    venue_title: str = "Thalia Theater",
+    dates: list[dict] | None = None,
+    categories: list[str] | None = None,
+    short_description: str | None = "<p>A brief show.</p>",
+) -> dict:
+    return {
+        "id": 12345,
+        "title": title,
+        "permaLink": permalink,
+        "shortDescription": short_description,
+        "categories": [{"id": i, "i18nName": c} for i, c in enumerate(categories or ["Theater"])],
+        "location": {"id": venue_id, "title": venue_title},
+        "eventDates": dates or [{"date": "2026-07-20", "startTime": "20:00:00", "duration": 120}],
+        "geoInfo": {"coordinates": {"latitude": 53.55, "longitude": 10.0}},
+        "bookingLink": "https://tix.example/hamlet",
+    }
+
+
+class TestAdapterInit:
+    def test_scrapes_jwt_from_widget_js_on_first_use(self):
+        client = _FakeClient(get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT})
+        adapter = TheaterHamburgAdapter(client=client)
+        assert adapter._get_jwt() == "eyAAA.BBB.CCC"
+        assert client.get_calls == [_WIDGET_JS_URL]
+
+    def test_jwt_env_override_skips_scrape(self, monkeypatch):
+        monkeypatch.setenv("THEATER_HAMBURG_JWT", "eyOVERRIDE.PART.SIG")
+        client = _FakeClient()
+        adapter = TheaterHamburgAdapter(client=client)
+        assert adapter._get_jwt() == "eyOVERRIDE.PART.SIG"
+        assert client.get_calls == []
+
+    def test_raises_when_widget_js_has_no_jwt(self):
+        client = _FakeClient(get_map={_WIDGET_JS_URL: "no token here"})
+        adapter = TheaterHamburgAdapter(client=client)
+        with pytest.raises(RuntimeError, match="JWT"):
+            adapter._get_jwt()
+
+
+class TestListFetch:
+    def test_single_page_yields_one_event_per_date(self):
+        node = _make_node(
+            dates=[
+                {"date": "2026-07-20", "startTime": "20:00:00", "duration": 120},
+                {"date": "2026-07-21", "startTime": "20:00:00", "duration": 120},
+            ],
+            short_description="<p>Nice show.</p>",
+        )
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node], total_pages=1)},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 2
+        assert events[0].title == "Hamlet"
+        assert events[0].description == "Nice show."
+        # external_id is stable per (permalink, date, time).
+        assert events[0].external_id == "hamlet-thalia#2026-07-20T20:00:00"
+        assert events[1].external_id == "hamlet-thalia#2026-07-21T20:00:00"
+
+    def test_paginates_until_last_page(self):
+        node_a = _make_node(permalink="a", title="A")
+        node_b = _make_node(permalink="b", title="B")
+
+        def handler(body):
+            page = body["variables"]["pagination"]["page"]
+            if page == 1:
+                return _list_response([node_a], total_pages=2)
+            return _list_response([node_b], total_pages=2)
+
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: handler},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert {e.title for e in events} == {"A", "B"}
+
+    def test_401_triggers_one_rescrape_and_retry(self):
+        widget_calls = {"count": 0}
+
+        class _RotatingClient(_FakeClient):
+            def get(self, url, **kwargs):
+                self.get_calls.append(url)
+                widget_calls["count"] += 1
+                text = (
+                    _WIDGET_JS_WITH_JWT
+                    if widget_calls["count"] == 1
+                    else 'graphqlBearerToken:"eyNEW.NEW.NEW"'
+                )
+                return httpx.Response(200, text=text, request=httpx.Request("GET", url))
+
+            def post(self, url, *, json, headers, **kwargs):
+                self.post_calls.append((url, json, headers))
+                bearer = headers.get("Authorization", "")
+                if bearer == "Bearer eyAAA.BBB.CCC":
+                    return httpx.Response(401, request=httpx.Request("POST", url))
+                node = _make_node()
+                return httpx.Response(
+                    200,
+                    json=_list_response([node]),
+                    request=httpx.Request("POST", url),
+                )
+
+        client = _RotatingClient()
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+        assert widget_calls["count"] == 2
