@@ -43,4 +43,7 @@ node_modules/
 out/
 
 # DB
-event_tracker.db
+*.db
+*.db.bak*
+*.sqlite
+*.sqlite.bak*
