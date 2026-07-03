@@ -205,6 +205,38 @@ class TestListFetch:
         events = list(adapter.fetch())
         assert {e.title for e in events} == {"A", "B"}
 
+    def test_duplicate_external_ids_across_pages_are_dropped(self):
+        node = _make_node(permalink="dup", title="Dup", dates=[
+            {"date": "2026-07-20", "startTime": "20:00:00", "duration": 120},
+        ])
+
+        def handler(body):
+            page = body["variables"]["pagination"]["page"]
+            # Same node on both pages; expected external_id is emitted only once.
+            return _list_response([node], total_pages=2)
+
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: handler},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+        assert events[0].external_id == "dup#2026-07-20T20:00:00"
+
+    def test_duplicate_event_dates_on_same_node_are_dropped(self):
+        node = _make_node(dates=[
+            {"date": "2026-07-20", "startTime": "20:00:00", "duration": 120},
+            {"date": "2026-07-20", "startTime": "20:00:00", "duration": 120},  # duplicate
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+
     def test_401_triggers_one_rescrape_and_retry(self):
         widget_calls = {"count": 0}
         first_jwt = _HHT_JWT

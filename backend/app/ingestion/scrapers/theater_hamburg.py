@@ -199,6 +199,11 @@ class TheaterHamburgAdapter:
     def fetch(self) -> Iterator[NormalizedEvent]:
         today = datetime.now(tz=_BERLIN).date().isoformat()
         page = 1
+        # imxplatform pagination is not fully stable across pages — the same
+        # (permaLink, date, startTime) can reappear on adjacent pages, and
+        # a node's eventDates can list the same slot twice. Dedupe emitted
+        # rows by external_id to avoid unique-constraint violations at upsert.
+        emitted: set[str] = set()
         while True:
             data = self._list_page(page, today)
             events_root = (data.get("data") or {}).get("events") or {}
@@ -208,6 +213,9 @@ class TheaterHamburgAdapter:
 
             for node in nodes:
                 for parsed in self._expand_node(node):
+                    if parsed.external_id in emitted:
+                        continue
+                    emitted.add(parsed.external_id)
                     yield parsed
 
             if page >= total_pages or not nodes:
