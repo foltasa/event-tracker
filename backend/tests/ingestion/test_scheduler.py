@@ -113,9 +113,11 @@ def test_embed_new_events_upserts_active_events_to_chroma(monkeypatch, db_sessio
 
 def test_embed_new_events_skips_events_without_description(db_session, monkeypatch):
     from datetime import datetime, timezone
+    from app.config import settings as app_settings
     from app.db.models import Event
     from app.ingestion import scheduler
 
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add_all([
         Event(id="with_desc", external_id="a", source="ticketmaster", title="A",
@@ -138,9 +140,11 @@ def test_embed_new_events_skips_events_without_description(db_session, monkeypat
 
 def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypatch):
     from datetime import datetime, timezone
+    from app.config import settings as app_settings
     from app.db.models import Event
     from app.ingestion import scheduler
 
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add(Event(
         id="no_desc", external_id="b", source="ticketmaster", title="B",
