@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     eventbrite_token: str | None = None
     ticketmaster_api_key: str | None = None
 
+    # When True (default), list endpoints, agent tools, and the embedding
+    # feed skip events whose description is null or empty. Flip via
+    # HIDE_EVENTS_WITHOUT_DESCRIPTION=false in .env to include them
+    # (useful during backfill validation).
+    hide_events_without_description: bool = True
+
     # Agent / LLM
     openrouter_api_key: str | None = None
     agent_model: str = "openai/gpt-4o-mini"

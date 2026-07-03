@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, String, UniqueConstraint, and_
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -38,3 +38,21 @@ class Event(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+
+def visible_events_filter():
+    """SQLAlchemy filter for user-facing event queries.
+
+    Always requires `is_active`. When `settings.hide_events_without_description`
+    is True (default), also requires a non-empty description. Reading the
+    setting at call time lets the operator flip the toggle without touching
+    call sites."""
+    from app.config import settings
+
+    if not settings.hide_events_without_description:
+        return Event.is_active == True  # noqa: E712
+    return and_(
+        Event.is_active == True,  # noqa: E712
+        Event.description.isnot(None),
+        Event.description != "",
+    )
