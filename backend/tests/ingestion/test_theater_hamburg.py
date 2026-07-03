@@ -1,3 +1,5 @@
+import base64
+import json
 from pathlib import Path
 
 import pytest
@@ -8,27 +10,56 @@ from app.ingestion.scrapers.theater_hamburg import _extract_jwt
 _FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
 
 
+def _make_jwt(issuer: str, sub: str = "1") -> str:
+    """Construct a syntactically valid JWT with the given `iss` claim.
+
+    The signature segment is arbitrary — _extract_jwt only reads the payload.
+    Vary `sub` to produce different tokens with the same issuer."""
+    header = base64.urlsafe_b64encode(b'{"alg":"RS256","typ":"JWT"}').decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"iss": issuer, "sub": sub}).encode()
+    ).decode().rstrip("=")
+    signature = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"  # 33 chars, base64url shape
+    return f"{header}.{payload}.{signature}"
+
+
 class TestExtractJwt:
-    def test_extracts_from_real_widget_js_fixture(self):
+    def test_extracts_hht_token_from_real_widget_js_fixture(self):
         js = (_FIXTURE_DIR / "theater_hamburg_widget_sample.js").read_text(encoding="utf-8")
         token = _extract_jwt(js)
         assert token is not None
         assert token.startswith("ey")
         assert token.count(".") == 2
+        # Decode payload; must be the HHT tenant, not any of the peers.
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        assert "hht.imxplatform.de" in payload["iss"]
 
     def test_returns_none_when_no_graphql_bearer_token_present(self):
         assert _extract_jwt("var x = 1; footerLogo:'/x.svg', ") is None
 
-    def test_ignores_other_jwts_and_picks_graphql_bearer_one(self):
+    def test_picks_hht_token_when_bundle_ships_multiple_tenants(self):
+        nrw = _make_jwt("https://nrw.imxplatform.de/oauth")
+        hht = _make_jwt("https://hht.imxplatform.de/oauth")
+        freiburg = _make_jwt("https://freiburg.imxplatform.de/oauth")
         js = (
-            'someOtherToken:"eyBADAAA.BBB.CCC", '
-            'graphqlBearerToken:"eyRIGHT.MID.SIG", '
-            'yetAnother:"eyOTHER.XX.YY"'
+            f'x = {{ graphqlBearerToken:"{nrw}" }}; '
+            f'y = {{ graphqlBearerToken:"{freiburg}" }}; '
+            f'z = {{ graphqlBearerToken:"{hht}" }};'
         )
-        assert _extract_jwt(js) == "eyRIGHT.MID.SIG"
+        assert _extract_jwt(js) == hht
+
+    def test_returns_none_when_only_non_hht_tokens_present(self):
+        nrw = _make_jwt("https://nrw.imxplatform.de/oauth")
+        assert _extract_jwt(f'graphqlBearerToken:"{nrw}"') is None
 
     def test_returns_none_when_graphql_bearer_token_key_present_but_value_not_jwt_shaped(self):
         assert _extract_jwt('graphqlBearerToken:"not-a-jwt"') is None
+
+    def test_returns_none_when_payload_undecodable(self):
+        # Three "." segments but middle segment isn't valid base64/json.
+        assert _extract_jwt('graphqlBearerToken:"eyAAA.@@@notb64@@@.CCC"') is None
 
 
 import httpx
@@ -65,7 +96,10 @@ class _FakeClient:
         return httpx.Response(404, request=httpx.Request("POST", url))
 
 
-_WIDGET_JS_WITH_JWT = 'var config = { graphqlBearerToken:"eyAAA.BBB.CCC" };'
+_HHT_JWT = _make_jwt("https://hht.imxplatform.de/oauth", sub="4327")
+_NEW_HHT_JWT = _make_jwt("https://hht.imxplatform.de/oauth", sub="rotated")
+_WIDGET_JS_WITH_JWT = f'var config = {{ graphqlBearerToken:"{_HHT_JWT}" }};'
+_WIDGET_JS_WITH_NEW_JWT = f'graphqlBearerToken:"{_NEW_HHT_JWT}"'
 
 
 def _list_response(nodes: list[dict], total_pages: int = 1) -> dict:
@@ -105,10 +139,11 @@ class TestAdapterInit:
     def test_scrapes_jwt_from_widget_js_on_first_use(self):
         client = _FakeClient(get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT})
         adapter = TheaterHamburgAdapter(client=client)
-        assert adapter._get_jwt() == "eyAAA.BBB.CCC"
+        assert adapter._get_jwt() == _HHT_JWT
         assert client.get_calls == [_WIDGET_JS_URL]
 
     def test_jwt_env_override_skips_scrape(self, monkeypatch):
+        # env override bypasses the iss-claim check — operator is expected to supply a working token.
         monkeypatch.setenv("THEATER_HAMBURG_JWT", "eyOVERRIDE.PART.SIG")
         client = _FakeClient()
         adapter = TheaterHamburgAdapter(client=client)
@@ -117,6 +152,14 @@ class TestAdapterInit:
 
     def test_raises_when_widget_js_has_no_jwt(self):
         client = _FakeClient(get_map={_WIDGET_JS_URL: "no token here"})
+        adapter = TheaterHamburgAdapter(client=client)
+        with pytest.raises(RuntimeError, match="JWT"):
+            adapter._get_jwt()
+
+    def test_raises_when_widget_js_only_has_peer_tenant_tokens(self):
+        nrw = _make_jwt("https://nrw.imxplatform.de/oauth")
+        js = f'graphqlBearerToken:"{nrw}"'
+        client = _FakeClient(get_map={_WIDGET_JS_URL: js})
         adapter = TheaterHamburgAdapter(client=client)
         with pytest.raises(RuntimeError, match="JWT"):
             adapter._get_jwt()
@@ -164,6 +207,7 @@ class TestListFetch:
 
     def test_401_triggers_one_rescrape_and_retry(self):
         widget_calls = {"count": 0}
+        first_jwt = _HHT_JWT
 
         class _RotatingClient(_FakeClient):
             def get(self, url, **kwargs):
@@ -172,14 +216,14 @@ class TestListFetch:
                 text = (
                     _WIDGET_JS_WITH_JWT
                     if widget_calls["count"] == 1
-                    else 'graphqlBearerToken:"eyNEW.NEW.NEW"'
+                    else _WIDGET_JS_WITH_NEW_JWT
                 )
                 return httpx.Response(200, text=text, request=httpx.Request("GET", url))
 
             def post(self, url, *, json, headers, **kwargs):
                 self.post_calls.append((url, json, headers))
                 bearer = headers.get("Authorization", "")
-                if bearer == "Bearer eyAAA.BBB.CCC":
+                if bearer == f"Bearer {first_jwt}":
                     return httpx.Response(401, request=httpx.Request("POST", url))
                 node = _make_node()
                 return httpx.Response(

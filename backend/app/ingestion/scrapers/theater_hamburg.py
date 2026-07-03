@@ -2,12 +2,15 @@
 
 The whitelabel widget's data endpoint requires a Bearer JWT baked into the
 public widget.js bundle at the key `graphqlBearerToken:"..."`. The bundle
-also ships tokens for other platform tenants (NRW etc.), so we anchor on
-the specific key to select the Hamburg (HHT) token.
+ships ~7 such assignments — one per platform tenant (NRW, Freiburg, HHT,
+Luxemburg, ...). We select the JWT whose `iss` claim points at
+hht.imxplatform.de — the only tenant whose data endpoint serves Hamburg.
 
 The list query already includes `shortDescription` — no separate detail
 call per event. Each list node expands to one NormalizedEvent per entry
 in `eventDates`."""
+import base64
+import json
 import logging
 import os
 import re
@@ -27,6 +30,7 @@ _API_URL = "https://content-delivery.imxplatform.de/hht/imxplatform"
 _JWT_RE = re.compile(
     r'graphqlBearerToken\s*:\s*"(ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"'
 )
+_JWT_ISSUER_SUBSTRING = "hht.imxplatform.de"
 _BERLIN = ZoneInfo("Europe/Berlin")
 _PAGE_SIZE = 1000
 
@@ -78,10 +82,29 @@ _CATEGORY_MAP: dict[str, str] = {
 }
 
 
+def _decode_jwt_payload(token: str) -> dict | None:
+    """Return the decoded JWT payload dict, or None if malformed."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        pad = parts[1] + "=" * (-len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(pad))
+    except (ValueError, json.JSONDecodeError):
+        return None
+
+
 def _extract_jwt(js_body: str) -> str | None:
-    """Return the JWT captured after `graphqlBearerToken:"..."`, or None."""
-    m = _JWT_RE.search(js_body)
-    return m.group(1) if m else None
+    """Return the graphqlBearerToken JWT whose iss claim points at HHT.
+
+    widget.js ships tokens for multiple tenants (NRW, Freiburg, HHT, ...);
+    positional selection is unstable across bundle updates. The `iss` claim
+    is the tenant identity — pick the one for hht.imxplatform.de."""
+    for token in _JWT_RE.findall(js_body):
+        payload = _decode_jwt_payload(token)
+        if payload and _JWT_ISSUER_SUBSTRING in (payload.get("iss") or ""):
+            return token
+    return None
 
 
 def _map_category(raw_titles: list[str]) -> tuple[str, list[str]]:
