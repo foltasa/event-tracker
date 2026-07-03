@@ -1,14 +1,16 @@
-# Event Descriptions Fallback — TM Page Scrape + Hide-Empty Implementation Plan
+# Event Descriptions Fallback — Wikipedia Enrichment + Hide-Empty Toggle (v2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Raise Ticketmaster description coverage from 5.6% by scraping the public ticketmaster.de event page as a fallback source, backfill existing rows, and hide any events that still lack a description from every user-facing query.
+**Goal:** Raise Ticketmaster description coverage from 5.6% by looking up each attraction's Wikipedia article (via `externalLinks.wiki`) and using the Wikipedia REST summary as the event description. Backfill existing rows. Add a config toggle to hide description-less events from every user-facing query (default: on).
 
-**Architecture:** New shared module `app.ingestion.ticketmaster_page` provides one HTML-extraction function used by both (a) an inline fallback added to `TicketmasterAdapter._parse`, and (b) a one-off backfill script. A new `visible_events_filter()` helper in `app.db.models.event` is applied at every user-facing `Event` query site and to the Chroma embedding feed, so events without descriptions are hidden from the UI, agent, and vector store.
+**Architecture:** New shared module `app.ingestion.wikipedia` provides two pure functions (`wiki_title_from_url`, `extract_summary`) used by both (a) an inline fallback added to `TicketmasterAdapter._parse`, and (b) a one-off backfill script. A new `visible_events_filter()` helper in `app.db.models.event` reads `settings.hide_events_without_description` at call time and returns the strict or loose filter accordingly. Applied at every user-facing `Event` query site and to the Chroma embedding feed.
 
-**Tech Stack:** Python 3.11, Playwright (headless Chromium), BeautifulSoup 4, SQLAlchemy 2.x, pytest.
+**Tech Stack:** Python 3.11, httpx (existing), BeautifulSoup 4 (existing, unused here), SQLAlchemy 2.x, pytest, Pydantic-Settings.
 
-**Spec:** `docs/specs/2026-07-01-event-descriptions-fallback-design.md`. **Note the "Amendment" section at the bottom** — the original httpx-based scrape was blocked by ticketmaster.de's JS challenge; Playwright is the chosen bypass.
+**Spec:** `docs/specs/2026-07-01-event-descriptions-fallback-design.md`. **Read "Amendment 2 (2026-07-03)" at the bottom** — it supersedes the original Part A and the Playwright Amendment 1. This plan v2 implements Amendment 2.
+
+**History (do not implement, kept for context):** Original v1 tried a page scrape via httpx (blocked by Imperva), then Playwright (also blocked), then Playwright+stealth (worked technically but revealed ticketmaster.de has no editorial content on event pages). The pivot to Wikipedia enrichment is the surviving design.
 
 ---
 
@@ -16,629 +18,524 @@
 
 | Action | File | Responsibility |
 |---|---|---|
-| Modify | `backend/pyproject.toml` | Add `playwright` dep |
-| Create | `backend/app/ingestion/browser.py` | `PageFetcher` protocol + `PlaywrightPageFetcher` context manager |
-| Create | `backend/app/ingestion/ticketmaster_page.py` | Pure HTML → description text extraction |
-| Modify | `backend/app/ingestion/ticketmaster.py` | Add page-fetch fallback into `_parse` chain via injected `PageFetcher` |
-| Modify | `backend/app/ingestion/scheduler.py` | Apply visible filter; wrap adapters with a `PlaywrightPageFetcher` for the run |
-| Create | `backend/scripts/backfill_tm_descriptions.py` | One-off backfill using `PlaywrightPageFetcher` |
-| Modify | `backend/app/db/models/event.py` | Add `visible_events_filter()` helper |
+| Modify | `backend/pyproject.toml` | Remove `tf-playwright-stealth` (never used); keep `playwright` as-is for now |
+| Modify | `backend/app/config.py` | Add `hide_events_without_description: bool = True` |
+| Create | `backend/app/ingestion/wikipedia.py` | Pure funcs: `wiki_title_from_url`, `extract_summary` |
+| Modify | `backend/app/ingestion/ticketmaster.py` | Add Wikipedia-lookup fallback into `_parse` chain; per-run cache |
+| Modify | `backend/app/db/models/event.py` | Add `visible_events_filter()` helper (reads config at call time) |
 | Modify | `backend/app/api/routes_events.py` | Apply filter to list endpoint (leave detail route alone) |
 | Modify | `backend/app/agent/tools.py` | Apply filter to `search_events`, `get_recommendations` |
+| Modify | `backend/app/ingestion/scheduler.py` | Apply visible filter to embedding feed + stale sweep |
+| Create | `backend/scripts/backfill_tm_descriptions.py` | Iterate TM events missing description, lookup Wikipedia, commit |
 | Create | `backend/tests/fixtures/__init__.py` | Empty package marker |
-| Create | `backend/tests/fixtures/ticketmaster_page_sample.html` | Real rendered ticketmaster.de page HTML |
-| Create | `backend/tests/ingestion/test_browser.py` | Smoke test for `PlaywrightPageFetcher` (marked slow, opt-in) |
-| Create | `backend/tests/ingestion/test_ticketmaster_page.py` | Unit tests for `extract_description` |
-| Modify | `backend/tests/ingestion/test_ticketmaster.py` | Tests for page-fetch fallback in adapter |
-| Create | `backend/tests/db/test_visible_events_filter.py` | Unit tests for the filter helper |
+| Create | `backend/tests/fixtures/wiki_attraction_sample.json` | Real TM attraction detail JSON captured in Task 1 |
+| Create | `backend/tests/fixtures/wiki_summary_sample.json` | Real Wikipedia REST summary JSON captured in Task 1 |
+| Create | `backend/tests/ingestion/test_wikipedia.py` | Unit tests for pure functions |
+| Modify | `backend/tests/ingestion/test_ticketmaster.py` | Tests for Wikipedia fallback in adapter |
+| Create | `backend/tests/db/test_visible_events_filter.py` | Unit tests for filter helper — both toggle states |
 | Create | `backend/tests/scripts/test_backfill_tm_descriptions.py` | Integration test for backfill script |
-| Modify | `backend/tests/ingestion/test_scheduler.py` | Verify `embed_new_events` skips description-less events |
-| Modify | `backend/tests/api/test_routes_events.py` | Verify list endpoint hides description-less events; detail endpoint returns them |
-| Modify | `backend/tests/agent/test_tools.py` | Verify `search_events` hides description-less events |
+| Modify | `backend/tests/ingestion/test_scheduler.py` | Verify `embed_new_events` respects the filter |
+| Modify | `backend/tests/api/test_routes_events.py` | Verify list endpoint hides no-desc events; detail endpoint returns them |
+| Modify | `backend/tests/agent/test_tools.py` | Verify `search_events` hides no-desc events |
 
-Note on `routes_calendar.py`: the calendar reads `SavedEvent JOIN Event WHERE SavedEvent.user_id = ?`. Per spec Part C, a user's saved events must stay visible. No change needed.
+Note on `routes_calendar.py`: unchanged. Saved events must stay visible.
+
+Note on `pyproject.toml`: `playwright` stays (already installed; no harm) — a follow-up cleanup PR can remove it. `tf-playwright-stealth` is not committed but is in `pyproject.toml`'s dep list — remove it in Task 0.
 
 ---
 
-## Task 0 — Install Playwright and Chromium
+## Task 0 — Clean up dead Playwright/stealth dependencies
 
 **Files:**
 - Modify: `backend/pyproject.toml`
 
-- [ ] **Step 0.1: Add Playwright to `pyproject.toml`**
+- [ ] **Step 0.1: Remove `tf-playwright-stealth` from `pyproject.toml`**
 
-In `backend/pyproject.toml`, in the `dependencies` list, append after `"tldextract>=5.1.0",`:
+Delete the line:
 
 ```toml
-    "playwright>=1.44.0",
+    "tf-playwright-stealth>=1.1.0",
 ```
 
-- [ ] **Step 0.2: Install the package**
+Leave `playwright>=1.44.0` in place (already committed; removing is a follow-up).
+
+- [ ] **Step 0.2: Reinstall to update lockfile / venv metadata**
 
 ```
 cd backend
 pip install -e .
 ```
 
-Expected: `playwright` installed. If pip is slow, `pip install playwright>=1.44.0` alone also works.
-
-- [ ] **Step 0.3: Install the Chromium browser binary**
-
-```
-python -m playwright install chromium
-```
-
-Expected: downloads Chromium (~150 MB). Progress bar to completion.
-
-- [ ] **Step 0.4: Smoke-test the browser**
-
-```
-python -c "
-from playwright.sync_api import sync_playwright
-with sync_playwright() as p:
-    b = p.chromium.launch(headless=True)
-    page = b.new_page()
-    page.goto('https://example.com', timeout=15000)
-    print('title:', page.title())
-    b.close()
-"
-```
-
-Expected: prints `title: Example Domain`.
-
-- [ ] **Step 0.5: Commit**
+- [ ] **Step 0.3: Commit**
 
 ```
 git add backend/pyproject.toml
-git commit -m "chore(deps): add playwright for ticketmaster.de page rendering"
+git commit -m "chore(deps): drop tf-playwright-stealth (Wikipedia pivot obviates it)"
 ```
 
 ---
 
-## Task 1 — Recon: capture a real ticketmaster.de event page (via Playwright) and identify the description selector
+## Task 1 — Recon: TM attraction wiki links + Wikipedia REST response
 
 **Files:**
 - Create: `backend/tests/fixtures/__init__.py`
-- Create: `backend/tests/fixtures/ticketmaster_page_sample.html`
+- Create: `backend/tests/fixtures/wiki_attraction_sample.json`
+- Create: `backend/tests/fixtures/wiki_summary_sample.json`
 
-The description selector is not knowable from source alone. Use Playwright (installed in Task 0) to fetch a real rendered page and inspect it.
+Confirm two open questions before writing code:
+1. **Do TM events already embed `_embedded.attractions[i].externalLinks.wiki`, or must we call `/attractions/{id}.json`?** This determines whether the adapter needs an extra API call per attraction.
+2. **What does the Wikipedia REST summary response look like?** Shape the extractor to match.
 
-- [ ] **Step 1.1: Pick an event URL from the DB**
-
-Run:
+- [ ] **Step 1.1: Pick 3 TM event IDs from the local DB**
 
 ```
 cd backend
-python -c "import sqlite3; c=sqlite3.connect('event_tracker.db').cursor(); c.execute(\"SELECT id, title, source_url FROM events WHERE source='ticketmaster' LIMIT 5\"); [print(r) for r in c.fetchall()]"
+python -c "import sqlite3; c=sqlite3.connect('event_tracker.db').cursor(); c.execute(\"SELECT id, external_id, title FROM events WHERE source='ticketmaster' LIMIT 3\"); [print(r) for r in c.fetchall()]"
 ```
 
-Pick one row and note the `source_url`. Prefer a music event since they dominate the DB.
+Pick one music event.
 
-- [ ] **Step 1.2: Create the fixtures package marker**
+- [ ] **Step 1.2: Fetch the event detail and inspect `_embedded.attractions[]`**
+
+```
+python -c "
+import httpx, json, os
+from app.config import settings
+event_id = '<external_id>'  # from Step 1.1
+r = httpx.get(f'https://app.ticketmaster.com/discovery/v2/events/{event_id}.json', params={'apikey': settings.ticketmaster_api_key}, timeout=15)
+r.raise_for_status()
+data = r.json()
+atts = data.get('_embedded', {}).get('attractions', [])
+print('num attractions:', len(atts))
+for a in atts:
+    print('- id:', a.get('id'), 'name:', a.get('name'))
+    print('  externalLinks keys:', list((a.get('externalLinks') or {}).keys()))
+    wiki = (a.get('externalLinks') or {}).get('wiki')
+    print('  wiki:', wiki)
+"
+```
+
+**Decision A:** If any attraction's `externalLinks.wiki[0].url` is populated → embedded is enough, skip the per-attraction call. If `externalLinks` is absent on the embedded attraction, fall through to Step 1.3.
+
+- [ ] **Step 1.3: Fetch a full attraction and confirm `externalLinks.wiki` is there**
+
+```
+python -c "
+import httpx, json
+from app.config import settings
+attraction_id = '<attraction id from 1.2>'
+r = httpx.get(f'https://app.ticketmaster.com/discovery/v2/attractions/{attraction_id}.json', params={'apikey': settings.ticketmaster_api_key}, timeout=15)
+r.raise_for_status()
+data = r.json()
+print(json.dumps(data.get('externalLinks', {}), indent=2))
+import pathlib
+pathlib.Path('tests/fixtures/wiki_attraction_sample.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
+print('saved fixture')
+"
+```
+
+Expected: `externalLinks.wiki` is a list with at least one `{'url': 'https://en.wikipedia.org/wiki/…'}`. If the attractions endpoint also lacks wiki links for the artists that had none in `_embedded`, that just means those attractions genuinely have no Wikipedia article on TM's side — the strategy still covers the artists that do.
+
+- [ ] **Step 1.4: Fetch the Wikipedia REST summary and save it**
+
+```
+python -c "
+import httpx, json, pathlib, urllib.parse
+url = '<wiki url from step 1.3>'
+from urllib.parse import urlparse, unquote
+p = urlparse(url)
+host = p.netloc
+title = unquote(p.path.rsplit('/', 1)[-1])
+api = f'https://{host}/api/rest_v1/page/summary/{title}'
+r = httpx.get(api, timeout=15, headers={'User-Agent': 'EventTrackerBot/1.0 (contact@example.com)'})
+r.raise_for_status()
+data = r.json()
+print('keys:', list(data.keys()))
+print('extract:', (data.get('extract') or '')[:200])
+pathlib.Path('tests/fixtures/wiki_summary_sample.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
+"
+```
+
+Expected: `extract` field contains a plain-text summary (1–3 paragraphs). Note whether `type` is `standard` (article) or `disambiguation` (skip these).
+
+- [ ] **Step 1.5: Create the fixtures package marker + commit**
 
 Create `backend/tests/fixtures/__init__.py` as an empty file.
 
-- [ ] **Step 1.3: Render the page with Playwright and save the HTML**
-
-Run (replace `<URL>` with the chosen source_url):
-
 ```
-python -c "
-from playwright.sync_api import sync_playwright
-import pathlib
-url = '<URL>'
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    ctx = browser.new_context(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-    page = ctx.new_page()
-    page.goto(url, timeout=30000, wait_until='networkidle')
-    # Additional wait for the challenge to clear if present.
-    page.wait_for_timeout(2000)
-    html = page.content()
-    browser.close()
-pathlib.Path('tests/fixtures/ticketmaster_page_sample.html').write_text(html, encoding='utf-8')
-print('saved', len(html), 'chars')
-"
+git add backend/tests/fixtures/__init__.py backend/tests/fixtures/wiki_attraction_sample.json backend/tests/fixtures/wiki_summary_sample.json
+git commit -m "test(fixtures): capture TM attraction + Wikipedia REST summary fixtures"
 ```
 
-Expected: prints `saved N chars` where N > 30000. If N is small (~6000), the challenge did not clear — try `wait_until='load'` and a longer `page.wait_for_timeout(5000)`.
+- [ ] **Step 1.6: Record decision A**
 
-- [ ] **Step 1.4: Identify the description block**
-
-```
-python -c "
-from bs4 import BeautifulSoup
-html = open('tests/fixtures/ticketmaster_page_sample.html', encoding='utf-8').read()
-soup = BeautifulSoup(html, 'html.parser')
-# Try 1: meta description
-m = soup.find('meta', attrs={'name': 'description'})
-print('META:', m.get('content') if m else None)
-# Try 2: schema.org JSON-LD
-import json
-for s in soup.find_all('script', type='application/ld+json'):
-    try:
-        data = json.loads(s.string or '')
-        if isinstance(data, list):
-            data = data[0] if data else {}
-        if data.get('@type') in ('Event', 'MusicEvent', 'TheaterEvent', 'SportsEvent'):
-            print('JSONLD desc:', (data.get('description') or '')[:200])
-    except Exception:
-        pass
-# Try 3: about-this-event style container
-for sel in ['div.about-event', 'div.event-description', 'div.eds-text--content', '[data-testid*=description]']:
-    for el in soup.select(sel):
-        print(f'SEL {sel}:', el.get_text(strip=True)[:200])
-"
-```
-
-Record which selector produced the description. **Decision rule:** prefer JSON-LD if present (structured, less likely to change). Fall back to `<meta name="description">`.
-
-- [ ] **Step 1.5: Commit the fixture**
-
-```
-git add backend/tests/fixtures/__init__.py backend/tests/fixtures/ticketmaster_page_sample.html
-git commit -m "test(fixtures): capture real ticketmaster.de event page via playwright"
-```
-
-- [ ] **Step 1.6: Record the selector decision**
-
-Report in your final message which selector was found. Task 2 hardcodes it. If both JSON-LD and meta are present, extractor tries JSON-LD first. If neither is present, escalate BLOCKED — the strategy hinges on this fixture.
+In your final message on this task, state clearly: "Wiki link is embedded on `_embedded.attractions[i]` in the events endpoint" **or** "Wiki link only present on the separate `/attractions/{id}.json` call — extra API call required." Task 3 branches on this decision.
 
 ---
 
-## Task 2 — Pure extractor: `ticketmaster_page.extract_description`
+## Task 2 — Pure extractor: `wikipedia.wiki_title_from_url` + `extract_summary`
 
 **Files:**
-- Create: `backend/app/ingestion/ticketmaster_page.py`
-- Create: `backend/tests/ingestion/test_ticketmaster_page.py`
+- Create: `backend/app/ingestion/wikipedia.py`
+- Create: `backend/tests/ingestion/test_wikipedia.py`
 
-Pure function that takes an HTML string and returns `str | None`. No I/O.
+Two pure functions, no I/O.
 
 - [ ] **Step 2.1: Write the failing tests**
 
-Create `backend/tests/ingestion/test_ticketmaster_page.py`:
+Create `backend/tests/ingestion/test_wikipedia.py`:
 
 ```python
+import json
 from pathlib import Path
 
-from app.ingestion.ticketmaster_page import extract_description
+from app.ingestion.wikipedia import extract_summary, wiki_title_from_url
 
-_FIXTURE = Path(__file__).parent.parent / "fixtures" / "ticketmaster_page_sample.html"
-
-
-def test_extract_description_from_real_fixture():
-    html = _FIXTURE.read_text(encoding="utf-8")
-    desc = extract_description(html)
-    assert desc is not None
-    assert len(desc) >= 20  # real pages have substantive text
+_FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
 
 
-def test_extract_description_prefers_jsonld_over_meta():
-    html = """
-    <html><head>
-      <meta name="description" content="Meta fallback text.">
-      <script type="application/ld+json">
-      {"@type": "Event", "description": "JSON-LD primary text."}
-      </script>
-    </head><body></body></html>
-    """
-    assert extract_description(html) == "JSON-LD primary text."
+def test_wiki_title_from_url_english():
+    assert wiki_title_from_url("https://en.wikipedia.org/wiki/Don_Toliver") == (
+        "en.wikipedia.org",
+        "Don_Toliver",
+    )
 
 
-def test_extract_description_falls_back_to_meta():
-    html = """
-    <html><head>
-      <meta name="description" content="Meta fallback text.">
-    </head><body></body></html>
-    """
-    assert extract_description(html) == "Meta fallback text."
+def test_wiki_title_from_url_german():
+    assert wiki_title_from_url("https://de.wikipedia.org/wiki/Herbert_Gr%C3%B6nemeyer") == (
+        "de.wikipedia.org",
+        "Herbert_Grönemeyer",
+    )
 
 
-def test_extract_description_handles_jsonld_list():
-    html = """
-    <html><head>
-      <script type="application/ld+json">
-      [{"@type": "Event", "description": "First item."}]
-      </script>
-    </head></html>
-    """
-    assert extract_description(html) == "First item."
+def test_wiki_title_from_url_none_on_non_wiki():
+    assert wiki_title_from_url("https://example.com/foo") is None
 
 
-def test_extract_description_ignores_non_event_jsonld():
-    html = """
-    <html><head>
-      <meta name="description" content="From meta.">
-      <script type="application/ld+json">
-      {"@type": "Organization", "description": "Ignored."}
-      </script>
-    </head></html>
-    """
-    assert extract_description(html) == "From meta."
+def test_wiki_title_from_url_none_on_empty():
+    assert wiki_title_from_url("") is None
+    assert wiki_title_from_url(None) is None  # type: ignore[arg-type]
 
 
-def test_extract_description_returns_none_when_absent():
-    html = "<html><head></head><body>no description here</body></html>"
-    assert extract_description(html) is None
+def test_extract_summary_from_real_fixture():
+    body = json.loads((_FIXTURE_DIR / "wiki_summary_sample.json").read_text(encoding="utf-8"))
+    summary = extract_summary(body)
+    assert summary is not None
+    assert len(summary) >= 40
 
 
-def test_extract_description_returns_none_on_empty_string_desc():
-    html = """
-    <html><head>
-      <script type="application/ld+json">{"@type": "Event", "description": ""}</script>
-    </head></html>
-    """
-    assert extract_description(html) is None
+def test_extract_summary_returns_none_for_disambiguation():
+    body = {"type": "disambiguation", "extract": "Foo may refer to:"}
+    assert extract_summary(body) is None
 
 
-def test_extract_description_survives_malformed_jsonld():
-    html = """
-    <html><head>
-      <meta name="description" content="Meta wins when JSON-LD is broken.">
-      <script type="application/ld+json">{ not valid json</script>
-    </head></html>
-    """
-    assert extract_description(html) == "Meta wins when JSON-LD is broken."
+def test_extract_summary_returns_none_when_extract_missing():
+    assert extract_summary({"type": "standard"}) is None
+
+
+def test_extract_summary_returns_none_on_empty_extract():
+    assert extract_summary({"type": "standard", "extract": "   "}) is None
 ```
 
 - [ ] **Step 2.2: Run tests to confirm they fail**
 
-Run:
-
 ```
 cd backend
-python -m pytest tests/ingestion/test_ticketmaster_page.py -v
+python -m pytest tests/ingestion/test_wikipedia.py -v
 ```
 
-Expected: all 8 tests FAIL (module doesn't exist).
+Expected: all 8 tests FAIL (module missing).
 
-- [ ] **Step 2.3: Implement the extractor**
+- [ ] **Step 2.3: Implement the module**
 
-Create `backend/app/ingestion/ticketmaster_page.py`:
+Create `backend/app/ingestion/wikipedia.py`:
 
 ```python
-"""Extract description text from a ticketmaster.de event page.
+"""Pure helpers for turning a Wikipedia URL into a REST summary lookup.
 
-Prefers structured schema.org JSON-LD (`@type` ∈ Event/MusicEvent/TheaterEvent/
-SportsEvent) because it is the field that page templates render deterministically.
-Falls back to the `<meta name="description">` tag."""
-import json
-import logging
-
-from bs4 import BeautifulSoup
-
-logger = logging.getLogger(__name__)
-
-_EVENT_TYPES = {"Event", "MusicEvent", "TheaterEvent", "SportsEvent"}
+Two pieces:
+- wiki_title_from_url: parse a Wikipedia URL into (host, title).
+- extract_summary: pull the plain-text extract from a Wikipedia REST
+  /api/rest_v1/page/summary/{title} response, skipping disambiguation pages."""
+from urllib.parse import unquote, urlparse
 
 
-def _from_jsonld(soup: BeautifulSoup) -> str | None:
-    for tag in soup.find_all("script", type="application/ld+json"):
-        raw = tag.string or tag.get_text() or ""
-        try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        candidates = data if isinstance(data, list) else [data]
-        for entry in candidates:
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("@type") not in _EVENT_TYPES:
-                continue
-            desc = entry.get("description")
-            if isinstance(desc, str) and desc.strip():
-                return desc.strip()
-    return None
+def wiki_title_from_url(url: str | None) -> tuple[str, str] | None:
+    """Parse a Wikipedia article URL.
 
-
-def _from_meta(soup: BeautifulSoup) -> str | None:
-    tag = soup.find("meta", attrs={"name": "description"})
-    if tag is None:
+    Returns (host, title) where title is URL-decoded, or None if the URL
+    does not look like a Wikipedia article link."""
+    if not url:
         return None
-    content = tag.get("content")
-    if isinstance(content, str) and content.strip():
-        return content.strip()
-    return None
-
-
-def extract_description(html: str) -> str | None:
-    """Return the event description from a ticketmaster.de event page, or None."""
-    if not html:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
         return None
-    soup = BeautifulSoup(html, "html.parser")
-    return _from_jsonld(soup) or _from_meta(soup)
+    if not parsed.netloc.endswith("wikipedia.org"):
+        return None
+    parts = parsed.path.strip("/").split("/")
+    if len(parts) < 2 or parts[0] != "wiki":
+        return None
+    title = unquote("/".join(parts[1:]))
+    if not title:
+        return None
+    return parsed.netloc, title
+
+
+def extract_summary(body: dict) -> str | None:
+    """Return the plain-text summary from a Wikipedia REST summary response.
+
+    Skips disambiguation pages (type == 'disambiguation') — their extract
+    is a list of links, not editorial content."""
+    if not isinstance(body, dict):
+        return None
+    if body.get("type") == "disambiguation":
+        return None
+    extract = body.get("extract")
+    if not isinstance(extract, str):
+        return None
+    text = extract.strip()
+    return text or None
 ```
 
 - [ ] **Step 2.4: Run tests to verify they pass**
 
-Run:
-
 ```
-python -m pytest tests/ingestion/test_ticketmaster_page.py -v
+python -m pytest tests/ingestion/test_wikipedia.py -v
 ```
 
-Expected: all 8 tests PASS. If `test_extract_description_from_real_fixture` fails but the synthetic tests pass, the real page uses neither JSON-LD nor meta — go back to Task 1 Step 1.4, find the actual selector, and extend `extract_description` (and add a corresponding synthetic test).
+Expected: 8 PASS.
 
 - [ ] **Step 2.5: Commit**
 
 ```
-git add backend/app/ingestion/ticketmaster_page.py backend/tests/ingestion/test_ticketmaster_page.py
-git commit -m "feat(ticketmaster): add page-HTML description extractor"
+git add backend/app/ingestion/wikipedia.py backend/tests/ingestion/test_wikipedia.py
+git commit -m "feat(wikipedia): pure helpers for URL parsing + summary extraction"
 ```
 
 ---
 
-## Task 3 — `PageFetcher` protocol + Playwright impl + wire into `TicketmasterAdapter`
+## Task 3 — Wire Wikipedia lookup into `TicketmasterAdapter`
 
 **Files:**
-- Create: `backend/app/ingestion/browser.py`
 - Modify: `backend/app/ingestion/ticketmaster.py`
-- Create: `backend/tests/ingestion/test_browser.py`
 - Modify: `backend/tests/ingestion/test_ticketmaster.py`
 
-Two moving parts: the `PageFetcher` abstraction (allows testing without a real browser) and the adapter wiring that calls it as a fallback.
+Adapter gains a `_fetch_wiki_description(raw)` helper that iterates attractions, follows the first wiki link that returns a real Wikipedia summary, and caches results per artist across the run.
 
-- [ ] **Step 3.1: Create `browser.py` with the protocol and Playwright impl**
+**Assumption (confirm with Task 1 Step 1.6):** If wiki links are on `_embedded.attractions[i].externalLinks.wiki` directly, no extra API call. Otherwise the helper calls `/attractions/{id}.json` (also cached per attraction id).
 
-Create `backend/app/ingestion/browser.py`:
+- [ ] **Step 3.1: Add failing tests**
 
-```python
-"""Headless-browser page fetching for sites that block plain-HTTP clients.
-
-`PageFetcher` is the interface adapters depend on. `PlaywrightPageFetcher`
-is the concrete implementation using headless Chromium — used as a context
-manager so the browser process is started once per ingestion run and
-guaranteed to close on exit. Tests inject a fake `PageFetcher`."""
-import logging
-from typing import Protocol
-
-logger = logging.getLogger(__name__)
-
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-)
-_NAV_TIMEOUT_MS = 30000
-_POST_NAV_WAIT_MS = 2000
-
-
-class PageFetcher(Protocol):
-    def fetch(self, url: str) -> str | None: ...
-
-
-class PlaywrightPageFetcher:
-    """Context-managed Playwright fetcher. Reuses one browser + context across calls.
-
-    Usage:
-        with PlaywrightPageFetcher() as fetcher:
-            html = fetcher.fetch(url)
-    """
-
-    def __init__(self):
-        self._pw = None
-        self._browser = None
-        self._context = None
-
-    def __enter__(self):
-        from playwright.sync_api import sync_playwright
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=True)
-        self._context = self._browser.new_context(user_agent=_USER_AGENT)
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        if self._context is not None:
-            self._context.close()
-        if self._browser is not None:
-            self._browser.close()
-        if self._pw is not None:
-            self._pw.stop()
-
-    def fetch(self, url: str) -> str | None:
-        if not url or self._context is None:
-            return None
-        page = self._context.new_page()
-        try:
-            page.goto(url, timeout=_NAV_TIMEOUT_MS, wait_until="networkidle")
-            page.wait_for_timeout(_POST_NAV_WAIT_MS)
-            return page.content()
-        except Exception:
-            logger.warning("PlaywrightPageFetcher: fetch failed for %s", url)
-            return None
-        finally:
-            page.close()
-```
-
-- [ ] **Step 3.2: Add an opt-in smoke test for the real browser**
-
-Create `backend/tests/ingestion/test_browser.py`:
+Read the top of `backend/tests/ingestion/test_ticketmaster.py` to understand existing test constants (`_EVENT_1`, `_SINGLE_PAGE`, `_FakeClient`, `_DETAIL_WITH_INFO`). Then append:
 
 ```python
-"""Smoke test for PlaywrightPageFetcher. Requires network + `playwright install chromium`.
+# --- Wikipedia fallback tests -----------------------------------------------
 
-Marked `slow`: skipped by default. Run with `pytest -m slow` when validating."""
-import pytest
+_ATTRACTION_WITH_WIKI = {
+    "id": "K8vZ9171oh7",
+    "name": "Don Toliver",
+    "externalLinks": {
+        "wiki": [{"url": "https://en.wikipedia.org/wiki/Don_Toliver"}],
+    },
+}
 
-from app.ingestion.browser import PlaywrightPageFetcher
+_ATTRACTION_NO_WIKI = {
+    "id": "K8vZ9171oh8",
+    "name": "Local Warmup Act",
+    "externalLinks": {},
+}
 
+# Version of _EVENT_1 with an attraction embedded (extend the source fixture).
+_EVENT_WITH_ATTRACTION = {
+    **_EVENT_1,
+    "_embedded": {
+        **(_EVENT_1.get("_embedded") or {}),
+        "attractions": [_ATTRACTION_WITH_WIKI],
+    },
+}
 
-@pytest.mark.slow
-def test_playwright_fetcher_renders_example_com():
-    with PlaywrightPageFetcher() as fetcher:
-        html = fetcher.fetch("https://example.com")
-    assert html is not None
-    assert "Example Domain" in html
-
-
-@pytest.mark.slow
-def test_playwright_fetcher_returns_none_on_bad_url():
-    with PlaywrightPageFetcher() as fetcher:
-        html = fetcher.fetch("http://this-domain-does-not-resolve-abc123.invalid")
-    assert html is None
-```
-
-Register the `slow` marker. Append to `backend/pyproject.toml`'s `[tool.pytest.ini_options]` section:
-
-```toml
-markers = [
-    "slow: marks tests that require network / real browser (deselect with -m 'not slow')",
-]
-```
-
-Update the default selection to skip slow tests: change:
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-```
-
-to:
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "-m 'not slow'"
-markers = [
-    "slow: marks tests that require network / real browser (deselect with -m 'not slow')",
-]
-```
-
-- [ ] **Step 3.3: Write failing tests for the page-fetch fallback in the adapter**
-
-Append to `backend/tests/ingestion/test_ticketmaster.py`:
-
-```python
-_PAGE_HTML_WITH_DESC = """
-<html><head>
-  <script type="application/ld+json">
-  {"@type": "Event", "description": "From ticketmaster.de page."}
-  </script>
-</head></html>
-"""
-
-_PAGE_HTML_NO_DESC = "<html><head></head><body></body></html>"
+_WIKI_SUMMARY_RESPONSE = {
+    "type": "standard",
+    "extract": "Don Toliver is an American rapper and singer from Houston, Texas.",
+}
 
 
-class _FakePageFetcher:
-    """Stand-in for PageFetcher — maps URL -> HTML, records calls."""
+class _FakeWikiClient:
+    """Records GET calls; returns a queued JSON body per URL prefix."""
 
-    def __init__(self, page_map: dict[str, str] | None = None):
-        self._page_map = page_map or {}
+    def __init__(self, url_to_body: dict[str, dict]):
+        self._map = url_to_body
         self.calls: list[str] = []
 
-    def fetch(self, url: str) -> str | None:
+    def get(self, url: str, **kwargs):
         self.calls.append(url)
-        return self._page_map.get(url)
+        class _Resp:
+            def __init__(self, body):
+                self._b = body
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return self._b
+        for prefix, body in self._map.items():
+            if url.startswith(prefix):
+                return _Resp(body)
+        raise AssertionError(f"unexpected GET {url}")
 
 
-def test_description_from_ticketmaster_de_page_when_detail_empty():
-    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_WITH_DESC})
-    adapter = TicketmasterAdapter(
-        client=_FakeClient([_SINGLE_PAGE]),
-        page_fetcher=fetcher,
-    )
+def test_description_from_wikipedia_when_detail_empty():
+    tm = _FakeClient([{"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"number": 0, "totalPages": 1}}])
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver": _WIKI_SUMMARY_RESPONSE,
+    })
+    adapter = TicketmasterAdapter(client=tm, wiki_client=wiki)
     events = list(adapter.fetch())
-    assert events[0].description == "From ticketmaster.de page."
-    assert fetcher.calls == [_EVENT_1["url"]]
-
-
-def test_page_fetch_not_called_when_detail_has_description():
-    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_WITH_DESC})
-    adapter = TicketmasterAdapter(
-        client=_FakeClient([_SINGLE_PAGE], {"tm_001": _DETAIL_WITH_INFO}),
-        page_fetcher=fetcher,
+    assert events[0].description == (
+        "Don Toliver is an American rapper and singer from Houston, Texas."
     )
+    assert wiki.calls == [
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver"
+    ]
+
+
+def test_wikipedia_not_called_when_detail_has_description():
+    tm = _FakeClient(
+        [{"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"number": 0, "totalPages": 1}}],
+        detail_map={"tm_001": _DETAIL_WITH_INFO},
+    )
+    wiki = _FakeWikiClient({})
+    adapter = TicketmasterAdapter(client=tm, wiki_client=wiki)
     events = list(adapter.fetch())
     assert events[0].description == "An evening of hard rock classics."
-    assert fetcher.calls == []
+    assert wiki.calls == []
 
 
-def test_description_none_when_page_fetch_returns_no_description_content():
-    fetcher = _FakePageFetcher({_EVENT_1["url"]: _PAGE_HTML_NO_DESC})
-    adapter = TicketmasterAdapter(
-        client=_FakeClient([_SINGLE_PAGE]),
-        page_fetcher=fetcher,
-    )
+def test_wikipedia_caches_across_events_with_same_attraction():
+    """Same artist appears on two events → Wikipedia is hit once."""
+    ev1 = {**_EVENT_WITH_ATTRACTION, "id": "tm_001"}
+    ev2 = {**_EVENT_WITH_ATTRACTION, "id": "tm_002"}
+    tm = _FakeClient([{"_embedded": {"events": [ev1, ev2]}, "page": {"number": 0, "totalPages": 1}}])
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver": _WIKI_SUMMARY_RESPONSE,
+    })
+    adapter = TicketmasterAdapter(client=tm, wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert len(events) == 2
+    assert all(e.description.startswith("Don Toliver") for e in events)
+    assert len(wiki.calls) == 1
+
+
+def test_description_none_when_attraction_has_no_wiki_link():
+    ev = {**_EVENT_1, "_embedded": {**(_EVENT_1.get("_embedded") or {}), "attractions": [_ATTRACTION_NO_WIKI]}}
+    tm = _FakeClient([{"_embedded": {"events": [ev]}, "page": {"number": 0, "totalPages": 1}}])
+    wiki = _FakeWikiClient({})
+    adapter = TicketmasterAdapter(client=tm, wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert events[0].description is None
+    assert wiki.calls == []
+
+
+def test_description_none_when_wiki_summary_is_disambiguation():
+    tm = _FakeClient([{"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"number": 0, "totalPages": 1}}])
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver":
+            {"type": "disambiguation", "extract": "Don may refer to..."},
+    })
+    adapter = TicketmasterAdapter(client=tm, wiki_client=wiki)
     events = list(adapter.fetch())
     assert events[0].description is None
 
 
-def test_description_none_when_page_fetcher_returns_none():
-    fetcher = _FakePageFetcher()  # returns None for any url
-    adapter = TicketmasterAdapter(
-        client=_FakeClient([_SINGLE_PAGE]),
-        page_fetcher=fetcher,
-    )
-    events = list(adapter.fetch())
-    assert len(events) == 1
-    assert events[0].description is None
-
-
-def test_no_page_fetch_when_page_fetcher_is_none():
-    """Existing default behavior — adapter without page_fetcher does not error."""
-    adapter = TicketmasterAdapter(client=_FakeClient([_SINGLE_PAGE]))
+def test_no_wiki_client_means_no_lookup():
+    """Default behavior — adapter constructed without wiki_client does not error."""
+    tm = _FakeClient([{"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"number": 0, "totalPages": 1}}])
+    adapter = TicketmasterAdapter(client=tm)
     events = list(adapter.fetch())
     assert events[0].description is None
 ```
 
-- [ ] **Step 3.4: Run new tests to confirm they fail**
+Update `_FakeClient` in the test file if it doesn't already support `detail_map`. It likely does (from earlier work).
+
+- [ ] **Step 3.2: Run new tests to confirm they fail**
 
 ```
 cd backend
-python -m pytest tests/ingestion/test_ticketmaster.py -k "page_fetch or ticketmaster_de_page or fetcher_returns_none or fetcher_is_none" -v
+python -m pytest tests/ingestion/test_ticketmaster.py -k "wiki" -v
 ```
 
-Expected: FAIL — `TicketmasterAdapter.__init__` does not accept `page_fetcher`.
+Expected: FAIL — `TicketmasterAdapter.__init__` does not accept `wiki_client`.
 
-- [ ] **Step 3.5: Implement the adapter changes**
+- [ ] **Step 3.3: Implement adapter changes**
 
-In `backend/app/ingestion/ticketmaster.py`:
-
-Add to top imports:
+In `backend/app/ingestion/ticketmaster.py`, add imports at the top:
 
 ```python
-from app.ingestion.browser import PageFetcher
-from app.ingestion.ticketmaster_page import extract_description
+from app.ingestion.wikipedia import extract_summary, wiki_title_from_url
 ```
 
-Change `TicketmasterAdapter.__init__` from:
+Add a module-level constant:
 
 ```python
-    def __init__(self, client: httpx.Client | None = None):
-        self._client = client or httpx.Client(timeout=15)
-        self._api_key = settings.ticketmaster_api_key
+_WIKI_USER_AGENT = "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
 ```
 
-to:
+Change `TicketmasterAdapter.__init__`:
 
 ```python
     def __init__(
         self,
         client: httpx.Client | None = None,
-        page_fetcher: PageFetcher | None = None,
+        wiki_client: httpx.Client | None = None,
     ):
         self._client = client or httpx.Client(timeout=15)
         self._api_key = settings.ticketmaster_api_key
-        self._page_fetcher = page_fetcher
+        self._wiki_client = wiki_client
+        # Per-run cache: wiki URL → description text or None (negative caching too).
+        self._wiki_cache: dict[str, str | None] = {}
 ```
 
 Add a new method after `_fetch_detail`:
 
 ```python
-    def _fetch_page_description(self, source_url: str) -> str | None:
-        """Fallback: fetch the public ticketmaster.de event page via the injected
-        PageFetcher and extract its description."""
-        if not source_url or self._page_fetcher is None:
+    def _fetch_wiki_description_for_event(self, raw: dict) -> str | None:
+        """Iterate the event's embedded attractions; return the first
+        Wikipedia summary text found via externalLinks.wiki."""
+        if self._wiki_client is None:
             return None
-        html = self._page_fetcher.fetch(source_url)
-        if not html:
+        for att in (raw.get("_embedded") or {}).get("attractions") or []:
+            wiki_links = ((att.get("externalLinks") or {}).get("wiki")) or []
+            for link in wiki_links:
+                url = link.get("url") if isinstance(link, dict) else None
+                desc = self._lookup_wiki_summary(url)
+                if desc:
+                    return desc
+        return None
+
+    def _lookup_wiki_summary(self, url: str | None) -> str | None:
+        if not url:
             return None
-        return extract_description(html)
+        if url in self._wiki_cache:
+            return self._wiki_cache[url]
+        parsed = wiki_title_from_url(url)
+        if parsed is None:
+            self._wiki_cache[url] = None
+            return None
+        host, title = parsed
+        api = f"https://{host}/api/rest_v1/page/summary/{title}"
+        try:
+            resp = self._wiki_client.get(api, headers={"User-Agent": _WIKI_USER_AGENT})
+            resp.raise_for_status()
+            body = resp.json()
+        except Exception:
+            logger.warning("Wikipedia summary fetch failed for %s", api)
+            self._wiki_cache[url] = None
+            return None
+        text = extract_summary(body)
+        self._wiki_cache[url] = text
+        return text
 ```
 
-Replace the description-computation block in `_parse` (currently lines 113-117):
+Replace the description block in `_parse` (currently lines 113-117):
 
 ```python
             description: str | None = None
@@ -657,35 +554,63 @@ with:
                     detail.get("info") or detail.get("additionalInfo") or detail.get("pleaseNote")
                 ) or None
             if not description:
-                description = self._fetch_page_description(raw.get("url", ""))
+                description = self._fetch_wiki_description_for_event(raw)
 ```
 
-- [ ] **Step 3.6: Run all TM adapter tests**
+- [ ] **Step 3.4: Run all TM adapter tests**
 
 ```
 python -m pytest tests/ingestion/test_ticketmaster.py -v
 ```
 
-Expected: all previously-passing tests still pass; 5 new tests now pass.
+Expected: all previously-passing tests still pass; 6 new tests pass. If Task 1 Step 1.6 revealed the wiki link is NOT on the embedded attraction but only on the full attraction detail, adjust `_fetch_wiki_description_for_event` to first call `_fetch_attraction_detail(att['id'])` — add that helper analogous to `_fetch_detail` — and update tests accordingly.
 
-- [ ] **Step 3.7: Commit**
+- [ ] **Step 3.5: Commit**
 
 ```
-git add backend/app/ingestion/browser.py backend/app/ingestion/ticketmaster.py backend/tests/ingestion/test_browser.py backend/tests/ingestion/test_ticketmaster.py backend/pyproject.toml
-git commit -m "feat(ticketmaster): page-fetch fallback via injected PageFetcher (playwright impl)"
+git add backend/app/ingestion/ticketmaster.py backend/tests/ingestion/test_ticketmaster.py
+git commit -m "feat(ticketmaster): Wikipedia-summary fallback via attraction wiki links"
 ```
 
 ---
 
-## Task 4 — Add `visible_events_filter()` helper
+## Task 4 — Add `hide_events_without_description` config toggle
+
+**Files:**
+- Modify: `backend/app/config.py`
+- (No dedicated tests here — behavior is covered by `test_visible_events_filter.py` in Task 5)
+
+- [ ] **Step 4.1: Add the setting**
+
+In `backend/app/config.py`, add after `default_user_id: str = "local"`:
+
+```python
+    # Filter empty-description events from user-facing queries.
+    # When True (default), list endpoints, agent tools, and the embedding
+    # feed skip events whose description is null or empty. Flip via
+    # HIDE_EVENTS_WITHOUT_DESCRIPTION=false to include them (useful during
+    # backfill validation).
+    hide_events_without_description: bool = True
+```
+
+- [ ] **Step 4.2: Commit**
+
+```
+git add backend/app/config.py
+git commit -m "feat(config): add HIDE_EVENTS_WITHOUT_DESCRIPTION toggle (default on)"
+```
+
+---
+
+## Task 5 — Add `visible_events_filter()` helper (respects toggle)
 
 **Files:**
 - Modify: `backend/app/db/models/event.py`
 - Create: `backend/tests/db/test_visible_events_filter.py`
 
-One place to define "an event that should be shown to users": active and has a non-empty description.
+Helper reads `settings.hide_events_without_description` at call time. Returns strict filter when on, loose (`is_active` only) when off.
 
-- [ ] **Step 4.1: Write the failing tests**
+- [ ] **Step 5.1: Write the failing tests**
 
 Create `backend/tests/db/test_visible_events_filter.py`:
 
@@ -715,7 +640,10 @@ def _make(session, **overrides):
     return ev
 
 
-def test_filter_returns_only_active_with_description(db_session):
+def test_filter_returns_only_active_with_description_when_toggle_on(db_session, monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
+
     _make(db_session, id="ok",       description="Real text.",  is_active=True)
     _make(db_session, id="empty",    description="",            is_active=True, external_id="e2")
     _make(db_session, id="null",     description=None,          is_active=True, external_id="e3")
@@ -725,7 +653,23 @@ def test_filter_returns_only_active_with_description(db_session):
     assert ids == {"ok"}
 
 
-def test_filter_composes_with_other_filters(db_session):
+def test_filter_ignores_description_when_toggle_off(db_session, monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "hide_events_without_description", False)
+
+    _make(db_session, id="ok",       description="Real text.",  is_active=True)
+    _make(db_session, id="empty",    description="",            is_active=True, external_id="e2")
+    _make(db_session, id="null",     description=None,          is_active=True, external_id="e3")
+    _make(db_session, id="inactive", description="Real text.",  is_active=False, external_id="e4")
+
+    ids = {r.id for r in db_session.query(Event).filter(visible_events_filter()).all()}
+    assert ids == {"ok", "empty", "null"}  # active without desc are visible; inactive still hidden
+
+
+def test_filter_composes_with_other_filters(db_session, monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "hide_events_without_description", True)
+
     _make(db_session, id="music", category="music", description="A")
     _make(db_session, id="theater", category="theater", description="B", external_id="e2")
     _make(db_session, id="music_empty", category="music", description="", external_id="e3")
@@ -740,19 +684,17 @@ def test_filter_composes_with_other_filters(db_session):
     assert ids == {"music"}
 ```
 
-- [ ] **Step 4.2: Run tests to confirm they fail**
-
-Run:
+- [ ] **Step 5.2: Run tests to confirm they fail**
 
 ```
 python -m pytest tests/db/test_visible_events_filter.py -v
 ```
 
-Expected: FAIL — `visible_events_filter` is not importable.
+Expected: FAIL — `visible_events_filter` missing.
 
-- [ ] **Step 4.3: Implement the helper**
+- [ ] **Step 5.3: Implement**
 
-Modify `backend/app/db/models/event.py`. Change the imports at the top:
+Modify `backend/app/db/models/event.py`. Change the sqlalchemy import at the top from:
 
 ```python
 from sqlalchemy import JSON, Boolean, DateTime, Float, String, UniqueConstraint
@@ -770,9 +712,14 @@ Then append after the `Event` class:
 def visible_events_filter():
     """SQLAlchemy filter for user-facing event queries.
 
-    Active AND has a non-empty description. Applied at every user-visible
-    query site (list endpoint, agent tools, calendar recommendations, embedding
-    feed) so events without descriptions never surface to the user."""
+    Always requires `is_active`. When `settings.hide_events_without_description`
+    is True (default), also requires a non-empty description. Reading the
+    setting at call time lets the operator flip the toggle without touching
+    call sites."""
+    from app.config import settings
+
+    if not settings.hide_events_without_description:
+        return Event.is_active == True  # noqa: E712
     return and_(
         Event.is_active == True,  # noqa: E712
         Event.description.isnot(None),
@@ -780,73 +727,44 @@ def visible_events_filter():
     )
 ```
 
-- [ ] **Step 4.4: Run tests**
-
-Run:
+- [ ] **Step 5.4: Run tests**
 
 ```
 python -m pytest tests/db/test_visible_events_filter.py -v
 ```
 
-Expected: 2 tests PASS.
+Expected: 3 PASS.
 
-- [ ] **Step 4.5: Commit**
+- [ ] **Step 5.5: Commit**
 
 ```
 git add backend/app/db/models/event.py backend/tests/db/test_visible_events_filter.py
-git commit -m "feat(events): visible_events_filter helper for hiding no-description events"
+git commit -m "feat(events): visible_events_filter helper (respects hide toggle)"
 ```
 
 ---
 
-## Task 5 — Apply filter to the list endpoint (`routes_events.py`)
+## Task 6 — Apply filter to the list endpoint (`routes_events.py`)
 
 **Files:**
 - Modify: `backend/app/api/routes_events.py`
 - Modify: `backend/tests/api/test_routes_events.py`
 
-`list_events` (line 43) currently filters by `is_active == True`. Swap for `visible_events_filter()`. `get_event` (line 100) is deliberately unchanged per spec.
+- [ ] **Step 6.0: Fix pre-existing fixtures**
 
-- [ ] **Step 5.0: Fix pre-existing fixture (would break after filter change)**
+In `backend/tests/api/test_routes_events.py`, the `setup` fixture creates events without a `description`. Add `description=f"Description for event {i}."` to the `Event(...)` call inside the loop so the existing list-endpoint tests still see all three events after the filter is enabled.
 
-The `setup` fixture in `backend/tests/api/test_routes_events.py` creates Events without a `description` field, defaulting to `None`. After Step 5.3 they would vanish from the list feed and break `test_list_events_paginated`, `test_list_events_category_filter`, and `test_list_events_includes_user_context`.
-
-In the `setup` fixture (around line 16), change the `Event(...)` construction inside the loop to include a description. The current block:
-
-```python
-    for i, cat in enumerate(["music", "tech", "music"]):
-        db_session.add(Event(
-            id=f"e{i}", external_id=f"x{i}", source="eventbrite",
-            title=f"Event {i}", category=cat, source_url="http://x",
-            start_datetime=base + timedelta(days=i),
-        ))
-```
-
-becomes:
-
-```python
-    for i, cat in enumerate(["music", "tech", "music"]):
-        db_session.add(Event(
-            id=f"e{i}", external_id=f"x{i}", source="eventbrite",
-            title=f"Event {i}", category=cat, source_url="http://x",
-            description=f"Description for event {i}.",
-            start_datetime=base + timedelta(days=i),
-        ))
-```
-
-Also scan the rest of the file for any other test that seeds an Event without a description and relies on it appearing in list results. In `test_event_detail_calendar_kind_null_when_not_in_calendar` (around line 60), the event is fetched via `/events/{id}` (detail route, no filter change) — leave it alone.
-
-Run the existing tests to confirm they still pass:
+Run:
 
 ```
 python -m pytest tests/api/test_routes_events.py -v
 ```
 
-Expected: all still pass (fixture change is a no-op on current behavior).
+Expected: still all pass.
 
-- [ ] **Step 5.1: Add failing tests to `test_routes_events.py`**
+- [ ] **Step 6.1: Add failing tests**
 
-Look at existing tests in `backend/tests/api/test_routes_events.py` to understand fixtures. Then add these two tests to that file (at the end):
+Append to `backend/tests/api/test_routes_events.py`:
 
 ```python
 def test_list_events_hides_events_without_description(client, db_session):
@@ -854,21 +772,15 @@ def test_list_events_hides_events_without_description(client, db_session):
     from app.db.models import Event
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add_all([
-        Event(
-            id="with_desc", external_id="a", source="ticketmaster",
-            title="With desc", description="Real text.", start_datetime=now,
-            category="music", tags=[], source_url="https://x/a", raw_data={},
-        ),
-        Event(
-            id="no_desc", external_id="b", source="ticketmaster",
-            title="No desc", description=None, start_datetime=now,
-            category="music", tags=[], source_url="https://x/b", raw_data={},
-        ),
-        Event(
-            id="empty_desc", external_id="c", source="ticketmaster",
-            title="Empty desc", description="", start_datetime=now,
-            category="music", tags=[], source_url="https://x/c", raw_data={},
-        ),
+        Event(id="with_desc", external_id="a", source="ticketmaster", title="With desc",
+              description="Real text.", start_datetime=now, category="music",
+              tags=[], source_url="https://x/a", raw_data={}),
+        Event(id="no_desc", external_id="b", source="ticketmaster", title="No desc",
+              description=None, start_datetime=now, category="music",
+              tags=[], source_url="https://x/b", raw_data={}),
+        Event(id="empty_desc", external_id="c", source="ticketmaster", title="Empty desc",
+              description="", start_datetime=now, category="music",
+              tags=[], source_url="https://x/c", raw_data={}),
     ])
     db_session.commit()
 
@@ -877,18 +789,37 @@ def test_list_events_hides_events_without_description(client, db_session):
     data = resp.json()
     ids = {e["id"] for e in data["events"]}
     assert ids == {"with_desc"}
-    assert data["total"] == 1
+
+
+def test_list_events_shows_no_desc_when_toggle_off(client, db_session, monkeypatch):
+    from app.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "hide_events_without_description", False)
+
+    from datetime import datetime, timezone
+    from app.db.models import Event
+    now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
+    db_session.add_all([
+        Event(id="with_desc", external_id="a", source="ticketmaster", title="With desc",
+              description="Real text.", start_datetime=now, category="music",
+              tags=[], source_url="https://x/a", raw_data={}),
+        Event(id="no_desc", external_id="b", source="ticketmaster", title="No desc",
+              description=None, start_datetime=now, category="music",
+              tags=[], source_url="https://x/b", raw_data={}),
+    ])
+    db_session.commit()
+
+    resp = client.get("/events?date_from=2026-07-15&date_to=2026-07-16")
+    ids = {e["id"] for e in resp.json()["events"]}
+    assert ids == {"with_desc", "no_desc"}
 
 
 def test_get_event_returns_event_even_without_description(client, db_session):
     from datetime import datetime, timezone
     from app.db.models import Event
-    db_session.add(Event(
-        id="no_desc_direct", external_id="d", source="ticketmaster",
-        title="Direct fetch", description=None,
-        start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
-        category="music", tags=[], source_url="https://x/d", raw_data={},
-    ))
+    db_session.add(Event(id="no_desc_direct", external_id="d", source="ticketmaster",
+                         title="Direct fetch", description=None,
+                         start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
+                         category="music", tags=[], source_url="https://x/d", raw_data={}))
     db_session.commit()
 
     resp = client.get("/events/no_desc_direct")
@@ -896,87 +827,68 @@ def test_get_event_returns_event_even_without_description(client, db_session):
     assert resp.json()["id"] == "no_desc_direct"
 ```
 
-- [ ] **Step 5.2: Run tests to confirm they fail**
-
-Run:
+- [ ] **Step 6.2: Run tests to confirm the first two fail**
 
 ```
-python -m pytest tests/api/test_routes_events.py::test_list_events_hides_events_without_description \
-    tests/api/test_routes_events.py::test_get_event_returns_event_even_without_description -v
+python -m pytest tests/api/test_routes_events.py::test_list_events_hides_events_without_description tests/api/test_routes_events.py::test_list_events_shows_no_desc_when_toggle_off -v
 ```
 
-Expected: the first test FAILS (no_desc + empty_desc leak through); the second passes if no code changes are needed for detail (should already pass).
+- [ ] **Step 6.3: Change the list endpoint filter**
 
-- [ ] **Step 5.3: Change the list endpoint filter**
-
-In `backend/app/api/routes_events.py`, add the import at the top (after existing imports from `app.db.models`):
+In `backend/app/api/routes_events.py`, add:
 
 ```python
 from app.db.models.event import visible_events_filter
 ```
 
-Then replace line 43:
-
-```python
-    qry = db.query(Event).filter(Event.is_active == True)  # noqa: E712
-```
-
-with:
+Replace the line that filters `Event.is_active == True` in `list_events` with:
 
 ```python
     qry = db.query(Event).filter(visible_events_filter())
 ```
 
-- [ ] **Step 5.4: Run tests**
-
-Run:
+- [ ] **Step 6.4: Run tests**
 
 ```
 python -m pytest tests/api/test_routes_events.py -v
 ```
 
-Expected: all tests pass (both new ones + all previously-passing).
+Expected: all pass.
 
-- [ ] **Step 5.5: Commit**
+- [ ] **Step 6.5: Commit**
 
 ```
 git add backend/app/api/routes_events.py backend/tests/api/test_routes_events.py
-git commit -m "feat(events): hide events without description from list endpoint"
+git commit -m "feat(events): list endpoint hides no-desc events via visible_events_filter"
 ```
 
 ---
 
-## Task 6 — Apply filter to agent tools (`search_events`, `get_recommendations`)
+## Task 7 — Apply filter to agent tools (`search_events`, `get_recommendations`)
 
 **Files:**
 - Modify: `backend/app/agent/tools.py`
 - Modify: `backend/tests/agent/test_tools.py`
 
-`search_events` (line 83) and the id-hydration inside `get_recommendations` (line 300).
+- [ ] **Step 7.0: Fix pre-existing fixtures**
 
-- [ ] **Step 6.0: Fix pre-existing fixtures (would break after filter change)**
+Three tests in `backend/tests/agent/test_tools.py` seed Events with `description=""` and expect them in `search_events` results:
 
-Three existing tests in `backend/tests/agent/test_tools.py` seed Events with `description=""` and expect them to appear in `search_events` results. After Step 6.3 they would be filtered out and the tests would fail.
+- `test_search_events_defaults_to_today_plus_3d`
+- `test_search_events_explicit_bounds_override_default`
+- `test_search_events_one_bound_does_not_trigger_default`
 
-Change `description=""` to a non-empty string in each of these tests:
+Change `description=""` → `description="Real."` in each.
 
-- `test_search_events_defaults_to_today_plus_3d` (around lines 223 and 228): `description=""` → `description="Real."`
-- `test_search_events_explicit_bounds_override_default` (around line 247): `description=""` → `description="Real."`
-- `test_search_events_one_bound_does_not_trigger_default` (around line 267): `description=""` → `description="Real."`
-
-Also scan the file for the `user` fixture and the top-of-file setup (around lines 22 and 29 already use real descriptions — leave them alone).
-
-Run existing tests to confirm they still pass:
-
+Run:
 ```
 python -m pytest tests/agent/test_tools.py -v
 ```
+Expected: still pass.
 
-Expected: all still pass.
+- [ ] **Step 7.1: Add failing test**
 
-- [ ] **Step 6.1: Add failing test for `search_events`**
-
-Add to `backend/tests/agent/test_tools.py` (at the end). First check the existing test patterns — most use `_session_factory` monkeypatched to return the fixture session. Follow that pattern:
+Append to `test_tools.py`:
 
 ```python
 def test_search_events_hides_no_description(db_session, monkeypatch):
@@ -988,65 +900,42 @@ def test_search_events_hides_no_description(db_session, monkeypatch):
 
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add_all([
-        Event(
-            id="visible", external_id="a", source="ticketmaster", title="Yes",
-            description="Real.", start_datetime=now, category="music",
-            tags=[], source_url="https://x/a", raw_data={},
-        ),
-        Event(
-            id="hidden", external_id="b", source="ticketmaster", title="No",
-            description=None, start_datetime=now, category="music",
-            tags=[], source_url="https://x/b", raw_data={},
-        ),
+        Event(id="visible", external_id="a", source="ticketmaster", title="Yes",
+              description="Real.", start_datetime=now, category="music",
+              tags=[], source_url="https://x/a", raw_data={}),
+        Event(id="hidden", external_id="b", source="ticketmaster", title="No",
+              description=None, start_datetime=now, category="music",
+              tags=[], source_url="https://x/b", raw_data={}),
     ])
     db_session.commit()
 
-    rows = tools.search_events.invoke({
-        "date_from": "2026-07-15",
-        "date_to": "2026-07-16",
-    })
+    rows = tools.search_events.invoke({"date_from": "2026-07-15", "date_to": "2026-07-16"})
     ids = {r["id"] for r in rows}
     assert ids == {"visible"}
 ```
 
-- [ ] **Step 6.2: Run test to confirm it fails**
+- [ ] **Step 7.2: Change `search_events` and `get_recommendations`**
 
-Run:
-
-```
-python -m pytest tests/agent/test_tools.py::test_search_events_hides_no_description -v
-```
-
-Expected: FAIL — `hidden` leaks through.
-
-- [ ] **Step 6.3: Change `search_events` and `get_recommendations`**
-
-In `backend/app/agent/tools.py`, add to the imports (after existing model imports):
+In `backend/app/agent/tools.py`, add:
 
 ```python
 from app.db.models.event import visible_events_filter
 ```
 
-Change line 83 from:
-
+In `search_events` change:
 ```python
         q = session.query(Event).filter(Event.is_active == True)  # noqa: E712
 ```
-
 to:
-
 ```python
         q = session.query(Event).filter(visible_events_filter())
 ```
 
-Change line 300 (inside `get_recommendations`) from:
-
+In `get_recommendations` (id hydration), change:
 ```python
         rows = session.query(Event).filter(Event.id.in_(id_to_score.keys())).all()
 ```
-
 to:
-
 ```python
         rows = (
             session.query(Event)
@@ -1056,52 +945,37 @@ to:
         )
 ```
 
-Do NOT change `get_calendar` (lines 116-119): saved events must stay visible per spec.
-Do NOT change existence checks at lines 136 and 324: they only verify the row exists.
+Do NOT change `get_calendar` (saved events stay visible) or existence checks in save/unsave.
 
-- [ ] **Step 6.4: Run tests**
-
-Run:
+- [ ] **Step 7.3: Run tests + commit**
 
 ```
 python -m pytest tests/agent/test_tools.py -v
-```
-
-Expected: all tests pass.
-
-- [ ] **Step 6.5: Commit**
-
-```
 git add backend/app/agent/tools.py backend/tests/agent/test_tools.py
-git commit -m "feat(agent): hide events without description from search and recommend"
+git commit -m "feat(agent): hide no-desc events from search + recommend"
 ```
 
 ---
 
-## Task 7 — Apply visible filter to embedding feed AND wire `PlaywrightPageFetcher` into ingestion
+## Task 8 — Apply visible filter to embedding feed
 
 **Files:**
 - Modify: `backend/app/ingestion/scheduler.py`
 - Modify: `backend/tests/ingestion/test_scheduler.py`
 
-Three changes to `scheduler.py`:
-1. Only embed events matching `visible_events_filter()`.
-2. Update the stale-sweep keep-set to match (so Chroma never contains vectors for hidden events).
-3. Wrap the ingestion loop in a `PlaywrightPageFetcher` context manager and pass the fetcher into `TicketmasterAdapter`.
+Two changes to `embed_new_events`: (a) keep-set uses `visible_events_filter()`, (b) rows to embed use `visible_events_filter()`.
 
-- [ ] **Step 7.1: Inspect existing scheduler tests**
-
-Run:
+- [ ] **Step 8.1: Inspect existing scheduler tests**
 
 ```
 python -m pytest tests/ingestion/test_scheduler.py -v --collect-only
 ```
 
-This lists existing tests. The next step adds a new one that must follow the same fixture pattern (likely `db_session` + mocking `chroma_upsert_events`).
+Note the existing chroma-mocking pattern (likely `monkeypatch.setattr(scheduler, "chroma_upsert_events", …)`, `scheduler.chroma_store.all_ids`, `scheduler.chroma_store.delete_by_ids`).
 
-- [ ] **Step 7.2: Add failing test**
+- [ ] **Step 8.2: Add failing tests**
 
-Read the top of `backend/tests/ingestion/test_scheduler.py` for the existing import/mocking pattern. Then append this test. Adjust the mocked module path if Step 7.1 shows a different pattern (e.g., `app.rag.chroma_store.upsert_events` vs `app.ingestion.scheduler.chroma_upsert_events`).
+Append to `backend/tests/ingestion/test_scheduler.py`:
 
 ```python
 def test_embed_new_events_skips_events_without_description(db_session, monkeypatch):
@@ -1111,37 +985,22 @@ def test_embed_new_events_skips_events_without_description(db_session, monkeypat
 
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add_all([
-        Event(
-            id="with_desc", external_id="a", source="ticketmaster", title="A",
-            description="Real.", start_datetime=now, category="music",
-            tags=[], source_url="https://x/a", raw_data={},
-        ),
-        Event(
-            id="no_desc", external_id="b", source="ticketmaster", title="B",
-            description=None, start_datetime=now, category="music",
-            tags=[], source_url="https://x/b", raw_data={},
-        ),
+        Event(id="with_desc", external_id="a", source="ticketmaster", title="A",
+              description="Real.", start_datetime=now, category="music",
+              tags=[], source_url="https://x/a", raw_data={}),
+        Event(id="no_desc", external_id="b", source="ticketmaster", title="B",
+              description=None, start_datetime=now, category="music",
+              tags=[], source_url="https://x/b", raw_data={}),
     ])
     db_session.commit()
 
-    calls: dict = {"upserted": None, "deleted": None}
-
-    def fake_upsert(payload):
-        calls["upserted"] = [p.id for p in payload]
-
-    def fake_all_ids():
-        return set()
-
-    def fake_delete(ids):
-        calls["deleted"] = list(ids)
-
-    monkeypatch.setattr(scheduler, "chroma_upsert_events", fake_upsert)
-    monkeypatch.setattr(scheduler.chroma_store, "all_ids", fake_all_ids)
-    monkeypatch.setattr(scheduler.chroma_store, "delete_by_ids", fake_delete)
+    upserted: list = []
+    monkeypatch.setattr(scheduler, "chroma_upsert_events", lambda payload: upserted.extend(p.id for p in payload))
+    monkeypatch.setattr(scheduler.chroma_store, "all_ids", lambda: set())
+    monkeypatch.setattr(scheduler.chroma_store, "delete_by_ids", lambda ids: None)
 
     scheduler.embed_new_events(db_session)
-
-    assert calls["upserted"] == ["with_desc"]
+    assert upserted == ["with_desc"]
 
 
 def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypatch):
@@ -1150,264 +1009,67 @@ def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypa
     from app.ingestion import scheduler
 
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
-    db_session.add(Event(
-        id="no_desc", external_id="b", source="ticketmaster", title="B",
-        description=None, start_datetime=now, category="music",
-        tags=[], source_url="https://x/b", raw_data={},
-    ))
+    db_session.add(Event(id="no_desc", external_id="b", source="ticketmaster", title="B",
+                         description=None, start_datetime=now, category="music",
+                         tags=[], source_url="https://x/b", raw_data={}))
     db_session.commit()
 
-    calls: dict = {"deleted": []}
-
+    deleted: list = []
     monkeypatch.setattr(scheduler, "chroma_upsert_events", lambda payload: None)
     monkeypatch.setattr(scheduler.chroma_store, "all_ids", lambda: {"no_desc", "gone"})
-    monkeypatch.setattr(
-        scheduler.chroma_store,
-        "delete_by_ids",
-        lambda ids: calls["deleted"].extend(ids),
-    )
+    monkeypatch.setattr(scheduler.chroma_store, "delete_by_ids", lambda ids: deleted.extend(ids))
 
     scheduler.embed_new_events(db_session)
-
-    # Both "gone" (not in DB) and "no_desc" (in DB but hidden) must be purged.
-    assert set(calls["deleted"]) == {"no_desc", "gone"}
+    assert set(deleted) == {"no_desc", "gone"}
 ```
 
-- [ ] **Step 7.3: Run tests to confirm they fail**
+- [ ] **Step 8.3: Implement**
 
-Run:
-
-```
-python -m pytest tests/ingestion/test_scheduler.py::test_embed_new_events_skips_events_without_description \
-    tests/ingestion/test_scheduler.py::test_embed_new_events_purges_no_description_from_chroma -v
-```
-
-Expected: 2 FAIL.
-
-- [ ] **Step 7.4: Implement embedding-filter changes**
-
-In `backend/app/ingestion/scheduler.py`, add the imports (after existing `Event` import):
+In `backend/app/ingestion/scheduler.py`, add:
 
 ```python
 from app.db.models.event import visible_events_filter
-from app.ingestion.browser import PlaywrightPageFetcher
 ```
 
-Replace the `embed_new_events` function body. Current version (lines 20-51):
-
+Replace `embed_new_events`. Change:
 ```python
-def embed_new_events(session: Session) -> None:
-    """Embed all currently-active events into Chroma and drop stale vectors.
-
-    Stale = a Chroma id that no longer exists in the events table. Without
-    this sweep, wiping event_tracker.db (or any other event-removal path)
-    leaves orphan vectors that outrank live ones in get_recommendations and
-    cause the tool to return an empty list after the SQL hydration step.
-    Idempotent: upsert by id, delete by id."""
     all_event_ids = {row[0] for row in session.query(Event.id).all()}
     stale = list(chroma_store.all_ids() - all_event_ids)
-    if stale:
-        chroma_store.delete_by_ids(stale)
-        logger.info("embed_new_events: purged %d stale Chroma vector(s)", len(stale))
-
-    rows = session.query(Event).filter(Event.is_active == True).all()  # noqa: E712
-    ...
 ```
-
-Replace with:
-
+to:
 ```python
-def embed_new_events(session: Session) -> None:
-    """Embed all currently-visible events into Chroma and drop stale vectors.
-
-    Stale = a Chroma id whose event no longer passes visible_events_filter()
-    (deleted, deactivated, or missing a description). Idempotent."""
-    visible_ids = {
-        row[0]
-        for row in session.query(Event.id).filter(visible_events_filter()).all()
-    }
+    visible_ids = {row[0] for row in session.query(Event.id).filter(visible_events_filter()).all()}
     stale = list(chroma_store.all_ids() - visible_ids)
-    if stale:
-        chroma_store.delete_by_ids(stale)
-        logger.info("embed_new_events: purged %d stale Chroma vector(s)", len(stale))
+```
 
+And change:
+```python
+    rows = session.query(Event).filter(Event.is_active == True).all()  # noqa: E712
+```
+to:
+```python
     rows = session.query(Event).filter(visible_events_filter()).all()
-    if not rows:
-        logger.info("embed_new_events: no visible events")
-        return
-    payload = [
-        EventForEmbedding(
-            id=r.id,
-            title=r.title,
-            description=r.description,
-            category=r.category,
-            venue_name=r.venue_name,
-            neighborhood=None,  # not in the current schema; leave None for MVP
-            start_datetime=r.start_datetime,
-        )
-        for r in rows
-    ]
-    chroma_upsert_events(payload)
-    logger.info("embed_new_events: embedded %d events", len(payload))
 ```
 
-- [ ] **Step 7.5: Wire PlaywrightPageFetcher into `run_ingestion`**
-
-Change `_default_adapters()` (line 54-55) from:
-
-```python
-def _default_adapters() -> list[SourceAdapter]:
-    return [TicketmasterAdapter(), HamburgScraper()]
-```
-
-to accept a page fetcher:
-
-```python
-def _default_adapters(page_fetcher=None) -> list[SourceAdapter]:
-    return [TicketmasterAdapter(page_fetcher=page_fetcher), HamburgScraper()]
-```
-
-Change `run_ingestion` body. Find the section (around line 71-83):
-
-```python
-    try:
-        all_events = []
-        for adapter in adapters:
-            try:
-                batch = list(adapter.fetch())
-                all_events.extend(batch)
-                logger.info("%s: fetched %d events", adapter.name, len(batch))
-            except Exception:
-                logger.exception("%s: fetch failed, skipping", adapter.name)
-
-        report = upsert_events(session, all_events)
-        deactivate_past_events(session)
-        embed_new_events(session)
-```
-
-Change the `if adapters is None:` block above it (around line 63-64) from:
-
-```python
-    if adapters is None:
-        adapters = _default_adapters()
-```
-
-to leave that unset and wrap the fetch loop in the page fetcher. The full new `run_ingestion` body block becomes:
-
-```python
-    own_session = session is None
-    if own_session:
-        run_migrations()
-        session = SessionLocal()
-
-    try:
-        with PlaywrightPageFetcher() as page_fetcher:
-            active_adapters = adapters if adapters is not None else _default_adapters(page_fetcher=page_fetcher)
-
-            all_events = []
-            for adapter in active_adapters:
-                try:
-                    batch = list(adapter.fetch())
-                    all_events.extend(batch)
-                    logger.info("%s: fetched %d events", adapter.name, len(batch))
-                except Exception:
-                    logger.exception("%s: fetch failed, skipping", adapter.name)
-
-        report = upsert_events(session, all_events)
-        deactivate_past_events(session)
-        embed_new_events(session)
-```
-
-Rationale: adapters passed by tests already have their own fetcher (or none) — respect the injection. When called with no `adapters` argument (production), we build the default with the browser attached, and close the browser as soon as the fetch loop finishes.
-
-- [ ] **Step 7.6: Add a test that adapters injection still works and does NOT start Playwright**
-
-Append to `backend/tests/ingestion/test_scheduler.py`:
-
-```python
-def test_run_ingestion_with_explicit_adapters_does_not_start_playwright(db_session, monkeypatch):
-    """When tests inject adapters, run_ingestion must not touch Playwright."""
-    from app.ingestion import scheduler
-
-    started = {"count": 0}
-
-    class _Sentinel:
-        def __enter__(self):
-            started["count"] += 1
-            raise AssertionError("Playwright should not start when adapters are injected")
-
-        def __exit__(self, *a):
-            return False
-
-    monkeypatch.setattr(scheduler, "PlaywrightPageFetcher", _Sentinel)
-
-    # With adapters=[_OkAdapter()], PlaywrightPageFetcher context manager is still
-    # entered (it wraps the whole fetch loop) — but the adapters passed in do not
-    # need it. The current design DOES enter the context manager. To make this
-    # opt-out for tests, `run_ingestion` should skip the context entirely when
-    # `adapters is not None`.
-    # (This test drives that requirement.)
-    scheduler.run_ingestion(adapters=[_OkAdapter()], session=db_session)
-    assert started["count"] == 0
-```
-
-This test exposes the fact that even with injected adapters, the current `run_ingestion` enters the Playwright context. To make the test pass, rewrite the `try:` block to only enter the context manager when adapters are default:
-
-```python
-    try:
-        if adapters is None:
-            with PlaywrightPageFetcher() as page_fetcher:
-                active_adapters = _default_adapters(page_fetcher=page_fetcher)
-                all_events = _fetch_all(active_adapters)
-        else:
-            all_events = _fetch_all(adapters)
-
-        report = upsert_events(session, all_events)
-        deactivate_past_events(session)
-        embed_new_events(session)
-```
-
-Where `_fetch_all` is a small helper (extract from the loop):
-
-```python
-def _fetch_all(adapters: list[SourceAdapter]) -> list:
-    all_events = []
-    for adapter in adapters:
-        try:
-            batch = list(adapter.fetch())
-            all_events.extend(batch)
-            logger.info("%s: fetched %d events", adapter.name, len(batch))
-        except Exception:
-            logger.exception("%s: fetch failed, skipping", adapter.name)
-    return all_events
-```
-
-- [ ] **Step 7.7: Run tests**
+- [ ] **Step 8.4: Run tests + commit**
 
 ```
 python -m pytest tests/ingestion/test_scheduler.py -v
-```
-
-Expected: all tests pass, including the new no-Playwright-on-injection test.
-
-- [ ] **Step 7.8: Commit**
-
-```
 git add backend/app/ingestion/scheduler.py backend/tests/ingestion/test_scheduler.py
-git commit -m "feat(scheduler): visible-only embeddings + PlaywrightPageFetcher for prod ingest"
+git commit -m "feat(scheduler): visible-only embeddings (respects hide toggle)"
 ```
 
 ---
 
-## Task 8 — Backfill script for existing DB rows
+## Task 9 — Backfill script for existing DB rows
 
 **Files:**
 - Create: `backend/scripts/backfill_tm_descriptions.py`
 - Create: `backend/tests/scripts/test_backfill_tm_descriptions.py`
 
-Walks all existing Ticketmaster events with missing descriptions and applies the same extractor.
+Walks TM events with missing descriptions. For each, if the event has a stored `_embedded.attractions` in `raw_data`, iterate its wiki links and try Wikipedia. Otherwise call the TM attractions endpoint. Same extractor as ingestion.
 
-- [ ] **Step 8.1: Write the failing test**
+- [ ] **Step 9.1: Write the failing tests**
 
 Create `backend/tests/scripts/test_backfill_tm_descriptions.py`:
 
@@ -1418,129 +1080,140 @@ from app.db.models import Event
 from scripts import backfill_tm_descriptions
 
 
-class _FakePageFetcher:
-    def __init__(self, page_map: dict[str, str]):
-        self._page_map = page_map
+class _FakeHttp:
+    def __init__(self, url_to_body: dict[str, dict]):
+        self._map = url_to_body
         self.calls: list[str] = []
 
-    def fetch(self, url: str) -> str | None:
+    def get(self, url: str, **kwargs):
         self.calls.append(url)
-        return self._page_map.get(url)
+        class _R:
+            def __init__(self, b): self._b = b
+            def raise_for_status(self): pass
+            def json(self): return self._b
+        for prefix, b in self._map.items():
+            if url.startswith(prefix): return _R(b)
+        raise AssertionError(f"unexpected GET {url}")
 
 
-def _seed(session, id_: str, description, source_url: str, source: str = "ticketmaster"):
+_ATTR_WITH_WIKI = {
+    "externalLinks": {"wiki": [{"url": "https://en.wikipedia.org/wiki/Don_Toliver"}]}
+}
+
+
+def _seed(session, id_, description, source="ticketmaster", raw_data=None):
     session.add(Event(
-        id=id_, external_id=id_, source=source, title="T",
-        description=description,
+        id=id_, external_id=id_, source=source, title="T", description=description,
         start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
-        category="music", tags=[], source_url=source_url, raw_data={},
+        category="music", tags=[], source_url="https://tm/e", raw_data=raw_data or {},
     ))
     session.commit()
 
 
-_HTML_OK = """
-<html><head>
-  <script type="application/ld+json">{"@type": "Event", "description": "Backfilled text."}</script>
-</head></html>
-"""
-
-
 def test_backfill_updates_missing_descriptions(db_session):
-    _seed(db_session, "e1", None, "https://ticketmaster.de/e1")
-    _seed(db_session, "e2", "", "https://ticketmaster.de/e2")
-    _seed(db_session, "e3", "Already has one.", "https://ticketmaster.de/e3")
-    _seed(db_session, "e4", None, "https://ticketmaster.de/e4", source="eventbrite")
+    _seed(db_session, "e1", None, raw_data={"_embedded": {"attractions": [_ATTR_WITH_WIKI]}})
+    _seed(db_session, "e2", "",   raw_data={"_embedded": {"attractions": [_ATTR_WITH_WIKI]}})
+    _seed(db_session, "e3", "Already.", raw_data={"_embedded": {"attractions": [_ATTR_WITH_WIKI]}})
+    _seed(db_session, "e4", None, source="eventbrite", raw_data={"_embedded": {"attractions": [_ATTR_WITH_WIKI]}})
 
-    fetcher = _FakePageFetcher({
-        "https://ticketmaster.de/e1": _HTML_OK,
-        "https://ticketmaster.de/e2": _HTML_OK,
-        # e4 also has HTML available, but it's not TM so must not be visited
-        "https://ticketmaster.de/e4": _HTML_OK,
+    http = _FakeHttp({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver":
+            {"type": "standard", "extract": "Don Toliver is an American rapper."},
     })
-    report = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
+    report = backfill_tm_descriptions.run(db_session, http_client=http)
 
-    assert report["scanned"] == 2   # e1, e2
+    assert report["scanned"] == 2
     assert report["updated"] == 2
     assert report["failed"] == 0
-    assert set(fetcher.calls) == {
-        "https://ticketmaster.de/e1",
-        "https://ticketmaster.de/e2",
-    }
     db_session.expire_all()
-    assert db_session.query(Event).filter_by(id="e1").one().description == "Backfilled text."
-    assert db_session.query(Event).filter_by(id="e2").one().description == "Backfilled text."
-    # Untouched:
-    assert db_session.query(Event).filter_by(id="e3").one().description == "Already has one."
+    assert db_session.query(Event).filter_by(id="e1").one().description.startswith("Don Toliver")
+    assert db_session.query(Event).filter_by(id="e2").one().description.startswith("Don Toliver")
+    assert db_session.query(Event).filter_by(id="e3").one().description == "Already."
     assert db_session.query(Event).filter_by(id="e4").one().description is None
 
 
-def test_backfill_handles_fetch_failures(db_session):
-    _seed(db_session, "e1", None, "https://ticketmaster.de/e1")
+def test_backfill_is_idempotent(db_session):
+    _seed(db_session, "e1", None, raw_data={"_embedded": {"attractions": [_ATTR_WITH_WIKI]}})
+    http = _FakeHttp({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver":
+            {"type": "standard", "extract": "Don Toliver is an American rapper."},
+    })
+    first = backfill_tm_descriptions.run(db_session, http_client=http)
+    second = backfill_tm_descriptions.run(db_session, http_client=http)
+    assert first["updated"] == 1
+    assert second["scanned"] == 0
 
-    fetcher = _FakePageFetcher({})  # always returns None
-    report = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
 
+def test_backfill_records_failure_when_no_wiki_link(db_session):
+    _seed(db_session, "e1", None, raw_data={"_embedded": {"attractions": [{"externalLinks": {}}]}})
+    http = _FakeHttp({})
+    report = backfill_tm_descriptions.run(db_session, http_client=http)
     assert report["scanned"] == 1
     assert report["updated"] == 0
     assert report["failed"] == 1
-    db_session.expire_all()
-    assert db_session.query(Event).filter_by(id="e1").one().description is None
-
-
-def test_backfill_is_idempotent(db_session):
-    _seed(db_session, "e1", None, "https://ticketmaster.de/e1")
-    fetcher = _FakePageFetcher({"https://ticketmaster.de/e1": _HTML_OK})
-
-    first = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
-    second = backfill_tm_descriptions.run(db_session, page_fetcher=fetcher)
-
-    assert first["updated"] == 1
-    assert second["scanned"] == 0  # already has description on re-run
-    assert second["updated"] == 0
 ```
 
-- [ ] **Step 8.2: Run tests to confirm they fail**
-
-Run:
-
-```
-python -m pytest tests/scripts/test_backfill_tm_descriptions.py -v
-```
-
-Expected: FAIL — module `scripts.backfill_tm_descriptions` does not exist.
-
-- [ ] **Step 8.3: Implement the script**
+- [ ] **Step 9.2: Implement script**
 
 Create `backend/scripts/backfill_tm_descriptions.py`:
 
 ```python
-"""Backfill missing description for existing Ticketmaster events using Playwright.
+"""Backfill missing description for existing Ticketmaster events via Wikipedia.
 
-Iterates every event row where source='ticketmaster' AND description is null
-or empty, renders its public ticketmaster.de source_url via a headless-Chromium
-PageFetcher, extracts the description with app.ingestion.ticketmaster_page.
-extract_description, and writes the result back. Commits after every successful
-row so partial progress is preserved. Idempotent: re-running only touches rows
-that are still without a description.
-
-Usage from backend/:  python -m scripts.backfill_tm_descriptions
-"""
+For each event where source='ticketmaster' AND description is null/empty,
+look at raw_data._embedded.attractions[].externalLinks.wiki[].url, follow
+the first that yields a Wikipedia REST summary. Commit per row for partial
+progress. Idempotent."""
 from __future__ import annotations
 
 import logging
 
+import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Event
 from app.db.session import SessionLocal
-from app.ingestion.browser import PageFetcher, PlaywrightPageFetcher
-from app.ingestion.ticketmaster_page import extract_description
+from app.ingestion.wikipedia import extract_summary, wiki_title_from_url
 
 logger = logging.getLogger(__name__)
 
+_WIKI_USER_AGENT = "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
 
-def _missing_desc_rows(session: Session) -> list[Event]:
+
+def _wiki_urls_for(event: Event) -> list[str]:
+    atts = (event.raw_data or {}).get("_embedded", {}).get("attractions") or []
+    urls: list[str] = []
+    for att in atts:
+        for link in ((att.get("externalLinks") or {}).get("wiki")) or []:
+            if isinstance(link, dict) and link.get("url"):
+                urls.append(link["url"])
+    return urls
+
+
+def _lookup(http_client, url: str, cache: dict[str, str | None]) -> str | None:
+    if url in cache:
+        return cache[url]
+    parsed = wiki_title_from_url(url)
+    if parsed is None:
+        cache[url] = None
+        return None
+    host, title = parsed
+    api = f"https://{host}/api/rest_v1/page/summary/{title}"
+    try:
+        r = http_client.get(api, headers={"User-Agent": _WIKI_USER_AGENT})
+        r.raise_for_status()
+        body = r.json()
+    except Exception:
+        logger.warning("wiki summary fetch failed for %s", api)
+        cache[url] = None
+        return None
+    text = extract_summary(body)
+    cache[url] = text
+    return text
+
+
+def _missing(session: Session) -> list[Event]:
     return (
         session.query(Event)
         .filter(Event.source == "ticketmaster")
@@ -1549,35 +1222,30 @@ def _missing_desc_rows(session: Session) -> list[Event]:
     )
 
 
-def run(session: Session, page_fetcher: PageFetcher) -> dict:
-    """Backfill descriptions. Commits after every successful row.
-
-    Returns a report dict: {scanned, updated, failed}.
-    """
-    rows = _missing_desc_rows(session)
+def run(session: Session, http_client) -> dict:
+    rows = _missing(session)
     scanned = len(rows)
     updated = 0
     failed = 0
+    cache: dict[str, str | None] = {}
 
-    logger.info("backfill: %d ticketmaster events missing description", scanned)
-
+    logger.info("backfill: %d TM events missing description", scanned)
     for i, row in enumerate(rows, start=1):
-        html = page_fetcher.fetch(row.source_url)
-        desc = extract_description(html) if html else None
-
+        desc = None
+        for url in _wiki_urls_for(row):
+            desc = _lookup(http_client, url, cache)
+            if desc:
+                break
         if desc:
             row.description = desc
             session.commit()
             updated += 1
         else:
             failed += 1
-
         if i % 25 == 0:
-            logger.info("backfill: progress %d/%d (updated=%d)", i, scanned, updated)
+            logger.info("progress %d/%d (updated=%d)", i, scanned, updated)
 
-    logger.info(
-        "backfill complete — scanned=%d updated=%d failed=%d", scanned, updated, failed
-    )
+    logger.info("backfill complete — scanned=%d updated=%d failed=%d", scanned, updated, failed)
     return {"scanned": scanned, "updated": updated, "failed": failed}
 
 
@@ -1585,13 +1253,11 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     session = SessionLocal()
     try:
-        with PlaywrightPageFetcher() as fetcher:
-            report = run(session, page_fetcher=fetcher)
+        with httpx.Client(timeout=15) as http:
+            report = run(session, http)
     finally:
         session.close()
-    print(
-        f"scanned={report['scanned']} updated={report['updated']} failed={report['failed']}"
-    )
+    print(f"scanned={report['scanned']} updated={report['updated']} failed={report['failed']}")
     return 0
 
 
@@ -1599,55 +1265,68 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 8.4: Run tests**
-
-Run:
+- [ ] **Step 9.3: Run tests + commit**
 
 ```
 python -m pytest tests/scripts/test_backfill_tm_descriptions.py -v
-```
-
-Expected: all 3 tests pass.
-
-- [ ] **Step 8.5: Commit**
-
-```
 git add backend/scripts/backfill_tm_descriptions.py backend/tests/scripts/test_backfill_tm_descriptions.py
-git commit -m "feat(scripts): add Ticketmaster description backfill script"
+git commit -m "feat(scripts): backfill TM descriptions from Wikipedia summaries"
 ```
 
 ---
 
-## Task 9 — Full test-suite verification
+## Task 10 — Wire the adapter to pass an httpx client for Wikipedia in prod
 
-- [ ] **Step 9.1: Run every backend test**
+**Files:**
+- Modify: `backend/app/ingestion/scheduler.py`
 
-Run:
+Currently `run_ingestion` constructs `TicketmasterAdapter()` with no wiki client, so the fallback stays dormant in production. Fix that.
+
+- [ ] **Step 10.1: Change default-adapter construction**
+
+In `backend/app/ingestion/scheduler.py`, find `_default_adapters()` and change it so `TicketmasterAdapter` is constructed with a real httpx client passed as `wiki_client`:
+
+```python
+def _default_adapters() -> list[SourceAdapter]:
+    wiki_client = httpx.Client(timeout=15)
+    return [TicketmasterAdapter(wiki_client=wiki_client), HamburgScraper()]
+```
+
+Add `import httpx` at the top if not already imported.
+
+Note: this leaks the client if not closed. For the nightly job the process ends shortly after, but if there's a cleaner shutdown hook in `run_ingestion`, close it there. Otherwise a `try/finally` around the ingestion loop closing `wiki_client` is appropriate — check `run_ingestion` structure and add if needed.
+
+- [ ] **Step 10.2: Commit**
+
+```
+git add backend/app/ingestion/scheduler.py
+git commit -m "feat(scheduler): pass wiki_client to TicketmasterAdapter in production ingest"
+```
+
+---
+
+## Task 11 — Full suite verification
+
+- [ ] **Step 11.1: Run every backend test**
 
 ```
 cd backend
 python -m pytest -v
 ```
 
-Expected: all tests pass. If any pre-existing test now fails, investigate — most likely a fixture that inserted an event with `description=None` and expected it to be visible. Fix by giving the seeded event a real description string.
-
-- [ ] **Step 9.2: If green, commit no changes**
-
-Nothing to commit if step 9.1 passed. If a test was updated, commit it separately with the fix.
+Expected: all pass. Diagnose any regression from fixtures that seeded events without description.
 
 ---
 
-## Task 10 — Run the backfill against the live DB (manual, network required)
+## Task 12 — Manual live backfill (operator step)
 
-This is a one-shot production run. Not automated in this plan — instructions here for the operator.
-
-- [ ] **Step 10.1: Snapshot the DB**
+- [ ] **Step 12.1: Snapshot DB**
 
 ```
-cp backend/event_tracker.db backend/event_tracker.db.bak-2026-07-01
+cp backend/event_tracker.db backend/event_tracker.db.bak-2026-07-03
 ```
 
-- [ ] **Step 10.2: Record coverage before**
+- [ ] **Step 12.2: Coverage before**
 
 ```
 python -c "
@@ -1658,24 +1337,18 @@ for row in c.fetchall(): print(row)
 "
 ```
 
-Save output.
-
-- [ ] **Step 10.3: Run the backfill**
+- [ ] **Step 12.3: Run the backfill**
 
 ```
 cd backend
 python -m scripts.backfill_tm_descriptions
 ```
 
-Expected: logs progress every 25 events. Runs at ~1 event / 3–5 s (Playwright navigation + wait), so ~318 events → ~15–25 min. Final line prints `scanned=... updated=... failed=...`.
+Expected runtime: ~5–15 min for 318 events (Wikipedia REST is fast; artist cache dedupes).
 
-- [ ] **Step 10.4: Record coverage after**
+- [ ] **Step 12.4: Coverage after + re-embed**
 
-Same command as Step 10.2. Compare — expect updated ≥ 100 (well above the current 19). If updated is very low, the selector is likely wrong for a large chunk of pages; capture 2-3 failing HTML pages via the Task 1 recon script and expand `extract_description`.
-
-- [ ] **Step 10.5: Re-embed and re-check**
-
-Run:
+Same command as 12.2, then:
 
 ```
 python -c "
@@ -1685,12 +1358,11 @@ s = SessionLocal(); embed_new_events(s); s.close()
 "
 ```
 
-Expected: log lines showing purge count (should include the previously-embedded no-description events) and embed count.
-
 ---
 
 ## Notes for the executor
 
-- **Line numbers in the file map are informational**: they are correct at plan-write time. If the file has since been edited, use the surrounding code context (function signatures, docstrings) to locate the change site.
-- **Every commit contains a passing test suite for the code touched in that task**. Do not roll steps together.
-- **If Task 1's fixture reveals no JSON-LD and no meta description**, stop and report — the whole strategy hinges on the fixture. Options: try another event URL, or extend `extract_description` with a page-specific CSS selector confirmed against the fixture.
+- Every commit contains a passing test suite for the code touched in that task. Do not batch.
+- **`_FakeClient` in `test_ticketmaster.py`** may need extension to accept `detail_map`. Check its current shape before Task 3 tests are added and adapt if needed.
+- **If Task 1 recon shows no attraction has a wiki link across 3 sampled events**, escalate before Task 2 — the strategy relies on the link existing for a nontrivial fraction of events. Sample more events (10+) before giving up; if truly zero coverage, the fallback is Part C alone (hide-only).
+- **The `hide_events_without_description` toggle also disables description-filtering in the embedding feed and stale sweep.** This is intentional — when the operator flips it off, empty-desc events should re-appear in Chroma too.

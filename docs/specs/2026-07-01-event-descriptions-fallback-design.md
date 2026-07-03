@@ -1,7 +1,7 @@
-# Event Descriptions — Ticketmaster Page Scrape + Hide-Empty Design
+# Event Descriptions — Ticketmaster Wikipedia Fallback + Hide-Empty Design
 
-**Date:** 2026-07-01
-**Status:** Approved. Amended mid-Task 1 with Playwright decision — see "Amendment" section at the bottom.
+**Date:** 2026-07-01 (original), 2026-07-03 (Amendment 2 pivot)
+**Status:** Approved. **See "Amendment 2 (2026-07-03)" at the bottom — the strategy has pivoted from page scraping (Playwright) to Wikipedia enrichment. That amendment supersedes Part A and Amendment 1 below.**
 
 ## Problem
 
@@ -252,3 +252,117 @@ Plan Task 1: fetch one real ticketmaster.de event page, save the response HTML i
 - Task 8 (backfill): use `PlaywrightPageFetcher` context manager instead of httpx.
 
 Original tasks 2, 4, 5, 6, 9, 10 are unaffected.
+
+---
+
+## Amendment 2 (2026-07-03) — Pivot from page scrape to Wikipedia enrichment
+
+**Trigger:** After `tf-playwright-stealth` successfully defeated the Imperva JS challenge (610 KB real page fetched, no bot block), inspection of the real rendered ticketmaster.de event page revealed that **the page has no substantive description content**:
+
+- JSON-LD `MusicEvent.description` = just the venue name (e.g. `"Barclays Arena"`).
+- `<meta name="description">` = boilerplate title+venue restatement (`"Buy Tickets for DON TOLIVER at Barclays Arena, Hamburg – Official Ticketmaster Website"`).
+- No `.about-event` / `.event-description` / editorial container exists — the page is a ticket-purchase UI.
+
+Ticketmaster.de is a ticket-purchase interface, not an editorial page. Scraping cannot yield useful description content that isn't there. The `/attractions/{id}.json` endpoint likewise has no `description`/`info`/`additionalInfo` fields.
+
+**However, TM attractions have a discoverable Wikipedia link** in `externalLinks.wiki[].url` for a subset of artists (~15% based on prior exploration). The Wikipedia REST API's `/api/rest_v1/page/summary/{title}` returns a factual, stable prose summary of the artist — genuinely useful to a user browsing events.
+
+**Decision:** Replace the page-scrape strategy with Wikipedia enrichment via TM attractions. Add a config toggle so the operator can turn the hide-empty behaviour on/off.
+
+### Revised Part A — Wikipedia enrichment (replaces original Part A and Amendment 1)
+
+#### Data flow
+
+1. TM event list already returns `_embedded.attractions[]` with each attraction's `id`.
+2. Fetch `GET /discovery/v2/attractions/{attraction_id}.json?apikey=…` (recon in Task 1 must confirm whether `externalLinks.wiki` is present on the embedded attraction directly — in which case the extra call is skipped).
+3. From `externalLinks.wiki[0].url` extract host (`en.wikipedia.org` / `de.wikipedia.org` / etc.) and the URL-encoded title.
+4. Fetch `GET https://{host}/api/rest_v1/page/summary/{title}` — plain httpx.get, honest User-Agent (`EventTrackerBot/1.0 (contact@…)` per Wikipedia policy).
+5. Read the `extract` field (plain-text summary, 1–3 paragraphs).
+6. Use that as the event `description`.
+
+#### New shared module: `backend/app/ingestion/wikipedia.py`
+
+```python
+def wiki_title_from_url(url: str) -> tuple[str, str] | None:
+    """Parse a wikipedia URL. Returns (host, title) or None."""
+
+def extract_summary(json_body: dict) -> str | None:
+    """Return the plain-text summary from a Wikipedia REST summary response."""
+```
+
+Both are pure functions — no I/O. The adapter and backfill compose them with an `httpx.Client`.
+
+#### Fetcher: new method on `TicketmasterAdapter`
+
+```python
+def _fetch_wiki_description(self, attraction: dict) -> str | None:
+    """Follow the attraction's externalLinks.wiki to Wikipedia REST and
+    return the summary text, or None if unavailable."""
+```
+
+Responsibilities: extract wiki URL from attraction (either from embedded `_embedded.attractions[i]` on the event or from a per-attraction detail call — recon decides), parse title, GET Wikipedia REST, on non-2xx or missing `extract` return None.
+
+Politeness: 200 ms delay between Wikipedia calls (Wikipedia REST is generous but we're a good citizen). Result caching within a single ingest run so the same artist across multiple events is only fetched once (a `dict[str, str | None]` on the adapter).
+
+#### Revised fallback chain in `_parse`
+
+```python
+description = (
+    detail.get("info")
+    or detail.get("additionalInfo")
+    or detail.get("pleaseNote")
+    or self._fetch_wiki_description_for_event(raw)
+) or None
+```
+
+`_fetch_wiki_description_for_event(raw)` iterates `raw._embedded.attractions[]`, taking the first attraction that yields a Wikipedia summary.
+
+### Revised Part B — Backfill script
+
+Same shape as before, but uses Wikipedia lookup instead of Playwright page fetch. Same idempotence, same 200 ms delay, same commit-per-row.
+
+### Revised Part C — Hide toggle (NEW)
+
+New setting in `app/config.py`:
+
+```python
+hide_events_without_description: bool = True
+```
+
+Sourced from env var `HIDE_EVENTS_WITHOUT_DESCRIPTION=true|false`. Default **on** (hide).
+
+The `visible_events_filter()` helper reads this setting at call time and returns:
+
+- if `True`: `and_(is_active == True, description.isnot(None), description != "")`
+- if `False`: `Event.is_active == True` (equivalent to the pre-existing behaviour)
+
+Every call site uses `visible_events_filter()` unconditionally — the config flip changes behaviour everywhere without touching call sites.
+
+**Chroma stale sweep:** the keep-set (`session.query(Event.id).filter(visible_events_filter()).all()`) also becomes conditional. When the toggle is off, Chroma re-embeds description-less events; when on, they're purged. This is the intended behaviour.
+
+### Dropped from the design
+
+- **Playwright / tf-playwright-stealth dependency** — no longer used. `playwright` remains in `pyproject.toml` for now (already committed as `15e1128`); can be removed in a cleanup commit. `tf-playwright-stealth` is not committed and should be removed from `pyproject.toml`.
+- `backend/app/ingestion/browser.py` (PageFetcher protocol + PlaywrightPageFetcher) — never created; the plan referenced it but the pivot obviates it.
+- Playwright smoke-test suite / `slow` pytest marker — no longer needed.
+
+### Coverage expectations
+
+- Wikipedia hit rate: expected ~15–30 % of TM events (an attraction has a wiki link — many artists do, most local acts don't).
+- Combined with existing `info`/`additionalInfo`/`pleaseNote` (~5.6 %): total coverage estimate 20–35 %.
+- The remaining 65–80 % of TM events are hidden by the filter when `hide_events_without_description=True`.
+- This is materially better than "0 % useful descriptions" and factual (Wikipedia is authoritative for artist bios — won't mislead).
+
+### Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Wikipedia rate limits | 200 ms delay + honest User-Agent + in-run cache per artist |
+| Attraction has wiki link to a disambiguation page | Wikipedia REST `extract` on disambig is often empty or metadata — treat as no result (skip) |
+| Non-English artist wikis (de/fr/it) | Handle any host — URL parsing extracts host from `externalLinks.wiki[].url` |
+| Artist wiki summary describes the artist, not the event | Acknowledged trade-off — this is a bio, presented as event description. Better than nothing, factually accurate |
+| Hide-toggle off leaks empty descriptions to Chroma | Intentional per config — operator opts in to including empty-desc events in embeddings |
+
+### Tasks affected in the plan
+
+Almost all tasks change. The plan is being rewritten (v2) rather than amended step-by-step. See `docs/plans/2026-07-01-event-descriptions-fallback.md` — the "Amendment 2" section at the top redirects to the new task list.
