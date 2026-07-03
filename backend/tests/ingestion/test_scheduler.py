@@ -157,3 +157,61 @@ def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypa
     scheduler.embed_new_events(db_session)
     # Both "gone" (not in DB) and "no_desc" (in DB but hidden) must be purged.
     assert set(deleted) == {"no_desc", "gone"}
+
+
+def test_run_ingestion_registers_theater_hamburg_adapter():
+    """The default adapter list contains a TheaterHamburgAdapter."""
+    from app.ingestion.scheduler import _default_adapters
+    from app.ingestion.scrapers.theater_hamburg import TheaterHamburgAdapter
+
+    adapters = _default_adapters(wiki_client=None)
+    assert any(isinstance(a, TheaterHamburgAdapter) for a in adapters)
+
+
+def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monkeypatch):
+    from app.ingestion import scheduler
+
+    call_order: list[str] = []
+
+    def fake_deactivate(session):
+        call_order.append("deactivate")
+        return 0
+
+    def fake_dedup(session):
+        from app.ingestion.dedup import DedupReport
+        call_order.append("dedup")
+        return DedupReport()
+
+    def fake_embed(session):
+        call_order.append("embed")
+
+    monkeypatch.setattr(scheduler, "deactivate_past_events", fake_deactivate)
+    monkeypatch.setattr(scheduler, "dedup_events", fake_dedup)
+    monkeypatch.setattr(scheduler, "embed_new_events", fake_embed)
+
+    class _NoOpAdapter:
+        name = "noop"
+        def fetch(self):
+            return iter([])
+
+    scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session)
+    assert call_order == ["deactivate", "dedup", "embed"]
+
+
+def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch):
+    from app.ingestion import scheduler
+
+    def fake_dedup(session):
+        raise RuntimeError("dedup blew up")
+
+    monkeypatch.setattr(scheduler, "deactivate_past_events", lambda s: 0)
+    monkeypatch.setattr(scheduler, "dedup_events", fake_dedup)
+    monkeypatch.setattr(scheduler, "embed_new_events", lambda s: None)
+
+    class _NoOpAdapter:
+        name = "noop"
+        def fetch(self):
+            return iter([])
+
+    with pytest.raises(RuntimeError, match="dedup blew up"):
+        scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session)

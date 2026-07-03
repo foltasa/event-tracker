@@ -9,8 +9,10 @@ from app.db.models import Event
 from app.db.models.event import visible_events_filter
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
+from app.ingestion.dedup import dedup_events
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
+from app.ingestion.scrapers.theater_hamburg import TheaterHamburgAdapter
 from app.ingestion.ticketmaster import TicketmasterAdapter
 from app.rag import chroma_store
 from app.rag.chroma_store import EventForEmbedding
@@ -55,7 +57,11 @@ def embed_new_events(session: Session) -> None:
 
 
 def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAdapter]:
-    return [TicketmasterAdapter(wiki_client=wiki_client), HamburgScraper()]
+    return [
+        TicketmasterAdapter(wiki_client=wiki_client),
+        HamburgScraper(),
+        TheaterHamburgAdapter(),
+    ]
 
 
 def run_ingestion(
@@ -85,6 +91,13 @@ def run_ingestion(
 
         report = upsert_events(session, all_events)
         deactivate_past_events(session)
+        dedup_report = dedup_events(session)
+        logger.info(
+            "dedup: groups=%d merged=%d saved_migrated=%d",
+            dedup_report.groups_found,
+            dedup_report.rows_merged,
+            dedup_report.saved_events_migrated,
+        )
         embed_new_events(session)
 
         if own_session:
