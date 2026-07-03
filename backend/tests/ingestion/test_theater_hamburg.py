@@ -31,8 +31,6 @@ class TestExtractJwt:
         assert _extract_jwt('graphqlBearerToken:"not-a-jwt"') is None
 
 
-from unittest.mock import MagicMock
-
 import httpx
 
 from app.ingestion.scrapers.theater_hamburg import (

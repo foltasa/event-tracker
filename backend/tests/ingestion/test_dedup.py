@@ -136,6 +136,27 @@ class TestDedupEvents:
         remaining_save = db_session.query(SavedEvent).one()
         assert remaining_save.event_id == "th"
 
+    def test_saved_events_double_save_collapses_without_constraint_violation(self, db_session):
+        # User saved BOTH the loser (tm) and the winner (th). Migrating the
+        # loser's row would collide with the winner's row on the
+        # (user_id, event_id) UNIQUE constraint. The loser's row is dropped.
+        u = _make_user(db_session)
+        _make_event(db_session, id_="tm", external_id="e1", source="ticketmaster",
+                    title="Hamlet", venue_name="Laeiszhalle", start=_NOW)
+        _make_event(db_session, id_="th", external_id="e2", source="theater_hamburg",
+                    title="Hamlet", venue_name="Laeiszhalle", start=_NOW)
+        db_session.add_all([
+            SavedEvent(id="s_tm", user_id=u.id, event_id="tm"),
+            SavedEvent(id="s_th", user_id=u.id, event_id="th"),
+        ])
+        db_session.commit()
+
+        report = dedup_events(db_session)
+        assert report.rows_merged == 1
+        remaining = db_session.query(SavedEvent).all()
+        assert len(remaining) == 1
+        assert remaining[0].event_id == "th"
+
     def test_title_jaccard_below_threshold_prevents_multi_screen_dedup(self, db_session):
         _make_event(db_session, id_="ev1", external_id="e1", source="theater_hamburg",
                     title="Batman", venue_name="CinemaxX Dammtor", start=_NOW)

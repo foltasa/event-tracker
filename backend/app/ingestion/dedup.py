@@ -6,6 +6,12 @@ Idempotent -- a second run finds no cross-source clusters."""
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
+from app.db.models import Event
+from app.db.models.saved_event import SavedEvent
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +56,6 @@ def _title_jaccard(a: str | None, b: str | None) -> float:
         return 0.0
     inter = ta & tb
     return len(inter) / len(union)
-
-
-from datetime import datetime
-from sqlalchemy.orm import Session
-
-from app.db.models import Event
-from app.db.models.saved_event import SavedEvent
 
 
 @dataclass
@@ -145,12 +144,26 @@ def dedup_events(session: Session) -> DedupReport:
         losers = [e for e in cluster if e.id != winner.id]
 
         loser_ids = [e.id for e in losers]
-        migrated = (
-            session.query(SavedEvent)
-            .filter(SavedEvent.event_id.in_(loser_ids))
-            .update({"event_id": winner.id}, synchronize_session="fetch")
+        # Migrate saved_events FKs from losers to winner. Handle the
+        # (user_id, event_id) UNIQUE constraint: if a user already saved the
+        # winner AND the loser, migrating the loser's row would collide with
+        # the existing winner row. Drop the loser's row in that case.
+        winner_users = {
+            uid
+            for (uid,) in session.query(SavedEvent.user_id)
+            .filter(SavedEvent.event_id == winner.id)
+            .all()
+        }
+        loser_saves = (
+            session.query(SavedEvent).filter(SavedEvent.event_id.in_(loser_ids)).all()
         )
-        report.saved_events_migrated += migrated
+        for save in loser_saves:
+            if save.user_id in winner_users:
+                session.delete(save)
+            else:
+                save.event_id = winner.id
+                winner_users.add(save.user_id)
+                report.saved_events_migrated += 1
 
         for loser in losers:
             session.delete(loser)

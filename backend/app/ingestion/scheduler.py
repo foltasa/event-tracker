@@ -91,13 +91,7 @@ def run_ingestion(
 
         report = upsert_events(session, all_events)
         deactivate_past_events(session)
-        dedup_report = dedup_events(session)
-        logger.info(
-            "dedup: groups=%d merged=%d saved_migrated=%d",
-            dedup_report.groups_found,
-            dedup_report.rows_merged,
-            dedup_report.saved_events_migrated,
-        )
+        dedup_events(session)  # logs its own summary
         embed_new_events(session)
 
         if own_session:
