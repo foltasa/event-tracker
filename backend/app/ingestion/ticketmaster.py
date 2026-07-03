@@ -6,10 +6,14 @@ import httpx
 
 from app.config import settings
 from app.ingestion.normalize import NormalizedEvent
+from app.ingestion.wikipedia import extract_summary, wiki_title_from_url
 
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://app.ticketmaster.com/discovery/v2"
+_WIKI_USER_AGENT = (
+    "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
+)
 
 _SEGMENT_MAP: dict[str, str] = {
     "music": "music",
@@ -50,9 +54,16 @@ def _best_image(images: list[dict]) -> str | None:
 class TicketmasterAdapter:
     name = "ticketmaster"
 
-    def __init__(self, client: httpx.Client | None = None):
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        wiki_client: httpx.Client | None = None,
+    ):
         self._client = client or httpx.Client(timeout=15)
         self._api_key = settings.ticketmaster_api_key
+        self._wiki_client = wiki_client
+        # Per-run cache: wiki URL -> description text or None (negative caching too).
+        self._wiki_cache: dict[str, str | None] = {}
 
     def fetch(self) -> Iterator[NormalizedEvent]:
         params: dict = {
@@ -95,6 +106,43 @@ class TicketmasterAdapter:
             logger.warning("TM detail fetch failed for event %s", event_id)
             return {}
 
+    def _fetch_wiki_description_for_event(self, raw: dict) -> str | None:
+        """Iterate the event's embedded attractions; return the first
+        Wikipedia summary text found via externalLinks.wiki."""
+        if self._wiki_client is None:
+            return None
+        for att in (raw.get("_embedded") or {}).get("attractions") or []:
+            wiki_links = ((att.get("externalLinks") or {}).get("wiki")) or []
+            for link in wiki_links:
+                url = link.get("url") if isinstance(link, dict) else None
+                desc = self._lookup_wiki_summary(url)
+                if desc:
+                    return desc
+        return None
+
+    def _lookup_wiki_summary(self, url: str | None) -> str | None:
+        if not url:
+            return None
+        if url in self._wiki_cache:
+            return self._wiki_cache[url]
+        parsed = wiki_title_from_url(url)
+        if parsed is None:
+            self._wiki_cache[url] = None
+            return None
+        host, title = parsed
+        api = f"https://{host}/api/rest_v1/page/summary/{title}"
+        try:
+            resp = self._wiki_client.get(api, headers={"User-Agent": _WIKI_USER_AGENT})
+            resp.raise_for_status()
+            body = resp.json()
+        except Exception:
+            logger.warning("Wikipedia summary fetch failed for %s", api)
+            self._wiki_cache[url] = None
+            return None
+        text = extract_summary(body)
+        self._wiki_cache[url] = text
+        return text
+
     def _parse(self, raw: dict, detail: dict | None = None) -> NormalizedEvent | None:
         try:
             start_info = raw["dates"]["start"]
@@ -115,6 +163,8 @@ class TicketmasterAdapter:
                 description = (
                     detail.get("info") or detail.get("additionalInfo") or detail.get("pleaseNote")
                 ) or None
+            if not description:
+                description = self._fetch_wiki_description_for_event(raw)
 
             return NormalizedEvent(
                 external_id=str(raw["id"]),

@@ -208,3 +208,139 @@ def test_description_prefers_info_over_additionalinfo_and_pleasenote():
     )
     events = list(adapter.fetch())
     assert events[0].description == "Primary description."
+
+
+# --- Wikipedia fallback tests -----------------------------------------------
+
+_ATTRACTION_WITH_WIKI = {
+    "id": "K8vZ9171oh7",
+    "name": "Don Toliver",
+    "externalLinks": {
+        "wiki": [{"url": "https://en.wikipedia.org/wiki/Don_Toliver"}],
+    },
+}
+
+_ATTRACTION_NO_WIKI = {
+    "id": "K8vZ9171oh8",
+    "name": "Local Warmup Act",
+    "externalLinks": {},
+}
+
+_EVENT_WITH_ATTRACTION = {
+    **_EVENT_1,
+    "_embedded": {
+        **_EVENT_1["_embedded"],
+        "attractions": [_ATTRACTION_WITH_WIKI],
+    },
+}
+
+_WIKI_SUMMARY_RESPONSE = {
+    "type": "standard",
+    "extract": "Don Toliver is an American rapper and singer from Houston, Texas.",
+}
+
+
+class _FakeWikiClient:
+    """Records GET calls; returns a queued JSON body per URL prefix."""
+
+    def __init__(self, url_to_body: dict[str, dict]):
+        self._map = url_to_body
+        self.calls: list[str] = []
+
+    def get(self, url: str, **kwargs) -> httpx.Response:
+        self.calls.append(url)
+        for prefix, body in self._map.items():
+            if url.startswith(prefix):
+                return httpx.Response(200, json=body, request=httpx.Request("GET", url))
+        raise AssertionError(f"unexpected wiki GET {url}")
+
+
+def test_description_from_wikipedia_when_detail_empty():
+    page = {"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver": _WIKI_SUMMARY_RESPONSE,
+    })
+    adapter = TicketmasterAdapter(client=_FakeClient([page]), wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert events[0].description == (
+        "Don Toliver is an American rapper and singer from Houston, Texas."
+    )
+    assert wiki.calls == [
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver"
+    ]
+
+
+def test_wikipedia_not_called_when_detail_has_description():
+    page = {"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({})
+    adapter = TicketmasterAdapter(
+        client=_FakeClient([page], {"tm_001": _DETAIL_WITH_INFO}),
+        wiki_client=wiki,
+    )
+    events = list(adapter.fetch())
+    assert events[0].description == "An evening of hard rock classics."
+    assert wiki.calls == []
+
+
+def test_wikipedia_caches_across_events_with_same_attraction():
+    ev1 = {**_EVENT_WITH_ATTRACTION, "id": "tm_001", "url": "https://x/1"}
+    ev2 = {**_EVENT_WITH_ATTRACTION, "id": "tm_002", "url": "https://x/2"}
+    page = {"_embedded": {"events": [ev1, ev2]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver": _WIKI_SUMMARY_RESPONSE,
+    })
+    adapter = TicketmasterAdapter(client=_FakeClient([page]), wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert len(events) == 2
+    assert all(e.description.startswith("Don Toliver") for e in events)
+    assert len(wiki.calls) == 1
+
+
+def test_description_none_when_attraction_has_no_wiki_link():
+    ev = {
+        **_EVENT_1,
+        "_embedded": {**_EVENT_1["_embedded"], "attractions": [_ATTRACTION_NO_WIKI]},
+    }
+    page = {"_embedded": {"events": [ev]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({})
+    adapter = TicketmasterAdapter(client=_FakeClient([page]), wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert events[0].description is None
+    assert wiki.calls == []
+
+
+def test_description_none_when_wiki_summary_is_disambiguation():
+    page = {"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver":
+            {"type": "disambiguation", "extract": "Don may refer to..."},
+    })
+    adapter = TicketmasterAdapter(client=_FakeClient([page]), wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert events[0].description is None
+
+
+def test_no_wiki_client_means_no_lookup():
+    """Default behavior — adapter constructed without wiki_client does not error."""
+    page = {"_embedded": {"events": [_EVENT_WITH_ATTRACTION]}, "page": {"totalPages": 1, "number": 0}}
+    adapter = TicketmasterAdapter(client=_FakeClient([page]))
+    events = list(adapter.fetch())
+    assert events[0].description is None
+
+
+def test_wikipedia_iterates_attractions_until_hit():
+    """First attraction has no wiki, second does — pick second's summary."""
+    ev = {
+        **_EVENT_1,
+        "_embedded": {
+            **_EVENT_1["_embedded"],
+            "attractions": [_ATTRACTION_NO_WIKI, _ATTRACTION_WITH_WIKI],
+        },
+    }
+    page = {"_embedded": {"events": [ev]}, "page": {"totalPages": 1, "number": 0}}
+    wiki = _FakeWikiClient({
+        "https://en.wikipedia.org/api/rest_v1/page/summary/Don_Toliver": _WIKI_SUMMARY_RESPONSE,
+    })
+    adapter = TicketmasterAdapter(client=_FakeClient([page]), wiki_client=wiki)
+    events = list(adapter.fetch())
+    assert events[0].description.startswith("Don Toliver")
