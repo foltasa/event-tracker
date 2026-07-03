@@ -195,3 +195,111 @@ class TestListFetch:
         events = list(adapter.fetch())
         assert len(events) == 1
         assert widget_calls["count"] == 2
+
+
+class TestDescriptionParsing:
+    def test_short_description_html_stripped(self):
+        node = _make_node(short_description="<p>Line one.</p><br><em>Line two.</em>")
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].description == "Line one. Line two."
+
+    def test_missing_short_description_leaves_none(self):
+        node = _make_node(short_description=None)
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].description is None
+
+    def test_empty_short_description_string_leaves_none(self):
+        node = _make_node(short_description="")
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].description is None
+
+    def test_real_fixture_end_to_end(self):
+        """Parses the captured EventSearch JSON without erroring; sanity-check the shape."""
+        import json
+        search = json.loads(
+            (_FIXTURE_DIR / "theater_hamburg_search_sample.json").read_text(encoding="utf-8")
+        )
+        # The fixture was captured mid-season so totalPages/totalRecords reflect the
+        # live catalogue (394 pages).  Clamp to 1 page so the adapter stops after
+        # processing the 5 sample nodes instead of making 393 more identical requests.
+        search["data"]["events"]["pagination"]["totalPages"] = 1
+
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: search},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        # Fixture has 5 nodes, each with 1 eventDate → 5 events.
+        assert len(events) == 5
+        assert all(e.source == "theater_hamburg" for e in events)
+        # Every event in the fixture has a real shortDescription.
+        assert all(e.description and len(e.description) > 50 for e in events)
+        # tz-aware datetimes are enforced by NormalizedEvent.
+        assert all(e.start_datetime.tzinfo is not None for e in events)
+
+
+class TestMalformedResilience:
+    def test_node_with_empty_event_dates_produces_no_events(self):
+        node = _make_node()
+        node["eventDates"] = []
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events == []
+
+    def test_date_entry_without_date_field_skipped(self):
+        node = _make_node(dates=[
+            {"startTime": "20:00:00", "duration": 120},  # missing 'date'
+            {"date": "2026-07-20", "startTime": "20:00:00", "duration": 120},
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+        assert events[0].start_datetime.date().isoformat() == "2026-07-20"
+
+    def test_null_geo_info_yields_none_lat_lng(self):
+        node = _make_node()
+        node["geoInfo"] = None
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+        assert events[0].latitude is None and events[0].longitude is None
+
+    def test_null_location_yields_none_venue_name(self):
+        node = _make_node()
+        node["location"] = None
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert len(events) == 1
+        assert events[0].venue_name is None
