@@ -50,3 +50,117 @@ def _title_jaccard(a: str | None, b: str | None) -> float:
         return 0.0
     inter = ta & tb
     return len(inter) / len(union)
+
+
+from datetime import datetime
+from sqlalchemy.orm import Session
+
+from app.db.models import Event
+from app.db.models.saved_event import SavedEvent
+
+
+@dataclass
+class DedupReport:
+    groups_found: int = 0
+    rows_merged: int = 0
+    saved_events_migrated: int = 0
+
+
+def _time_bucket(dt: datetime) -> int:
+    """60-min bucket key from a UTC datetime."""
+    epoch_minutes = int(dt.timestamp()) // 60
+    return epoch_minutes // _TIME_TOLERANCE_MINUTES
+
+
+def _venue_key(name: str | None) -> str:
+    """Space-stripped normalized venue for matching (absorbs CamelCase-split differences)."""
+    return _normalize_venue(name).replace(" ", "")
+
+
+def _match(a: Event, b: Event) -> bool:
+    """Two active events are the same show iff normalized venue + time + title match."""
+    if _venue_key(a.venue_name) != _venue_key(b.venue_name):
+        return False
+    delta = abs((a.start_datetime - b.start_datetime).total_seconds()) / 60
+    if delta > _TIME_TOLERANCE_MINUTES:
+        return False
+    if _title_jaccard(a.title, b.title) < _TITLE_JACCARD_MIN:
+        return False
+    return True
+
+
+def _winner_key(ev: Event) -> tuple[int, float]:
+    """Higher priority wins; on ties, the older row wins (stability)."""
+    priority = _SOURCE_PRIORITY.get(ev.source, 0)
+    # Negate timestamp so max() picks the smallest (oldest).
+    return (priority, -ev.ingested_at.timestamp())
+
+
+def dedup_events(session: Session) -> DedupReport:
+    """Deduplicate active events across sources. Idempotent. Runs in the caller's transaction."""
+    active = session.query(Event).filter(Event.is_active.is_(True)).all()
+
+    # Coarse bucket: (normalized venue, time bucket). Compare against bucket and bucket+1
+    # so the +-60min window is preserved across bucket boundaries.
+    buckets: dict[tuple[str, int], list[Event]] = {}
+    for ev in active:
+        key = (_venue_key(ev.venue_name), _time_bucket(ev.start_datetime))
+        buckets.setdefault(key, []).append(ev)
+
+    # Union-find over matches.
+    parent: dict[str, str] = {ev.id: ev.id for ev in active}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: str, y: str) -> None:
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for (venue, bucket), evs in buckets.items():
+        neighbours = buckets.get((venue, bucket + 1), [])
+        candidates = evs + neighbours
+        for i, a in enumerate(candidates):
+            for b in candidates[i + 1:]:
+                if a.id == b.id:
+                    continue
+                if _match(a, b):
+                    union(a.id, b.id)
+
+    # Group by root.
+    clusters: dict[str, list[Event]] = {}
+    for ev in active:
+        clusters.setdefault(find(ev.id), []).append(ev)
+
+    report = DedupReport()
+    for cluster in clusters.values():
+        if len(cluster) < 2:
+            continue
+        report.groups_found += 1
+        winner = max(cluster, key=_winner_key)
+        losers = [e for e in cluster if e.id != winner.id]
+
+        loser_ids = [e.id for e in losers]
+        migrated = (
+            session.query(SavedEvent)
+            .filter(SavedEvent.event_id.in_(loser_ids))
+            .update({"event_id": winner.id}, synchronize_session="fetch")
+        )
+        report.saved_events_migrated += migrated
+
+        for loser in losers:
+            session.delete(loser)
+        report.rows_merged += len(losers)
+
+    session.flush()
+    logger.info(
+        "dedup_events: groups=%d merged=%d saved_migrated=%d",
+        report.groups_found,
+        report.rows_merged,
+        report.saved_events_migrated,
+    )
+    return report
