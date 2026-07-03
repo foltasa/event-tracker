@@ -1,0 +1,49 @@
+{
+  "type": "standard",
+  "title": "Duran Duran",
+  "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Duran Duran</span></span>",
+  "namespace": {
+    "id": 0,
+    "text": ""
+  },
+  "wikibase_item": "Q58381",
+  "titles": {
+    "canonical": "Duran_Duran",
+    "normalized": "Duran Duran",
+    "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Duran Duran</span></span>"
+  },
+  "pageid": 148703,
+  "thumbnail": {
+    "source": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Duran_Duran_1983.jpg/330px-Duran_Duran_1983.jpg",
+    "width": 330,
+    "height": 182
+  },
+  "originalimage": {
+    "source": "https://upload.wikimedia.org/wikipedia/commons/e/e8/Duran_Duran_1983.jpg",
+    "width": 1816,
+    "height": 1000
+  },
+  "lang": "en",
+  "dir": "ltr",
+  "revision": "1362134464",
+  "tid": "6940ec56-75c7-11f1-a7e7-b3620d5f0c79",
+  "timestamp": "2026-07-02T03:37:55Z",
+  "description": "English rock band",
+  "description_source": "local",
+  "content_urls": {
+    "desktop": {
+      "page": "https://en.wikipedia.org/wiki/Duran_Duran",
+      "revisions": "https://en.wikipedia.org/wiki/Duran_Duran?action=history",
+      "edit": "https://en.wikipedia.org/wiki/Duran_Duran?action=edit",
+      "talk": "https://en.wikipedia.org/wiki/Talk:Duran_Duran"
+    },
+    "mobile": {
+      "page": "https://en.wikipedia.org/wiki/Duran_Duran",
+      "revisions": "https://en.wikipedia.org/wiki/Special:History/Duran_Duran",
+      "edit": "https://en.wikipedia.org/wiki/Duran_Duran?action=edit",
+      "talk": "https://en.wikipedia.org/wiki/Talk:Duran_Duran"
+    }
+  },
+  "extract": "Duran Duran are an English pop rock band. Formed in Birmingham in 1978 by keyboardist Nick Rhodes, guitarist John Taylor and singer/bassist Stephen Duffy, the band went through several early changes before the band's line-up settled in May 1980 as Rhodes, Taylor, singer Simon Le Bon, guitarist Andy Taylor and drummer Roger Taylor.",
+  "extract_html": "<p><b>Duran Duran</b> are an English pop rock band. Formed in Birmingham in 1978 by keyboardist Nick Rhodes, guitarist John Taylor and singer/bassist Stephen Duffy, the band went through several early changes before the band's line-up settled in May 1980 as Rhodes, Taylor, singer Simon Le Bon, guitarist Andy Taylor and drummer Roger Taylor.</p>"
+}
