@@ -54,5 +54,5 @@ def test_settings_pick_up_tavily_from_env(monkeypatch):
 
 def test_categorization_defaults():
     s = Settings(_env_file=None)
-    assert s.categorization_model == "google/gemini-2.0-flash"
+    assert s.categorization_model == "google/gemini-2.5-flash"
     assert s.categorization_timeout_seconds == 10.0
