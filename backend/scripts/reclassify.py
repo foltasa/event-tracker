@@ -44,12 +44,16 @@ def reclassify_all(session: Session, classifier, model_name: str) -> None:
             logger.warning("reclassify: classifier failed for '%s'", row.title, exc_info=True)
             continue
 
-        hash_ = content_hash(ev)
-        session.query(EventCategoryCache).filter_by(content_hash=hash_).delete()
-        cache.set(hash_, decision.category)
-
         if decision.category != "unknown":
             row.category = decision.category
+
+        # Cache under the post-update hash so subsequent backfill/ingestion
+        # runs (which re-read the row) will hit the same key. Delete first
+        # because CategoryCache.set uses INSERT OR IGNORE, and --all is
+        # explicitly a force-refresh.
+        post_hash = content_hash(event_row_to_normalized(row))
+        session.query(EventCategoryCache).filter_by(content_hash=post_hash).delete()
+        cache.set(post_hash, decision.category)
 
         if (i + 1) % 500 == 0:
             logger.info("reclassify_all: processed %d/%d", i + 1, len(rows))

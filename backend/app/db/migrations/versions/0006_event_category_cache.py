@@ -11,10 +11,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.db.migrations.migration_0006_helpers import backfill_categories
-from app.ingestion.categorize import LangchainClassifier
-
 
 revision: str = "0006_event_category_cache"
 down_revision: Union[str, Sequence[str], None] = "0005_saved_event_kind"
@@ -35,6 +31,12 @@ def upgrade() -> None:
             server_default=sa.func.current_timestamp(),
         ),
     )
+
+    # Lazy imports: `LangchainClassifier` pulls in `langchain_openai`, which
+    # is expensive and unnecessary for `alembic heads/history/current`.
+    from app.config import settings
+    from app.db.migrations.migration_0006_helpers import backfill_categories
+    from app.ingestion.categorize import LangchainClassifier
 
     bind = op.get_bind()
     session = Session(bind=bind)
