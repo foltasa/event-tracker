@@ -50,3 +50,9 @@ def test_settings_pick_up_tavily_from_env(monkeypatch):
     s = Settings(_env_file=None)
     assert s.tavily_api_key == "tvly-test"
     assert s.web_search_max_results == 3
+
+
+def test_categorization_defaults():
+    s = Settings(_env_file=None)
+    assert s.categorization_model == "google/gemini-2.0-flash"
+    assert s.categorization_timeout_seconds == 10.0

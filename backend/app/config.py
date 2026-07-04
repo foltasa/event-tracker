@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     agent_model: str = "openai/gpt-4o-mini"
     agent_temperature: float = 0.7
 
+    # Event categorization LLM (used by ingestion pipeline)
+    categorization_model: str = "google/gemini-2.0-flash"
+    categorization_timeout_seconds: float = 10.0
+
     # RAG
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
