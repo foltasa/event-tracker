@@ -2,8 +2,8 @@
 // Keep this file in sync with those modules — the JSON fixtures in fixtures/ exercise both sides.
 
 export type EventCategory =
-  | "music" | "arts" | "food" | "sports" | "tech"
-  | "outdoor" | "film" | "theater" | "family" | "other";
+  | "concerts" | "party" | "comedy" | "theater" | "arts" | "literature"
+  | "film" | "family" | "food" | "sports" | "outdoor" | "other";
 
 export type Sentiment = "like" | "dislike";
 export type LLMProvider = "openai" | "anthropic";

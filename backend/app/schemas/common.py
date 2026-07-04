@@ -4,13 +4,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EVENT_CATEGORIES = frozenset({
-    "music", "arts", "food", "sports", "tech",
-    "outdoor", "film", "theater", "family", "other",
+    "concerts", "party", "comedy", "theater", "arts", "literature",
+    "film", "family", "food", "sports", "outdoor", "other",
 })
 
 EventCategory = Literal[
-    "music", "arts", "food", "sports", "tech",
-    "outdoor", "film", "theater", "family", "other",
+    "concerts", "party", "comedy", "theater", "arts", "literature",
+    "film", "family", "food", "sports", "outdoor", "other",
 ]
 Sentiment = Literal["like", "dislike"]
 LLMProvider = Literal["openai", "anthropic"]

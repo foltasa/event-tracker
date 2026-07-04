@@ -10,7 +10,7 @@ export interface FeedFilterState {
   q: string
 }
 
-const CATEGORIES: EventCategory[] = ['music', 'arts', 'food', 'sports', 'tech', 'outdoor', 'film', 'theater', 'family', 'other']
+const CATEGORIES: EventCategory[] = ['concerts', 'party', 'comedy', 'theater', 'arts', 'literature', 'film', 'family', 'food', 'sports', 'outdoor', 'other']
 
 interface Props {
   filters: FeedFilterState
