@@ -9,11 +9,15 @@ import logging
 from typing import Literal, Protocol
 
 from bs4 import BeautifulSoup
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.models.event_category_cache import EventCategoryCache
+from app.ingestion.categorize_prompts import SYSTEM_PROMPT, render_user_prompt
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
 
@@ -124,3 +128,35 @@ def refine_category(
 
     cache.set(hash_, decision.category)
     return decision.category
+
+
+def build_categorization_llm() -> ChatOpenAI:
+    """Configured LangChain client for the categorization LLM.
+
+    Reuses OpenRouter (same pattern as `app.agent.llm.build_llm`) so we
+    don't add a new provider. Temperature=0 for reproducibility; timeout
+    keeps the ingestion loop bounded per event."""
+    return ChatOpenAI(
+        model=settings.categorization_model,
+        api_key=settings.openrouter_api_key or "missing",
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0,
+        timeout=settings.categorization_timeout_seconds,
+        max_retries=2,
+    )
+
+
+class LangchainClassifier:
+    """Concrete `LLMClassifier` backed by a LangChain chat model with
+    structured output. Constructed once per ingestion run; safe to reuse."""
+
+    def __init__(self, llm: ChatOpenAI | None = None):
+        base = llm if llm is not None else build_categorization_llm()
+        self._structured = base.with_structured_output(CategoryDecision)
+
+    def classify(self, event: NormalizedEvent) -> CategoryDecision:
+        messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=render_user_prompt(event)),
+        ]
+        return self._structured.invoke(messages)

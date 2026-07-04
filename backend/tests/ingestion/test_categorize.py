@@ -227,3 +227,52 @@ def test_refine_llm_invalid_response_falls_back(db_session):
     assert result == "music"
     db_session.commit()
     assert cache.get(content_hash(ev)) is None  # invalid = same as error, no cache write
+
+
+from unittest.mock import MagicMock
+
+from app.ingestion.categorize import LangchainClassifier, build_categorization_llm
+
+
+def test_langchain_classifier_calls_structured_llm_and_returns_decision():
+    """Structured output invocation → CategoryDecision passthrough."""
+    fake_structured = MagicMock()
+    fake_structured.invoke.return_value = CategoryDecision(category="theater")
+
+    fake_llm = MagicMock()
+    fake_llm.with_structured_output.return_value = fake_structured
+
+    classifier = LangchainClassifier(llm=fake_llm)
+    result = classifier.classify(_ev())
+
+    assert isinstance(result, CategoryDecision)
+    assert result.category == "theater"
+    fake_llm.with_structured_output.assert_called_once_with(CategoryDecision)
+    invoke_arg = fake_structured.invoke.call_args[0][0]
+    assert isinstance(invoke_arg, list)
+    assert len(invoke_arg) == 2  # system + user
+    assert "classify" in invoke_arg[0].content.lower() or "categor" in invoke_arg[0].content.lower()
+    assert _ev().title in invoke_arg[1].content
+
+
+def test_build_categorization_llm_uses_settings(monkeypatch):
+    """Factory should read categorization_model and use OpenRouter base URL."""
+    from app.ingestion import categorize as cat_module
+
+    captured = {}
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(cat_module, "ChatOpenAI", _FakeChatOpenAI)
+    monkeypatch.setattr(cat_module.settings, "categorization_model", "test/model")
+    monkeypatch.setattr(cat_module.settings, "categorization_timeout_seconds", 7.5)
+    monkeypatch.setattr(cat_module.settings, "openrouter_api_key", "sk-test")
+
+    build_categorization_llm()
+
+    assert captured["model"] == "test/model"
+    assert captured["api_key"] == "sk-test"
+    assert captured["temperature"] == 0
+    assert captured["timeout"] == 7.5
+    assert "openrouter.ai" in captured["base_url"]
