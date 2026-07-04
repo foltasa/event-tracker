@@ -16,7 +16,7 @@ import useSWR from 'swr'
 import { saveToCalendar, slotInRecommendation } from '@/lib/api'
 
 const mockEvent = {
-  id: 'evt-1', title: 'Tango Festival', summary: null,
+  id: 'evt-1', title: 'Tango Festival', description: null,
   start_datetime: '2026-06-20T18:00:00Z', end_datetime: null,
   venue_name: 'Fabrik', venue_address: null, category: 'music' as const,
   tags: [], price_min: null, price_max: null, is_free: false, currency: 'EUR',

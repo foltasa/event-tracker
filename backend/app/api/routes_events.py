@@ -14,7 +14,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 def _hydrate(e: Event, sentiment, comment, calendar_kind) -> EventWithContext:
     return EventWithContext(
-        id=e.id, title=e.title, summary=e.summary,
+        id=e.id, title=e.title, description=e.description,
         start_datetime=e.start_datetime, end_datetime=e.end_datetime,
         venue_name=e.venue_name, venue_address=e.venue_address,
         category=e.category, tags=e.tags,

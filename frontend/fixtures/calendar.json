@@ -5,7 +5,7 @@
       "event": {
         "id": "evt_001",
         "title": "Jazz Night at Mojo Club",
-        "summary": "Intimate trio set, doors 20:00",
+        "description": "Intimate trio set, doors 20:00",
         "start_datetime": "2026-06-14T20:00:00+02:00",
         "end_datetime": "2026-06-14T23:00:00+02:00",
         "venue_name": "Mojo Club",
@@ -31,7 +31,7 @@
       "event": {
         "id": "evt_003",
         "title": "Hamburg Street Food Festival",
-        "summary": "Weekend food market in the Schanze",
+        "description": "Weekend food market in the Schanze",
         "start_datetime": "2026-06-15T11:00:00+02:00",
         "end_datetime": "2026-06-15T22:00:00+02:00",
         "venue_name": "Schanzenviertel",
@@ -58,7 +58,7 @@
       "event": {
         "id": "evt_099",
         "title": "Cancelled: Hafenfest Mini-Concert",
-        "summary": "Originally scheduled at the Landungsbr\u00c3\u00bccken",
+        "description": "Originally scheduled at the Landungsbr\u00c3\u00bccken",
         "start_datetime": "2026-06-05T18:00:00+02:00",
         "end_datetime": "2026-06-05T20:00:00+02:00",
         "venue_name": "Landungsbr\u00c3\u00bccken",

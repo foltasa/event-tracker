@@ -10,7 +10,7 @@ vi.mock('@/lib/api', () => ({
 import { getDigest, refreshDigest } from '@/lib/api'
 
 const mockEvent: EventCardType = {
-  id: 'evt_001', title: 'Jazz Night at Mojo Club', summary: null,
+  id: 'evt_001', title: 'Jazz Night at Mojo Club', description: null,
   start_datetime: '2026-06-09T20:00:00+02:00', end_datetime: null,
   venue_name: 'Mojo Club', venue_address: null, category: 'music', tags: [],
   price_min: 18, price_max: null, is_free: false, currency: 'EUR',

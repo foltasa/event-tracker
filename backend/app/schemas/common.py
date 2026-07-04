@@ -35,7 +35,7 @@ class _JsonBase(BaseModel):
 class EventCard(_JsonBase):
     id: str
     title: str
-    summary: str | None
+    description: str | None
     start_datetime: datetime
     end_datetime: datetime | None
     venue_name: str | None

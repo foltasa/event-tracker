@@ -18,7 +18,7 @@ class SaveRequest(BaseModel):
 
 def _event_to_card(e: Event) -> EventCard:
     return EventCard(
-        id=e.id, title=e.title, summary=e.summary,
+        id=e.id, title=e.title, description=e.description,
         start_datetime=e.start_datetime, end_datetime=e.end_datetime,
         venue_name=e.venue_name, venue_address=e.venue_address,
         category=e.category, tags=e.tags,

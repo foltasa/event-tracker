@@ -13,7 +13,7 @@ export type ToolStatus = "ok" | "error";
 export interface EventCard {
   id: string;
   title: string;
-  summary: string | null;
+  description: string | null;
   start_datetime: string;   // ISO 8601
   end_datetime: string | null;
   venue_name: string | null;

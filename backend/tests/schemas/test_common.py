@@ -8,7 +8,7 @@ from app.schemas.common import ChatTokenUsage, EventCard, EventWithContext, User
 
 def _card_kwargs(**overrides):
     base = dict(
-        id="evt_1", title="Jazz", summary="trio",
+        id="evt_1", title="Jazz", description="trio",
         start_datetime=datetime(2026, 6, 14, 20, 0, tzinfo=timezone.utc),
         end_datetime=None, venue_name="Mojo", venue_address="Reeperbahn 1",
         category="music", tags=["jazz"],

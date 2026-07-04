@@ -3,7 +3,7 @@
     {
       "id": "evt_001",
       "title": "Jazz Night at Mojo Club",
-      "summary": "Intimate trio set, doors 20:00",
+      "description": "Intimate trio set, doors 20:00",
       "start_datetime": "2026-06-14T20:00:00+02:00",
       "end_datetime": "2026-06-14T23:00:00+02:00",
       "venue_name": "Mojo Club",
@@ -25,7 +25,7 @@
     {
       "id": "evt_002",
       "title": "Open-Air Coding Meetup",
-      "summary": "Outdoor hack session at Stadtpark",
+      "description": "Outdoor hack session at Stadtpark",
       "start_datetime": "2026-06-13T15:00:00+02:00",
       "end_datetime": "2026-06-13T19:00:00+02:00",
       "venue_name": "Hamburger Stadtpark",
@@ -47,7 +47,7 @@
     {
       "id": "evt_003",
       "title": "Hamburg Street Food Festival",
-      "summary": "Weekend food market in the Schanze",
+      "description": "Weekend food market in the Schanze",
       "start_datetime": "2026-06-15T11:00:00+02:00",
       "end_datetime": "2026-06-15T22:00:00+02:00",
       "venue_name": "Schanzenviertel",
@@ -69,7 +69,7 @@
     {
       "id": "evt_004",
       "title": "Kampnagel: Contemporary Dance",
-      "summary": "International dance series",
+      "description": "International dance series",
       "start_datetime": "2026-06-16T19:30:00+02:00",
       "end_datetime": "2026-06-16T21:00:00+02:00",
       "venue_name": "Kampnagel",
@@ -91,7 +91,7 @@
     {
       "id": "evt_005",
       "title": "Elbphilharmonie: Mahler Symphony No. 5",
-      "summary": "NDR Elbphilharmonie Orchestra",
+      "description": "NDR Elbphilharmonie Orchestra",
       "start_datetime": "2026-06-20T19:30:00+02:00",
       "end_datetime": "2026-06-20T21:30:00+02:00",
       "venue_name": "Elbphilharmonie",
@@ -113,7 +113,7 @@
     {
       "id": "evt_006",
       "title": "Sunday Bike Tour: Alster Loop",
-      "summary": "Casual group ride, 18 km",
+      "description": "Casual group ride, 18 km",
       "start_datetime": "2026-06-21T10:00:00+02:00",
       "end_datetime": "2026-06-21T13:00:00+02:00",
       "venue_name": "Aussenalster",
@@ -135,7 +135,7 @@
     {
       "id": "evt_007",
       "title": "Indie Film Screening: Sleeping Dogs Lie",
-      "summary": "Hamburg Indie Cinema Club",
+      "description": "Hamburg Indie Cinema Club",
       "start_datetime": "2026-06-18T20:00:00+02:00",
       "end_datetime": "2026-06-18T22:00:00+02:00",
       "venue_name": "Metropolis Kino",
@@ -157,7 +157,7 @@
     {
       "id": "evt_008",
       "title": "Family Day at Miniatur Wunderland",
-      "summary": "Family-friendly afternoon",
+      "description": "Family-friendly afternoon",
       "start_datetime": "2026-06-22T14:00:00+02:00",
       "end_datetime": "2026-06-22T17:00:00+02:00",
       "venue_name": "Miniatur Wunderland",

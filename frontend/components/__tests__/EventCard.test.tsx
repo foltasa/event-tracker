@@ -3,7 +3,7 @@ import type { DigestPick, EventCard as EventCardType, EventWithContext } from '@
 import EventCard from '@/components/EventCard'
 
 const mockEvent: EventCardType = {
-  id: 'evt_001', title: 'Jazz Night at Mojo Club', summary: 'Intimate trio set',
+  id: 'evt_001', title: 'Jazz Night at Mojo Club', description: 'Intimate trio set',
   start_datetime: '2026-06-09T20:00:00+02:00', end_datetime: null,
   venue_name: 'Mojo Club', venue_address: 'Reeperbahn 1',
   category: 'music', tags: ['jazz'], price_min: 18, price_max: 24,

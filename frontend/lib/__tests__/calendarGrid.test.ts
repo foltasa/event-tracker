@@ -96,7 +96,7 @@ describe('toGridItem recommendation', () => {
       saved_at: '2026-06-21T00:00:00Z',
       kind: 'recommendation',
       event: {
-        id: 'evt-1', title: 'Jazz', summary: null,
+        id: 'evt-1', title: 'Jazz', description: null,
         start_datetime: '2026-06-21T18:00:00Z',
         end_datetime: '2026-06-21T20:00:00Z',
         venue_name: null, venue_address: null,
@@ -113,7 +113,7 @@ describe('toGridItem recommendation', () => {
     const entry: CalendarEntry = {
       id: 'sav-2', saved_at: '2026-06-21T00:00:00Z', kind: 'saved',
       event: {
-        id: 'evt-2', title: 'Talk', summary: null,
+        id: 'evt-2', title: 'Talk', description: null,
         start_datetime: '2026-06-21T18:00:00Z',
         end_datetime: '2026-06-21T20:00:00Z',
         venue_name: null, venue_address: null,

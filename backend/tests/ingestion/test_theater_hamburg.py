@@ -121,6 +121,7 @@ def _make_node(
     dates: list[dict] | None = None,
     categories: list[str] | None = None,
     short_description: str | None = "<p>A brief show.</p>",
+    media: list[dict] | None = None,
 ) -> dict:
     return {
         "id": 12345,
@@ -132,6 +133,7 @@ def _make_node(
         "eventDates": dates or [{"date": "2026-07-20", "startTime": "20:00:00", "duration": 120}],
         "geoInfo": {"coordinates": {"latitude": 53.55, "longitude": 10.0}},
         "bookingLink": "https://tix.example/hamlet",
+        "media": media if media is not None else [],
     }
 
 
@@ -326,6 +328,87 @@ class TestDescriptionParsing:
         assert all(e.description and len(e.description) > 50 for e in events)
         # tz-aware datetimes are enforced by NormalizedEvent.
         assert all(e.start_datetime.tzinfo is not None for e in events)
+
+
+class TestImageExtraction:
+    def test_first_active_event_image_deeplink_is_used(self):
+        node = _make_node(media=[
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/a.jpg",
+             "sortingValue": 0, "deactivated": False},
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url == "https://cdn.example/a.jpg"
+
+    def test_lowest_sorting_value_wins(self):
+        node = _make_node(media=[
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/b.jpg",
+             "sortingValue": 5, "deactivated": False},
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/a.jpg",
+             "sortingValue": 0, "deactivated": False},
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url == "https://cdn.example/a.jpg"
+
+    def test_deactivated_images_are_skipped(self):
+        node = _make_node(media=[
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/off.jpg",
+             "sortingValue": 0, "deactivated": True},
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/on.jpg",
+             "sortingValue": 1, "deactivated": False},
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url == "https://cdn.example/on.jpg"
+
+    def test_non_image_media_types_are_skipped(self):
+        node = _make_node(media=[
+            {"__typename": "EventVideo", "deeplink": "https://cdn.example/v.mp4"},
+            {"__typename": "EventFile",  "deeplink": "https://cdn.example/f.pdf"},
+            {"__typename": "EventImage", "deeplink": "https://cdn.example/a.jpg",
+             "sortingValue": 0, "deactivated": False},
+        ])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url == "https://cdn.example/a.jpg"
+
+    def test_empty_media_list_yields_none(self):
+        node = _make_node(media=[])
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url is None
+
+    def test_missing_media_field_yields_none(self):
+        node = _make_node()
+        node.pop("media", None)
+        client = _FakeClient(
+            get_map={_WIDGET_JS_URL: _WIDGET_JS_WITH_JWT},
+            post_map={_API_URL: lambda body: _list_response([node])},
+        )
+        adapter = TheaterHamburgAdapter(client=client)
+        events = list(adapter.fetch())
+        assert events[0].image_url is None
 
 
 class TestMalformedResilience:

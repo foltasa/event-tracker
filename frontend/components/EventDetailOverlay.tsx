@@ -248,7 +248,7 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave, onS
           <div className="px-4 pt-4 pb-2 bg-bg-page">
             <p className="text-[10px] uppercase tracking-widest text-accent-gold mb-2">About this event</p>
             <p className="font-serif text-xs text-text-primary leading-7">
-              {event.summary ?? 'No description available.'}
+              {event.description ?? 'No description available.'}
             </p>
           </div>
 

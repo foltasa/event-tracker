@@ -54,6 +54,10 @@ query EventSearch($filter: EventFilter!, $pagination: Pagination!, $appearance: 
       eventDates { date startTime duration }
       geoInfo { coordinates { latitude longitude } }
       bookingLink
+      media {
+        __typename
+        ... on EventImage { deeplink sortingValue deactivated }
+      }
     }
     pagination { totalPages totalRecords }
   }
@@ -127,6 +131,26 @@ def _parse_start(date_str: str, time_str: str | None) -> datetime:
         t = f"{t}:00"
     naive = datetime.fromisoformat(f"{date_str}T{t}")
     return naive.replace(tzinfo=_BERLIN)
+
+
+def _pick_image_url(media: list[dict] | None) -> str | None:
+    """Return the best EventImage deeplink from a media union list.
+
+    imxplatform's media field is a union of EventImage/EventVideo/EventFile;
+    the widget picks the active EventImage with the lowest sortingValue."""
+    if not media:
+        return None
+    images = [
+        m for m in media
+        if isinstance(m, dict)
+        and m.get("__typename") == "EventImage"
+        and not m.get("deactivated")
+        and m.get("deeplink")
+    ]
+    if not images:
+        return None
+    images.sort(key=lambda m: m.get("sortingValue") or 0)
+    return images[0].get("deeplink")
 
 
 def _strip_html(html: str | None) -> str | None:
@@ -231,6 +255,7 @@ class TheaterHamburgAdapter:
         coords = ((node.get("geoInfo") or {}).get("coordinates")) or {}
         cat_titles = [c.get("i18nName") or "" for c in node.get("categories") or []]
         category, tags = _map_category(cat_titles)
+        image_url = _pick_image_url(node.get("media"))
         source_url = f"https://theater-hamburg.org/theater-hamburg/veranstaltung/{permalink}/"
 
         for ed in node.get("eventDates") or []:
@@ -254,7 +279,7 @@ class TheaterHamburgAdapter:
                     tags=tags,
                     is_free=False,
                     currency="EUR",
-                    image_url=None,
+                    image_url=image_url,
                     source_url=source_url,
                     raw_data={"node": node, "eventDate": ed},
                 )

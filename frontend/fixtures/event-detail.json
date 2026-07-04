@@ -1,7 +1,7 @@
 {
   "id": "evt_001",
   "title": "Jazz Night at Mojo Club",
-  "summary": "Intimate trio set, doors 20:00",
+  "description": "Intimate trio set, doors 20:00",
   "start_datetime": "2026-06-14T20:00:00+02:00",
   "end_datetime": "2026-06-14T23:00:00+02:00",
   "venue_name": "Mojo Club",
