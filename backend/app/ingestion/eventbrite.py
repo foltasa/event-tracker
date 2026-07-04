@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://www.eventbriteapi.com/v3"
 
 _CATEGORY_MAP: dict[str, str] = {
-    "music": "music",
+    "music": "concerts",
     "arts": "arts",
     "visual arts": "arts",
     "performing arts": "theater",
@@ -20,7 +20,6 @@ _CATEGORY_MAP: dict[str, str] = {
     "film & media": "film",
     "food & drink": "food",
     "sports & fitness": "sports",
-    "science & tech": "tech",
     "outdoors & adventure": "outdoor",
     "family & education": "family",
     "theater": "theater",

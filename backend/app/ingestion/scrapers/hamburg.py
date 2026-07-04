@@ -15,8 +15,8 @@ _BASE_URL = "https://heuteinhamburg.de"
 _BERLIN = ZoneInfo("Europe/Berlin")
 
 _CATEGORY_MAP: dict[str, str] = {
-    "musik": "music",
-    "konzert": "music",
+    "musik": "concerts",
+    "konzert": "concerts",
     "kunst": "arts",
     "ausstellung": "arts",
     "kultur": "arts",
@@ -24,15 +24,13 @@ _CATEGORY_MAP: dict[str, str] = {
     "film": "film",
     "theater": "theater",
     "show": "theater",
-    "comedy": "theater",
+    "comedy": "comedy",
     "sport": "sports",
     "outdoor": "outdoor",
     "natur": "outdoor",
     "food": "food",
     "essen": "food",
     "genuss": "food",
-    "tech": "tech",
-    "technologie": "tech",
     "kinder": "family",
     "familie": "family",
 }

@@ -64,7 +64,7 @@ def search_events(
         date_to: ISO date (YYYY-MM-DD), inclusive upper bound on start_datetime.
             If BOTH date_from and date_to are omitted, defaults to today+3d
             (Europe/Berlin).
-        categories: limit to these category strings (e.g. ["music", "tech"]).
+        categories: limit to these category strings (e.g. ["concerts", "party"]).
         text: case-insensitive substring match on title or description.
         max_price: include only events whose price_min is <= this (or is_free=True).
         location: case-insensitive substring match on venue_name.

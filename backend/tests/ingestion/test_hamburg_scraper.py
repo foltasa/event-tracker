@@ -79,7 +79,7 @@ def test_free_event():
 
 def test_category_music():
     events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
-    assert events[0].category == "music"
+    assert events[0].category == "concerts"
 
 
 def test_category_outdoor():

@@ -64,7 +64,7 @@ def test_fetch_maps_music_event():
     assert e.external_id == "eb_001"
     assert e.source == "eventbrite"
     assert e.title == "Jazz Night at Mojo Club"
-    assert e.category == "music"
+    assert e.category == "concerts"
     assert e.is_free is False
     assert e.price_min == 18.0
     assert e.price_max == 24.0

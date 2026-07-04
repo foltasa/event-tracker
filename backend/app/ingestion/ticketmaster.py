@@ -16,7 +16,7 @@ _WIKI_USER_AGENT = (
 )
 
 _SEGMENT_MAP: dict[str, str] = {
-    "music": "music",
+    "music": "concerts",
     "arts & theatre": "theater",
     "arts & theater": "theater",
     "sports": "sports",
@@ -26,10 +26,10 @@ _SEGMENT_MAP: dict[str, str] = {
 }
 
 _GENRE_OVERRIDE: dict[str, str] = {
-    "classical": "arts",
-    "opera": "theater",
+    "classical": "concerts",
+    "opera": "concerts",
     "ballet": "arts",
-    "comedy": "theater",
+    "comedy": "comedy",
 }
 
 

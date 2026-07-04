@@ -69,7 +69,7 @@ def test_fetch_maps_music_event():
     assert e.external_id == "tm_001"
     assert e.source == "ticketmaster"
     assert e.title == "Rock Concert at Barclays"
-    assert e.category == "music"
+    assert e.category == "concerts"
     assert e.price_min == 25.0
     assert e.price_max == 45.0
     assert e.venue_name == "Barclays Arena"
