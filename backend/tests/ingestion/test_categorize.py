@@ -125,3 +125,105 @@ def test_cache_stores_unknown(db_session):
     cache.set("h_unk", "unknown")
     db_session.commit()
     assert cache.get("h_unk") == "unknown"
+
+
+from app.ingestion.categorize import LLMClassifier, refine_category
+
+
+class _FakeClassifier:
+    """Test double that returns preconfigured decisions or raises."""
+
+    def __init__(self, decisions=None, exception=None, invalid=False):
+        self.decisions = decisions or []
+        self.exception = exception
+        self.invalid = invalid
+        self.calls = []
+
+    def classify(self, event) -> CategoryDecision:
+        self.calls.append(event.title)
+        if self.exception:
+            raise self.exception
+        if self.invalid:
+            # Simulate what happens when structured output validation succeeds
+            # but the caller decides the payload is unusable — we raise here.
+            raise ValueError("invalid enum value")
+        if not self.decisions:
+            raise AssertionError("Fake had no decision configured")
+        return self.decisions.pop(0)
+
+
+def test_refine_cache_miss_calls_llm_and_writes_cache(db_session):
+    ev = _ev()  # provider hint: "music"
+    cache = CategoryCache(db_session, model_name="m")
+    llm = _FakeClassifier(decisions=[CategoryDecision(category="theater")])
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "theater"
+    assert len(llm.calls) == 1
+    db_session.commit()
+    assert cache.get(content_hash(ev)) == "theater"
+
+
+def test_refine_cache_hit_skips_llm(db_session):
+    ev = _ev()
+    cache = CategoryCache(db_session, model_name="m")
+    cache.set(content_hash(ev), "arts")
+    db_session.commit()
+    llm = _FakeClassifier()  # no decisions configured
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "arts"
+    assert llm.calls == []  # LLM was not called
+
+
+def test_refine_llm_error_falls_back_to_provider_hint(db_session):
+    ev = _ev()  # provider hint: "music"
+    cache = CategoryCache(db_session, model_name="m")
+    llm = _FakeClassifier(exception=RuntimeError("openrouter down"))
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "music"  # fallback to event.category
+    db_session.commit()
+    # No cache write on error — next run should retry
+    assert cache.get(content_hash(ev)) is None
+
+
+def test_refine_llm_unknown_falls_back_but_caches(db_session):
+    ev = _ev()  # provider hint: "music"
+    cache = CategoryCache(db_session, model_name="m")
+    llm = _FakeClassifier(decisions=[CategoryDecision(category="unknown")])
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "music"  # fallback to event.category
+    db_session.commit()
+    # Cache write with 'unknown' sentinel — avoids re-asking a model that already said "unsure"
+    assert cache.get(content_hash(ev)) == "unknown"
+
+
+def test_refine_unknown_cache_hit_still_uses_provider_hint(db_session):
+    ev = _ev()  # provider hint: "music"
+    cache = CategoryCache(db_session, model_name="m")
+    cache.set(content_hash(ev), "unknown")
+    db_session.commit()
+    llm = _FakeClassifier()  # not called
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "music"  # cached 'unknown' still resolves to event.category
+    assert llm.calls == []
+
+
+def test_refine_llm_invalid_response_falls_back(db_session):
+    ev = _ev()
+    cache = CategoryCache(db_session, model_name="m")
+    llm = _FakeClassifier(invalid=True)
+
+    result = refine_category(ev, cache, llm)
+
+    assert result == "music"
+    db_session.commit()
+    assert cache.get(content_hash(ev)) is None  # invalid = same as error, no cache write

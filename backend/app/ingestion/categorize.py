@@ -5,7 +5,8 @@ mapped category as a hint, not authority. Cache keyed on the hash of the
 event's semantic fields (title, description, venue, tags, provider hint)
 so each unique event is classified exactly once across ingestion runs."""
 import hashlib
-from typing import Literal
+import logging
+from typing import Literal, Protocol
 
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
@@ -15,6 +16,8 @@ from sqlalchemy.orm import Session
 from app.db.models.event_category_cache import EventCategoryCache
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
+
+logger = logging.getLogger(__name__)
 
 
 def _strip_html(text: str | None) -> str:
@@ -74,3 +77,50 @@ class CategoryCache:
             model=self._model_name,
         ).on_conflict_do_nothing(index_elements=["content_hash"])
         self._session.execute(stmt)
+
+
+class LLMClassifier(Protocol):
+    """Structural type for the categorization LLM. Any object with a
+    `classify(event) -> CategoryDecision` method satisfies this, including
+    real LangChain wrappers and test doubles."""
+
+    def classify(self, event: NormalizedEvent) -> CategoryDecision: ...
+
+
+def refine_category(
+    event: NormalizedEvent,
+    cache: CategoryCache,
+    classifier: LLMClassifier,
+) -> EventCategory:
+    """Return the final category for `event`.
+
+    Contract:
+    - Cache hit with a valid category → return it directly.
+    - Cache hit with 'unknown' → return `event.category` (provider hint).
+    - Cache miss → call the classifier.
+      - success with valid enum → cache + return.
+      - success with 'unknown' → cache 'unknown' + return `event.category`.
+      - any exception → return `event.category`, do NOT cache.
+    """
+    hash_ = content_hash(event)
+    cached = cache.get(hash_)
+    if cached is not None:
+        if cached == "unknown":
+            return event.category
+        return cached  # type: ignore[return-value]
+
+    try:
+        decision = classifier.classify(event)
+    except Exception:  # noqa: BLE001 — defensive: any classifier failure falls back
+        logger.warning(
+            "categorize: classifier failed for '%s' — using provider hint '%s'",
+            event.title, event.category, exc_info=True,
+        )
+        return event.category
+
+    if decision.category == "unknown":
+        cache.set(hash_, "unknown")
+        return event.category
+
+    cache.set(hash_, decision.category)
+    return decision.category
