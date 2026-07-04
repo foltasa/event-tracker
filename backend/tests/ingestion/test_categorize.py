@@ -93,3 +93,35 @@ def test_category_decision_accepts_unknown():
 def test_category_decision_rejects_invalid():
     with pytest.raises(ValidationError):
         CategoryDecision(category="music_theater")
+
+
+from app.ingestion.categorize import CategoryCache
+
+
+def test_cache_miss_returns_none(db_session):
+    cache = CategoryCache(db_session, model_name="google/gemini-2.0-flash")
+    assert cache.get("nonexistent") is None
+
+
+def test_cache_write_then_read(db_session):
+    cache = CategoryCache(db_session, model_name="google/gemini-2.0-flash")
+    cache.set("hash123", "theater")
+    db_session.commit()
+    assert cache.get("hash123") == "theater"
+
+
+def test_cache_set_is_idempotent(db_session):
+    """Second write with same hash is a no-op (INSERT OR IGNORE semantics)."""
+    cache = CategoryCache(db_session, model_name="m")
+    cache.set("h", "theater")
+    db_session.commit()
+    cache.set("h", "music")  # should not raise, should not overwrite
+    db_session.commit()
+    assert cache.get("h") == "theater"
+
+
+def test_cache_stores_unknown(db_session):
+    cache = CategoryCache(db_session, model_name="m")
+    cache.set("h_unk", "unknown")
+    db_session.commit()
+    assert cache.get("h_unk") == "unknown"

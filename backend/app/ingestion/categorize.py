@@ -9,7 +9,10 @@ from typing import Literal
 
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
+from app.db.models.event_category_cache import EventCategoryCache
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
 
@@ -44,3 +47,30 @@ class CategoryDecision(BaseModel):
     confident enough to pick one of the enum values."""
 
     category: EventCategory | Literal["unknown"]
+
+
+class CategoryCache:
+    """Thin wrapper over `event_category_cache` for get/set-by-hash access.
+
+    Uses SQLite's INSERT OR IGNORE so concurrent runs / retries never fight
+    over the same key. Does not commit — caller controls transaction."""
+
+    def __init__(self, session: Session, model_name: str):
+        self._session = session
+        self._model_name = model_name
+
+    def get(self, content_hash: str) -> str | None:
+        row = (
+            self._session.query(EventCategoryCache)
+            .filter_by(content_hash=content_hash)
+            .one_or_none()
+        )
+        return row.category if row else None
+
+    def set(self, content_hash: str, category: str) -> None:
+        stmt = sqlite_insert(EventCategoryCache).values(
+            content_hash=content_hash,
+            category=category,
+            model=self._model_name,
+        ).on_conflict_do_nothing(index_elements=["content_hash"])
+        self._session.execute(stmt)
