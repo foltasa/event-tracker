@@ -56,24 +56,31 @@ def _format_document(e: EventForEmbedding) -> str:
     return "\n".join(parts)
 
 
+_CHROMA_UPSERT_BATCH = 1000  # well under chromadb's ~5461 hard limit
+
+
 def upsert_events(events: list[EventForEmbedding]) -> None:
     if not events:
         return
     coll = _get_collection()
     documents = [_format_document(e) for e in events]
     vectors = embed_texts(documents)
-    coll.upsert(
-        ids=[e.id for e in events],
-        embeddings=vectors,
-        documents=documents,
-        metadatas=[
-            {
-                "category": e.category,
-                "start_time": int(e.start_datetime.timestamp()),
-            }
-            for e in events
-        ],
-    )
+    ids = [e.id for e in events]
+    metadatas = [
+        {
+            "category": e.category,
+            "start_time": int(e.start_datetime.timestamp()),
+        }
+        for e in events
+    ]
+    for i in range(0, len(ids), _CHROMA_UPSERT_BATCH):
+        j = i + _CHROMA_UPSERT_BATCH
+        coll.upsert(
+            ids=ids[i:j],
+            embeddings=vectors[i:j],
+            documents=documents[i:j],
+            metadatas=metadatas[i:j],
+        )
 
 
 def query_by_vector(
