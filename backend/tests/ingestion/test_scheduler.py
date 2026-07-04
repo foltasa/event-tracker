@@ -5,10 +5,22 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.db.models.event import Event
+from app.db.models.event_category_cache import EventCategoryCache
+from app.ingestion.categorize import CategoryDecision
 from app.ingestion.normalize import NormalizedEvent
 from app.ingestion.scheduler import run_ingestion
 
 _BERLIN = ZoneInfo("Europe/Berlin")
+
+
+@pytest.fixture
+def fake_classifier():
+    """Default classifier: returns the provider hint unchanged."""
+    class _Passthrough:
+        def classify(self, event):
+            return CategoryDecision(category=event.category)
+    return _Passthrough()
 
 
 def _ev(slug: str = "evt_1") -> NormalizedEvent:
@@ -35,46 +47,46 @@ class _FailAdapter:
         raise RuntimeError("source down")
 
 
-def test_inserts_events(db_session):
-    report = run_ingestion(adapters=[_OkAdapter()], session=db_session)
+def test_inserts_events(db_session, fake_classifier):
+    report = run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
     assert report.inserted == 1
 
 
-def test_failing_adapter_does_not_abort_run(db_session):
-    report = run_ingestion(adapters=[_FailAdapter(), _OkAdapter()], session=db_session)
+def test_failing_adapter_does_not_abort_run(db_session, fake_classifier):
+    report = run_ingestion(adapters=[_FailAdapter(), _OkAdapter()], session=db_session, classifier=fake_classifier)
     assert report.inserted == 1
 
 
-def test_aggregates_across_adapters(db_session):
+def test_aggregates_across_adapters(db_session, fake_classifier):
     class _OkAdapter2:
         name = "ok2"
         def fetch(self):
             yield _ev("ok_2")
 
-    report = run_ingestion(adapters=[_OkAdapter(), _OkAdapter2()], session=db_session)
+    report = run_ingestion(adapters=[_OkAdapter(), _OkAdapter2()], session=db_session, classifier=fake_classifier)
     assert report.inserted == 2
 
 
-def test_calls_deactivate(db_session):
+def test_calls_deactivate(db_session, fake_classifier):
     with patch("app.ingestion.scheduler.deactivate_past_events") as mock_deact:
-        run_ingestion(adapters=[_OkAdapter()], session=db_session)
+        run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
     mock_deact.assert_called_once_with(db_session)
 
 
-def test_calls_embed_stub(db_session):
+def test_calls_embed_stub(db_session, fake_classifier):
     with patch("app.ingestion.scheduler.embed_new_events") as mock_embed:
-        run_ingestion(adapters=[_OkAdapter()], session=db_session)
+        run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
     mock_embed.assert_called_once_with(db_session)
 
 
-def test_db_error_rolls_back(db_session):
+def test_db_error_rolls_back(db_session, fake_classifier):
     with patch("app.ingestion.scheduler.upsert_events", side_effect=RuntimeError("db down")):
         with pytest.raises(RuntimeError, match="db down"):
-            run_ingestion(adapters=[_OkAdapter()], session=db_session)
+            run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
 
 
-def test_all_adapters_fail_returns_empty_report(db_session):
-    report = run_ingestion(adapters=[_FailAdapter(), _FailAdapter()], session=db_session)
+def test_all_adapters_fail_returns_empty_report(db_session, fake_classifier):
+    report = run_ingestion(adapters=[_FailAdapter(), _FailAdapter()], session=db_session, classifier=fake_classifier)
     assert report.inserted == 0
     assert report.updated == 0
     assert report.skipped == 0
@@ -172,7 +184,7 @@ def test_run_ingestion_registers_theater_hamburg_adapter():
     assert any(isinstance(a, TheaterHamburgAdapter) for a in adapters)
 
 
-def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monkeypatch):
+def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monkeypatch, fake_classifier):
     from app.ingestion import scheduler
 
     call_order: list[str] = []
@@ -198,11 +210,11 @@ def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monk
         def fetch(self):
             return iter([])
 
-    scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session)
+    scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session, classifier=fake_classifier)
     assert call_order == ["deactivate", "dedup", "embed"]
 
 
-def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch):
+def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch, fake_classifier):
     from app.ingestion import scheduler
 
     def fake_dedup(session):
@@ -218,4 +230,45 @@ def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch):
             return iter([])
 
     with pytest.raises(RuntimeError, match="dedup blew up"):
-        scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session)
+        scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session, classifier=fake_classifier)
+
+
+class _FixedClassifier:
+    def __init__(self, category="theater"):
+        self._category = category
+        self.calls = 0
+
+    def classify(self, event):
+        self.calls += 1
+        return CategoryDecision(category=self._category)
+
+
+def test_ingestion_overrides_category_via_llm(db_session):
+    classifier = _FixedClassifier(category="theater")
+    run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=classifier)
+    db_session.commit()
+    row = db_session.query(Event).filter_by(external_id="ok_1").one()
+    assert row.category == "theater"
+    assert classifier.calls == 1
+
+
+def test_ingestion_second_run_hits_cache(db_session):
+    classifier = _FixedClassifier(category="theater")
+    run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=classifier)
+    db_session.commit()
+    assert classifier.calls == 1
+    assert db_session.query(EventCategoryCache).count() == 1
+    run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=classifier)
+    db_session.commit()
+    assert classifier.calls == 1  # cache hit
+
+
+def test_ingestion_llm_failure_uses_provider_category(db_session):
+    class _BrokenClassifier:
+        def classify(self, event):
+            raise RuntimeError("openrouter timeout")
+    run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=_BrokenClassifier())
+    db_session.commit()
+    row = db_session.query(Event).filter_by(external_id="ok_1").one()
+    assert row.category == "music"  # _OkAdapter provider hint
+    assert db_session.query(EventCategoryCache).count() == 0

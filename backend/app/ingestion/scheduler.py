@@ -4,11 +4,18 @@ import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import run_migrations
 from app.db.models import Event
 from app.db.models.event import visible_events_filter
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
+from app.ingestion.categorize import (
+    CategoryCache,
+    LangchainClassifier,
+    LLMClassifier,
+    refine_category,
+)
 from app.ingestion.dedup import dedup_events
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
@@ -67,8 +74,13 @@ def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAda
 def run_ingestion(
     adapters: list[SourceAdapter] | None = None,
     session: Session | None = None,
+    classifier: LLMClassifier | None = None,
 ) -> UpsertReport:
-    """Fetch all sources, upsert to DB, deactivate past events."""
+    """Fetch all sources, upsert to DB, deactivate past events.
+
+    Between fetch and upsert each event is passed through `refine_category`
+    so the LLM classifier (with content-hash cache) has final say over the
+    provider's substring-mapped category hint."""
     own_wiki_client = adapters is None
     wiki_client = httpx.Client(timeout=15) if own_wiki_client else None
     if adapters is None:
@@ -79,11 +91,17 @@ def run_ingestion(
         run_migrations()
         session = SessionLocal()
 
+    if classifier is None:
+        classifier = LangchainClassifier()
+
     try:
+        cache = CategoryCache(session, model_name=settings.categorization_model)
         all_events = []
         for adapter in adapters:
             try:
                 batch = list(adapter.fetch())
+                for ev in batch:
+                    ev.category = refine_category(ev, cache, classifier)
                 all_events.extend(batch)
                 logger.info("%s: fetched %d events", adapter.name, len(batch))
             except Exception:
