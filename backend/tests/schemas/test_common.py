@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -11,7 +11,7 @@ def _card_kwargs(**overrides):
         id="evt_1", title="Jazz", description="trio",
         start_datetime=datetime(2026, 6, 14, 20, 0, tzinfo=timezone.utc),
         end_datetime=None, venue_name="Mojo", venue_address="Reeperbahn 1",
-        category="music", tags=["jazz"],
+        category="concerts", tags=["jazz"],
         price_min=18.0, price_max=24.0, is_free=False, currency="EUR",
         image_url="https://x/img.jpg", source_url="https://x/e/1", source="eventbrite",
         is_active=True,
@@ -25,7 +25,7 @@ def test_event_card_serializes_with_iso_datetimes():
     dumped = card.model_dump(mode="json")
     # Accept either "Z" suffix or "+00:00" offset for UTC.
     assert dumped["start_datetime"].startswith("2026-06-14T20:00:00")
-    assert dumped["category"] == "music"
+    assert dumped["category"] == "concerts"
 
 
 def test_event_card_rejects_invalid_category():

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+﻿from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +16,7 @@ def setup(db_session):
     for i in range(5):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
-            title=f"Event {i}", description=f"desc {i}", category="music",
+            title=f"Event {i}", description=f"desc {i}", category="concerts",
             source_url="http://x",
             start_datetime=datetime(2026, 6, 10 + i, tzinfo=timezone.utc),
         ))

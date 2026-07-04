@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -11,7 +11,7 @@ def setup(db_session):
     db_session.add(User(id="local", interest_tags=["music"]))
     db_session.add(Event(
         id="e1", external_id="x", source="eventbrite",
-        title="Jazz", category="music", source_url="http://x",
+        title="Jazz", category="concerts", source_url="http://x",
         start_datetime=datetime(2026, 6, 10, tzinfo=timezone.utc),
     ))
     db_session.commit()

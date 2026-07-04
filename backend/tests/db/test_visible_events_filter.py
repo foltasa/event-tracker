@@ -11,7 +11,7 @@ def _make(session, **overrides):
         title="T",
         description="A real description.",
         start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
-        category="music",
+        category="concerts",
         tags=[],
         source_url="https://x/e",
         raw_data={},
@@ -54,15 +54,15 @@ def test_filter_composes_with_other_filters(db_session, monkeypatch):
     from app.config import settings as app_settings
     monkeypatch.setattr(app_settings, "hide_events_without_description", True)
 
-    _make(db_session, id="music", category="music", description="A")
+    _make(db_session, id="concerts", category="concerts", description="A")
     _make(db_session, id="theater", category="theater", description="B", external_id="e2")
-    _make(db_session, id="music_empty", category="music", description="", external_id="e3")
+    _make(db_session, id="concerts_empty", category="concerts", description="", external_id="e3")
 
     ids = {
         r.id
         for r in db_session.query(Event)
         .filter(visible_events_filter())
-        .filter(Event.category == "music")
+        .filter(Event.category == "concerts")
         .all()
     }
-    assert ids == {"music"}
+    assert ids == {"concerts"}

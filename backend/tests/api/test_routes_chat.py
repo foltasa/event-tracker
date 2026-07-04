@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -319,7 +319,7 @@ def _seed_events(db_session, ids: list[str]) -> None:
     for i, eid in enumerate(ids):
         db_session.add(Event(
             id=eid, external_id=f"x{i}", source="eventbrite",
-            title=f"t{i}", category="music", source_url=f"http://{eid}",
+            title=f"t{i}", category="concerts", source_url=f"http://{eid}",
             start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc),
         ))
     db_session.commit()

@@ -16,13 +16,13 @@ describe('FeedFilters', () => {
   it('calls onChange with new category when chip clicked', () => {
     const onChange = vi.fn()
     render(<FeedFilters filters={defaultFilters} onChange={onChange} />)
-    fireEvent.click(screen.getByText('Music'))
-    expect(onChange).toHaveBeenCalledWith({ ...defaultFilters, category: 'music' })
+    fireEvent.click(screen.getByText('Concerts'))
+    expect(onChange).toHaveBeenCalledWith({ ...defaultFilters, category: 'concerts' })
   })
 
   it('calls onChange with null category when All clicked', () => {
     const onChange = vi.fn()
-    render(<FeedFilters filters={{ ...defaultFilters, category: 'music' }} onChange={onChange} />)
+    render(<FeedFilters filters={{ ...defaultFilters, category: 'concerts' }} onChange={onChange} />)
     fireEvent.click(screen.getByText('All'))
     expect(onChange).toHaveBeenCalledWith({ ...defaultFilters, category: null })
   })

@@ -44,13 +44,13 @@ def _seed_event(session, *, external_id, title, category, venue="V"):
 
 
 def test_backfill_updates_categories_and_writes_cache(db_session):
-    _seed_event(db_session, external_id="a", title="The 27 Club", category="music")
-    _seed_event(db_session, external_id="b", title="Concert Real", category="music")
+    _seed_event(db_session, external_id="a", title="The 27 Club", category="concerts")
+    _seed_event(db_session, external_id="b", title="Concert Real", category="concerts")
     db_session.commit()
 
     classifier = _FixedClassifier({
         "The 27 Club": "theater",
-        "Concert Real": "music",
+        "Concert Real": "concerts",
     })
 
     backfill_categories(db_session, classifier=classifier, model_name="m")
@@ -59,12 +59,12 @@ def test_backfill_updates_categories_and_writes_cache(db_session):
     a = db_session.query(Event).filter_by(external_id="a").one()
     b = db_session.query(Event).filter_by(external_id="b").one()
     assert a.category == "theater"
-    assert b.category == "music"
+    assert b.category == "concerts"
     assert db_session.query(EventCategoryCache).count() == 2
 
 
 def test_backfill_is_idempotent_second_run_uses_cache(db_session):
-    _seed_event(db_session, external_id="a", title="The 27 Club", category="music")
+    _seed_event(db_session, external_id="a", title="The 27 Club", category="concerts")
     db_session.commit()
 
     classifier = _FixedClassifier({"The 27 Club": "theater"})
@@ -79,7 +79,7 @@ def test_backfill_is_idempotent_second_run_uses_cache(db_session):
 
 
 def test_backfill_llm_failure_keeps_provider_category(db_session):
-    _seed_event(db_session, external_id="a", title="X", category="music")
+    _seed_event(db_session, external_id="a", title="X", category="concerts")
     db_session.commit()
 
     class _Broken:
@@ -90,5 +90,5 @@ def test_backfill_llm_failure_keeps_provider_category(db_session):
     db_session.commit()
 
     a = db_session.query(Event).filter_by(external_id="a").one()
-    assert a.category == "music"
+    assert a.category == "concerts"
     assert db_session.query(EventCategoryCache).count() == 0

@@ -15,7 +15,7 @@ def _kwargs(**overrides):
         start_datetime=datetime(2026, 6, 14, 20, 0, tzinfo=BERLIN),
         end_datetime=datetime(2026, 6, 14, 23, 0, tzinfo=BERLIN),
         venue_name="v", venue_address="a", latitude=53.5, longitude=9.9,
-        category="music", tags=["jazz"],
+        category="concerts", tags=["jazz"],
         price_min=10.0, price_max=20.0, is_free=False, currency="EUR",
         image_url="https://x/i", source_url="https://x/e/1", raw_data={"k": "v"},
     )
@@ -25,7 +25,7 @@ def _kwargs(**overrides):
 
 def test_normalized_event_minimal():
     e = NormalizedEvent(**_kwargs())
-    assert e.category == "music"
+    assert e.category == "concerts"
     assert e.currency == "EUR"
 
 
@@ -79,7 +79,7 @@ def _normed_event(**overrides) -> NormalizedEvent:
         source="eventbrite",
         title="Test Event",
         start_datetime=datetime(2026, 7, 1, 20, 0, tzinfo=BERLIN),
-        category="music",
+        category="concerts",
         is_free=False,
         price_min=10.0,
         price_max=20.0,

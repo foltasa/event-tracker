@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+﻿import { render, screen, fireEvent } from '@testing-library/react'
 import type { DigestPick, EventCard as EventCardType, EventWithContext } from '@/lib/types'
 import EventCard from '@/components/EventCard'
 
@@ -6,7 +6,7 @@ const mockEvent: EventCardType = {
   id: 'evt_001', title: 'Jazz Night at Mojo Club', description: 'Intimate trio set',
   start_datetime: '2026-06-09T20:00:00+02:00', end_datetime: null,
   venue_name: 'Mojo Club', venue_address: 'Reeperbahn 1',
-  category: 'music', tags: ['jazz'], price_min: 18, price_max: 24,
+  category: 'concerts', tags: ['jazz'], price_min: 18, price_max: 24,
   is_free: false, currency: 'EUR',
   image_url: 'https://images.example.com/mojo.jpg',
   source_url: 'https://eventbrite.de/123', source: 'eventbrite', is_active: true,

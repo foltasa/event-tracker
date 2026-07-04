@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -21,7 +21,7 @@ def _event_kwargs(**overrides):
         venue_address="Reeperbahn 1",
         latitude=53.5497,
         longitude=9.9657,
-        category="music",
+        category="concerts",
         tags=["jazz", "live"],
         price_min=18.0,
         price_max=24.0,

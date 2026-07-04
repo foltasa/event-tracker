@@ -29,7 +29,7 @@ def _ev(slug: str = "evt_1") -> NormalizedEvent:
         source="test",
         title="Test Event",
         start_datetime=datetime(2026, 7, 1, 20, 0, tzinfo=_BERLIN),
-        category="music",
+        category="concerts",
         is_free=False,
         source_url=f"https://example.com/{slug}",
     )
@@ -100,13 +100,13 @@ def test_embed_new_events_upserts_active_events_to_chroma(monkeypatch, db_sessio
 
     db_session.add(Event(
         id="e1", external_id="ext1", source="eventbrite", title="Jazz",
-        description="d", category="music", source_url="http://x",
+        description="d", category="concerts", source_url="http://x",
         start_datetime=datetime(2026, 6, 10, tzinfo=timezone.utc),
         is_active=True,
     ))
     db_session.add(Event(
         id="e2", external_id="ext2", source="eventbrite", title="Old",
-        description="d", category="music", source_url="http://x",
+        description="d", category="concerts", source_url="http://x",
         start_datetime=datetime(2020, 1, 1, tzinfo=timezone.utc),
         is_active=False,
     ))
@@ -133,10 +133,10 @@ def test_embed_new_events_skips_events_without_description(db_session, monkeypat
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add_all([
         Event(id="with_desc", external_id="a", source="ticketmaster", title="A",
-              description="Real.", start_datetime=now, category="music",
+              description="Real.", start_datetime=now, category="concerts",
               tags=[], source_url="https://x/a", raw_data={}),
         Event(id="no_desc", external_id="b", source="ticketmaster", title="B",
-              description=None, start_datetime=now, category="music",
+              description=None, start_datetime=now, category="concerts",
               tags=[], source_url="https://x/b", raw_data={}),
     ])
     db_session.commit()
@@ -160,7 +160,7 @@ def test_embed_new_events_purges_no_description_from_chroma(db_session, monkeypa
     now = datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc)
     db_session.add(Event(
         id="no_desc", external_id="b", source="ticketmaster", title="B",
-        description=None, start_datetime=now, category="music",
+        description=None, start_datetime=now, category="concerts",
         tags=[], source_url="https://x/b", raw_data={},
     ))
     db_session.commit()
@@ -270,5 +270,5 @@ def test_ingestion_llm_failure_uses_provider_category(db_session):
     run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=_BrokenClassifier())
     db_session.commit()
     row = db_session.query(Event).filter_by(external_id="ok_1").one()
-    assert row.category == "music"  # _OkAdapter provider hint
+    assert row.category == "concerts"  # _OkAdapter provider hint
     assert db_session.query(EventCategoryCache).count() == 0

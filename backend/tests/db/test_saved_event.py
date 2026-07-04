@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ def _seed(db_session):
     db_session.add(Event(
         id="evt_1", external_id="x", source="eventbrite", title="t",
         start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc),
-        category="music", tags=[], is_free=False, source_url="https://x", raw_data={},
+        category="concerts", tags=[], is_free=False, source_url="https://x", raw_data={},
     ))
     db_session.commit()
 

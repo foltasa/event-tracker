@@ -12,7 +12,7 @@ def setup(db_session):
     # event scheduled in the past would be invisible to the feed.
     db_session.add(User(id="local", interest_tags=[]))
     base = datetime.combine(date.today() + timedelta(days=1), time(12, 0), tzinfo=timezone.utc)
-    for i, cat in enumerate(["music", "tech", "music"]):
+    for i, cat in enumerate(["concerts", "other", "concerts"]):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
             title=f"Event {i}", category=cat, source_url="http://x",
@@ -33,10 +33,10 @@ def test_list_events_paginated(client, setup):
 
 
 def test_list_events_category_filter(client, setup):
-    r = client.get("/events?category=tech")
+    r = client.get("/events?category=other")
     body = r.json()
     assert body["total"] == 1
-    assert body["events"][0]["category"] == "tech"
+    assert body["events"][0]["category"] == "other"
 
 
 def test_list_events_includes_user_context(client, setup, db_session):
@@ -44,7 +44,7 @@ def test_list_events_includes_user_context(client, setup, db_session):
                              sentiment="like", comment="great"))
     db_session.add(SavedEvent(id="s1", user_id="local", event_id="e0"))
     db_session.commit()
-    r = client.get("/events?category=music")
+    r = client.get("/events?category=concerts")
     events = {e["id"]: e for e in r.json()["events"]}
     assert events["e0"]["user_sentiment"] == "like"
     assert events["e0"]["user_comment"] == "great"
@@ -57,7 +57,7 @@ def test_event_detail_calendar_kind_null_when_not_in_calendar(client, db_session
     from app.db.models import Event, User
     db_session.add(User(id="local", interest_tags=[]))
     db_session.add(Event(id="evt", external_id="x", source="eventbrite",
-                         title="t", category="music", source_url="http://x",
+                         title="t", category="concerts", source_url="http://x",
                          start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
     db_session.commit()
     r = client.get("/events/evt")
@@ -70,7 +70,7 @@ def test_event_detail_calendar_kind_saved(client, db_session):
     from app.db.models import Event, SavedEvent, User
     db_session.add(User(id="local", interest_tags=[]))
     db_session.add(Event(id="evt", external_id="x", source="eventbrite",
-                         title="t", category="music", source_url="http://x",
+                         title="t", category="concerts", source_url="http://x",
                          start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
     db_session.add(SavedEvent(id="s1", user_id="local", event_id="evt"))
     db_session.commit()
@@ -84,7 +84,7 @@ def test_event_detail_calendar_kind_recommendation(client, db_session):
     from app.db.models import Event, SavedEvent, User
     db_session.add(User(id="local", interest_tags=[]))
     db_session.add(Event(id="evt", external_id="x", source="eventbrite",
-                         title="t", category="music", source_url="http://x",
+                         title="t", category="concerts", source_url="http://x",
                          start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc)))
     db_session.add(SavedEvent(id="s1", user_id="local", event_id="evt", kind="recommendation"))
     db_session.commit()
@@ -101,13 +101,13 @@ def test_list_events_hides_events_without_description(client, db_session, monkey
     future = datetime.combine(date.today() + timedelta(days=2), time(12, 0), tzinfo=timezone.utc)
     db_session.add_all([
         Event(id="with_desc", external_id="a", source="ticketmaster", title="With desc",
-              description="Real text.", start_datetime=future, category="music",
+              description="Real text.", start_datetime=future, category="concerts",
               tags=[], source_url="https://x/a", raw_data={}),
         Event(id="no_desc", external_id="b", source="ticketmaster", title="No desc",
-              description=None, start_datetime=future, category="music",
+              description=None, start_datetime=future, category="concerts",
               tags=[], source_url="https://x/b", raw_data={}),
         Event(id="empty_desc", external_id="c", source="ticketmaster", title="Empty desc",
-              description="", start_datetime=future, category="music",
+              description="", start_datetime=future, category="concerts",
               tags=[], source_url="https://x/c", raw_data={}),
     ])
     db_session.commit()
@@ -129,10 +129,10 @@ def test_list_events_shows_no_desc_when_toggle_off(client, db_session, monkeypat
     future = datetime.combine(date.today() + timedelta(days=2), time(12, 0), tzinfo=timezone.utc)
     db_session.add_all([
         Event(id="with_desc", external_id="a", source="ticketmaster", title="With desc",
-              description="Real text.", start_datetime=future, category="music",
+              description="Real text.", start_datetime=future, category="concerts",
               tags=[], source_url="https://x/a", raw_data={}),
         Event(id="no_desc", external_id="b", source="ticketmaster", title="No desc",
-              description=None, start_datetime=future, category="music",
+              description=None, start_datetime=future, category="concerts",
               tags=[], source_url="https://x/b", raw_data={}),
     ])
     db_session.commit()
@@ -149,7 +149,7 @@ def test_get_event_returns_event_even_without_description(client, db_session):
         id="no_desc_direct", external_id="d", source="ticketmaster",
         title="Direct fetch", description=None,
         start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
-        category="music", tags=[], source_url="https://x/d", raw_data={},
+        category="concerts", tags=[], source_url="https://x/d", raw_data={},
     ))
     db_session.commit()
 

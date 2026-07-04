@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 import httpx
 
@@ -35,7 +35,7 @@ def _seed(session, id_, description, source="ticketmaster", raw_data=None):
     session.add(Event(
         id=id_, external_id=id_, source=source, title="T", description=description,
         start_datetime=datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc),
-        category="music", tags=[], source_url="https://tm/e", raw_data=raw_data or {},
+        category="concerts", tags=[], source_url="https://tm/e", raw_data=raw_data or {},
     ))
     session.commit()
 

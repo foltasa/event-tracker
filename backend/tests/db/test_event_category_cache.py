@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from app.db.models.event_category_cache import EventCategoryCache
 
@@ -24,7 +24,7 @@ def test_insert_and_query(db_session):
 
 def test_content_hash_is_primary_key(db_session):
     db_session.add(EventCategoryCache(
-        content_hash="h1", category="music", model="m1",
+        content_hash="h1", category="concerts", model="m1",
     ))
     db_session.commit()
 

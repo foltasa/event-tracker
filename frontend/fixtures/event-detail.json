@@ -6,7 +6,7 @@
   "end_datetime": "2026-06-14T23:00:00+02:00",
   "venue_name": "Mojo Club",
   "venue_address": "Reeperbahn 1, 20359 Hamburg",
-  "category": "music",
+  "category": "concerts",
   "tags": ["jazz", "live music", "intimate"],
   "price_min": 18.0,
   "price_max": 24.0,

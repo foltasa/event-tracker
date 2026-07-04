@@ -15,7 +15,7 @@ def _ev(**overrides) -> NormalizedEvent:
         description="Some description",
         start_datetime=datetime(2026, 7, 1, 20, 0, tzinfo=_BERLIN),
         venue_name="Venue X",
-        category="music",
+        category="concerts",
         tags=["a", "b"],
         is_free=False,
         source_url="https://example.com/ev1",
@@ -58,7 +58,7 @@ def test_hash_changes_with_venue():
 
 
 def test_hash_changes_with_provider_category_hint():
-    assert content_hash(_ev(category="music")) != content_hash(_ev(category="theater"))
+    assert content_hash(_ev(category="concerts")) != content_hash(_ev(category="theater"))
 
 
 def test_hash_ignores_tag_order():
@@ -80,7 +80,7 @@ from app.ingestion.categorize import CategoryDecision
 
 
 def test_category_decision_accepts_all_enum_values():
-    for cat in ["music", "arts", "food", "sports", "tech", "outdoor", "film", "theater", "family", "other"]:
+    for cat in ["concerts", "party", "comedy", "theater", "arts", "literature", "film", "family", "food", "sports", "outdoor", "other"]:
         d = CategoryDecision(category=cat)
         assert d.category == cat
 
@@ -115,7 +115,7 @@ def test_cache_set_is_idempotent(db_session):
     cache = CategoryCache(db_session, model_name="m")
     cache.set("h", "theater")
     db_session.commit()
-    cache.set("h", "music")  # should not raise, should not overwrite
+    cache.set("h", "concerts")  # should not raise, should not overwrite
     db_session.commit()
     assert cache.get("h") == "theater"
 
@@ -153,7 +153,7 @@ class _FakeClassifier:
 
 
 def test_refine_cache_miss_calls_llm_and_writes_cache(db_session):
-    ev = _ev()  # provider hint: "music"
+    ev = _ev()  # provider hint: "concerts"
     cache = CategoryCache(db_session, model_name="m")
     llm = _FakeClassifier(decisions=[CategoryDecision(category="theater")])
 
@@ -179,33 +179,33 @@ def test_refine_cache_hit_skips_llm(db_session):
 
 
 def test_refine_llm_error_falls_back_to_provider_hint(db_session):
-    ev = _ev()  # provider hint: "music"
+    ev = _ev()  # provider hint: "concerts"
     cache = CategoryCache(db_session, model_name="m")
     llm = _FakeClassifier(exception=RuntimeError("openrouter down"))
 
     result = refine_category(ev, cache, llm)
 
-    assert result == "music"  # fallback to event.category
+    assert result == "concerts"  # fallback to event.category
     db_session.commit()
     # No cache write on error — next run should retry
     assert cache.get(content_hash(ev)) is None
 
 
 def test_refine_llm_unknown_falls_back_but_caches(db_session):
-    ev = _ev()  # provider hint: "music"
+    ev = _ev()  # provider hint: "concerts"
     cache = CategoryCache(db_session, model_name="m")
     llm = _FakeClassifier(decisions=[CategoryDecision(category="unknown")])
 
     result = refine_category(ev, cache, llm)
 
-    assert result == "music"  # fallback to event.category
+    assert result == "concerts"  # fallback to event.category
     db_session.commit()
     # Cache write with 'unknown' sentinel — avoids re-asking a model that already said "unsure"
     assert cache.get(content_hash(ev)) == "unknown"
 
 
 def test_refine_unknown_cache_hit_still_uses_provider_hint(db_session):
-    ev = _ev()  # provider hint: "music"
+    ev = _ev()  # provider hint: "concerts"
     cache = CategoryCache(db_session, model_name="m")
     cache.set(content_hash(ev), "unknown")
     db_session.commit()
@@ -213,7 +213,7 @@ def test_refine_unknown_cache_hit_still_uses_provider_hint(db_session):
 
     result = refine_category(ev, cache, llm)
 
-    assert result == "music"  # cached 'unknown' still resolves to event.category
+    assert result == "concerts"  # cached 'unknown' still resolves to event.category
     assert llm.calls == []
 
 
@@ -224,7 +224,7 @@ def test_refine_llm_invalid_response_falls_back(db_session):
 
     result = refine_category(ev, cache, llm)
 
-    assert result == "music"
+    assert result == "concerts"
     db_session.commit()
     assert cache.get(content_hash(ev)) is None  # invalid = same as error, no cache write
 

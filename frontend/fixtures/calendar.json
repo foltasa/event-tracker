@@ -10,7 +10,7 @@
         "end_datetime": "2026-06-14T23:00:00+02:00",
         "venue_name": "Mojo Club",
         "venue_address": "Reeperbahn 1, 20359 Hamburg",
-        "category": "music",
+        "category": "concerts",
         "tags": [
           "jazz"
         ],
@@ -63,7 +63,7 @@
         "end_datetime": "2026-06-05T20:00:00+02:00",
         "venue_name": "Landungsbr\u00c3\u00bccken",
         "venue_address": "Landungsbr\u00c3\u00bccken, 20359 Hamburg",
-        "category": "music",
+        "category": "concerts",
         "tags": [
           "concert"
         ],

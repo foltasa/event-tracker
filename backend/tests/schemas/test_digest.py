@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+﻿from datetime import date, datetime, timezone
 
 from app.schemas.common import EventCard
 from app.schemas.digest import DigestPick, DigestResponse
@@ -8,7 +8,7 @@ def _card():
     return EventCard(
         id="e1", title="t", description=None,
         start_datetime=datetime(2026, 6, 14, tzinfo=timezone.utc), end_datetime=None,
-        venue_name=None, venue_address=None, category="music", tags=[],
+        venue_name=None, venue_address=None, category="concerts", tags=[],
         price_min=None, price_max=None, is_free=True, currency="EUR",
         image_url=None, source_url="https://x", source="eventbrite", is_active=True,
     )

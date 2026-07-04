@@ -1,4 +1,4 @@
-"""End-to-end digest exercises: events fixture → /digest → cache hit on second call."""
+﻿"""End-to-end digest exercises: events fixture → /digest → cache hit on second call."""
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -14,7 +14,7 @@ def populated(db_session):
     for i in range(8):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
-            title=f"Event {i}", description="d", category="music",
+            title=f"Event {i}", description="d", category="concerts",
             source_url="http://x",
             start_datetime=datetime(2026, 6, 10 + i % 3, tzinfo=timezone.utc),
         ))

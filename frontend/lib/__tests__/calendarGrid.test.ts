@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import {
   getWeekRange, layoutDayColumn, toGridItem,
   type GridItem,
@@ -100,7 +100,7 @@ describe('toGridItem recommendation', () => {
         start_datetime: '2026-06-21T18:00:00Z',
         end_datetime: '2026-06-21T20:00:00Z',
         venue_name: null, venue_address: null,
-        category: 'music', tags: [],
+        category: 'concerts', tags: [],
         price_min: null, price_max: null, is_free: true, currency: 'EUR',
         image_url: null, source_url: 'http://x', source: 's', is_active: true,
       },
@@ -117,7 +117,7 @@ describe('toGridItem recommendation', () => {
         start_datetime: '2026-06-21T18:00:00Z',
         end_datetime: '2026-06-21T20:00:00Z',
         venue_name: null, venue_address: null,
-        category: 'tech', tags: [],
+        category: 'other', tags: [],
         price_min: null, price_max: null, is_free: true, currency: 'EUR',
         image_url: null, source_url: 'http://x', source: 's', is_active: true,
       },

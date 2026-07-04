@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+﻿import { render, screen } from '@testing-library/react'
 import { SWRConfig } from 'swr'
 import type { EventCard as EventCardType, EventWithContext, EventsFeedResponse } from '@/lib/types'
 import FeedSection from '@/components/FeedSection'
@@ -12,7 +12,7 @@ import { getEvents } from '@/lib/api'
 const mockEvent: EventCardType = {
   id: 'evt_001', title: 'Jazz Night', description: null,
   start_datetime: '2026-06-09T20:00:00+02:00', end_datetime: null,
-  venue_name: 'Mojo Club', venue_address: null, category: 'music', tags: [],
+  venue_name: 'Mojo Club', venue_address: null, category: 'concerts', tags: [],
   price_min: 18, price_max: null, is_free: false, currency: 'EUR',
   image_url: null, source_url: 'https://eb.com/1', source: 'eventbrite', is_active: true,
 }

@@ -20,12 +20,12 @@ def test_upsert_and_query_roundtrip(mock_embed, ephemeral_store):
     chroma_store.upsert_events([
         chroma_store.EventForEmbedding(
             id="e1", title="Jazz Night", description="Trio at Mojo",
-            category="music", venue_name="Mojo", neighborhood="St. Pauli",
+            category="concerts", venue_name="Mojo", neighborhood="St. Pauli",
             start_datetime=datetime(2026, 6, 10, 20, 0, tzinfo=timezone.utc),
         ),
         chroma_store.EventForEmbedding(
             id="e2", title="Hackathon", description="48-hour build sprint",
-            category="tech", venue_name="Betahaus", neighborhood="Schanzenviertel",
+            category="other", venue_name="Betahaus", neighborhood="Schanzenviertel",
             start_datetime=datetime(2026, 6, 12, 9, 0, tzinfo=timezone.utc),
         ),
     ])
@@ -40,19 +40,19 @@ def test_query_with_category_filter(mock_embed, ephemeral_store):
     mock_embed.side_effect = lambda texts: [[0.1] * 1536 for _ in texts]
     chroma_store.upsert_events([
         chroma_store.EventForEmbedding(
-            id="m1", title="Concert", description="", category="music",
+            id="m1", title="Concert", description="", category="concerts",
             venue_name=None, neighborhood=None,
             start_datetime=datetime(2026, 6, 10, tzinfo=timezone.utc),
         ),
         chroma_store.EventForEmbedding(
-            id="t1", title="Talk", description="", category="tech",
+            id="t1", title="Talk", description="", category="other",
             venue_name=None, neighborhood=None,
             start_datetime=datetime(2026, 6, 11, tzinfo=timezone.utc),
         ),
     ])
 
     hits = chroma_store.query_by_vector(
-        [0.1] * 1536, n=10, where={"category": {"$in": ["tech"]}},
+        [0.1] * 1536, n=10, where={"category": {"$in": ["other"]}},
     )
     assert [h.event_id for h in hits] == ["t1"]
 
@@ -62,7 +62,7 @@ def test_get_embeddings_for_ids(mock_embed, ephemeral_store):
     mock_embed.side_effect = lambda texts: [[float(i)] * 1536 for i, _ in enumerate(texts)]
     chroma_store.upsert_events([
         chroma_store.EventForEmbedding(
-            id="a", title="A", description="", category="music",
+            id="a", title="A", description="", category="concerts",
             venue_name=None, neighborhood=None,
             start_datetime=datetime(2026, 6, 10, tzinfo=timezone.utc),
         ),

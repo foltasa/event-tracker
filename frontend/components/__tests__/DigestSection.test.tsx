@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SWRConfig } from 'swr'
 import type { DigestResponse, EventCard as EventCardType, DigestPick } from '@/lib/types'
 import DigestSection from '@/components/DigestSection'
@@ -12,7 +12,7 @@ import { getDigest, refreshDigest } from '@/lib/api'
 const mockEvent: EventCardType = {
   id: 'evt_001', title: 'Jazz Night at Mojo Club', description: null,
   start_datetime: '2026-06-09T20:00:00+02:00', end_datetime: null,
-  venue_name: 'Mojo Club', venue_address: null, category: 'music', tags: [],
+  venue_name: 'Mojo Club', venue_address: null, category: 'concerts', tags: [],
   price_min: 18, price_max: null, is_free: false, currency: 'EUR',
   image_url: null, source_url: 'https://eb.com/1', source: 'eventbrite', is_active: true,
 }

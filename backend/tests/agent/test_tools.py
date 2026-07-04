@@ -22,14 +22,14 @@ def events(db_session, user):
         Event(
             id="e_music", external_id="m1", source="eventbrite",
             title="Jazz Night", description="Trio at Mojo",
-            category="music", source_url="http://x",
+            category="concerts", source_url="http://x",
             start_datetime=datetime(2026, 6, 10, 20, 0, tzinfo=timezone.utc),
             venue_name="Mojo", is_free=False, price_min=10.0,
         ),
         Event(
             id="e_tech", external_id="t1", source="eventbrite",
             title="Python Meetup", description="Talks",
-            category="tech", source_url="http://x",
+            category="other", source_url="http://x",
             start_datetime=datetime(2026, 6, 12, 19, 0, tzinfo=timezone.utc),
             venue_name="Betahaus", is_free=True,
         ),
@@ -43,7 +43,7 @@ def events(db_session, user):
 def test_search_events_by_category(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     results = tools.search_events.invoke(
-        {"categories": ["music"], "date_from": "2026-06-01", "date_to": "2026-06-30"}
+        {"categories": ["concerts"], "date_from": "2026-06-01", "date_to": "2026-06-30"}
     )
     assert len(results) == 1
     assert results[0]["id"] == "e_music"
@@ -221,12 +221,12 @@ def test_search_events_defaults_to_today_plus_3d(db_session, user, monkeypatch):
 
     db_session.add(Event(
         id="e_in", external_id="in1", source="x", title="Soon", description="Real.",
-        category="music", source_url="http://x",
+        category="concerts", source_url="http://x",
         start_datetime=in_window, venue_name="v", is_free=True,
     ))
     db_session.add(Event(
         id="e_out", external_id="out1", source="x", title="Later", description="Real.",
-        category="music", source_url="http://x",
+        category="concerts", source_url="http://x",
         start_datetime=out_window, venue_name="v", is_free=True,
     ))
     db_session.commit()
@@ -245,7 +245,7 @@ def test_search_events_explicit_bounds_override_default(db_session, user, monkey
     far = datetime.combine(today + _td(days=30), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     db_session.add(Event(
         id="e_far", external_id="far1", source="x", title="Far", description="Real.",
-        category="music", source_url="http://x",
+        category="concerts", source_url="http://x",
         start_datetime=far, venue_name="v", is_free=True,
     ))
     db_session.commit()
@@ -265,7 +265,7 @@ def test_search_events_one_bound_does_not_trigger_default(db_session, user, monk
     later = datetime.combine(today + _td(days=10), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     db_session.add(Event(
         id="e_later", external_id="later1", source="x", title="Later", description="Real.",
-        category="music", source_url="http://x",
+        category="concerts", source_url="http://x",
         start_datetime=later, venue_name="v", is_free=True,
     ))
     db_session.commit()
@@ -391,10 +391,10 @@ def test_search_events_hides_no_description(db_session, user, monkeypatch):
     when = datetime.combine(today + _td(days=1), datetime.min.time(), tzinfo=timezone.utc).replace(hour=20)
     db_session.add_all([
         Event(id="visible", external_id="a", source="ticketmaster", title="Yes",
-              description="Real.", start_datetime=when, category="music",
+              description="Real.", start_datetime=when, category="concerts",
               tags=[], source_url="https://x/a", raw_data={}, is_free=True),
         Event(id="hidden", external_id="b", source="ticketmaster", title="No",
-              description=None, start_datetime=when, category="music",
+              description=None, start_datetime=when, category="concerts",
               tags=[], source_url="https://x/b", raw_data={}, is_free=True),
     ])
     db_session.commit()

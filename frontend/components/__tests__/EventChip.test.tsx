@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import EventChip from '@/components/EventChip'
 
 vi.mock('swr', () => ({
@@ -18,7 +18,7 @@ import { saveToCalendar, slotInRecommendation } from '@/lib/api'
 const mockEvent = {
   id: 'evt-1', title: 'Tango Festival', description: null,
   start_datetime: '2026-06-20T18:00:00Z', end_datetime: null,
-  venue_name: 'Fabrik', venue_address: null, category: 'music' as const,
+  venue_name: 'Fabrik', venue_address: null, category: 'concerts' as const,
   tags: [], price_min: null, price_max: null, is_free: false, currency: 'EUR',
   image_url: null, source_url: 'https://example.com', source: 'test',
   is_active: true, user_sentiment: null, user_comment: null, is_saved: false,

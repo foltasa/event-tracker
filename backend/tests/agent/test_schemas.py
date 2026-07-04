@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from pydantic import ValidationError
 
 from app.agent.schemas import EventSummary, LLMDigestPick, LLMDigestResponse, ToolError
@@ -24,7 +24,7 @@ def test_llm_digest_pick_rejects_too_short_justification():
 
 def test_event_summary_fields():
     s = EventSummary(
-        id="e1", title="t", category="music",
+        id="e1", title="t", category="concerts",
         start_datetime="2026-06-10T20:00:00Z", venue_name="Mojo",
         is_free=False, source_url="http://x",
     )

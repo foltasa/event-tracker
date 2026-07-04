@@ -29,9 +29,9 @@ def _seed(session, title, category):
 
 
 def test_reclassify_all_bypasses_cache(db_session):
-    _seed(db_session, "The 27 Club", "music")
+    _seed(db_session, "The 27 Club", "concerts")
     db_session.commit()
-    db_session.add(EventCategoryCache(content_hash="anyhash", category="music", model="m"))
+    db_session.add(EventCategoryCache(content_hash="anyhash", category="concerts", model="m"))
     db_session.commit()
 
     classifier = _MapClassifier({"The 27 Club": "theater"})
@@ -44,16 +44,16 @@ def test_reclassify_all_bypasses_cache(db_session):
 
 
 def test_reclassify_sample_does_not_persist(db_session, capsys):
-    _seed(db_session, "The 27 Club", "music")
+    _seed(db_session, "The 27 Club", "concerts")
     db_session.commit()
 
     classifier = _MapClassifier({"The 27 Club": "theater"})
     reclassify_sample(db_session, classifier=classifier, model_name="m", limit=10)
 
     row = db_session.query(Event).filter_by(title="The 27 Club").one()
-    assert row.category == "music"  # unchanged
+    assert row.category == "concerts"  # unchanged
 
     captured = capsys.readouterr()
     assert "The 27 Club" in captured.out
-    assert "music" in captured.out
+    assert "concerts" in captured.out
     assert "theater" in captured.out
