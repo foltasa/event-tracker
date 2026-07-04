@@ -15,7 +15,7 @@ def _ev(**overrides) -> NormalizedEvent:
         description="A Tribute to Jimi Hendrix, Amy Winehouse, Janis Joplin...",
         start_datetime=datetime(2026, 7, 4, 20, 0, tzinfo=_BERLIN),
         venue_name="St. Pauli Theater",
-        category="music",
+        category="concerts",
         tags=["weitere konzerte"],
         is_free=False,
         source_url="https://example.com/the-27-club",
@@ -25,17 +25,22 @@ def _ev(**overrides) -> NormalizedEvent:
 
 
 def test_system_prompt_lists_all_categories():
-    for cat in ("music", "arts", "theater", "film", "family", "food", "sports", "tech", "outdoor", "other"):
+    for cat in ("concerts", "party", "comedy", "theater", "arts", "literature", "film", "family", "food", "sports", "outdoor", "other"):
         assert cat in SYSTEM_PROMPT
     assert "unknown" in SYSTEM_PROMPT
 
 
-def test_system_prompt_distinguishes_theater_from_music():
-    """Should explicitly cover tribute shows / musicals as theater."""
+def test_system_prompt_distinguishes_categories():
+    """Should explicitly cover concerts/party split, comedy as its own bucket, and family precedence."""
     lowered = SYSTEM_PROMPT.lower()
-    assert "musical" in lowered or "tribute" in lowered
-    assert "theater" in lowered
-    assert "konzert" in lowered or "concert" in lowered
+    # concerts vs party split is called out
+    assert "concerts" in lowered
+    assert "party" in lowered
+    # comedy is called out as its own category
+    assert "comedy" in lowered
+    # family precedence references children / Kinder
+    assert "family" in lowered
+    assert "children" in lowered or "kinder" in lowered
 
 
 def test_render_user_prompt_includes_all_signals():
@@ -45,7 +50,7 @@ def test_render_user_prompt_includes_all_signals():
     assert "weitere konzerte" in prompt
     assert "theater_hamburg" in prompt
     # Provider hint appears verbatim
-    assert "music" in prompt
+    assert "concerts" in prompt
 
 
 def test_render_user_prompt_handles_missing_optional_fields():

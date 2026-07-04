@@ -9,24 +9,30 @@ _MAX_DESCRIPTION_CHARS = 800
 
 SYSTEM_PROMPT = """You classify cultural events into exactly one of these categories:
 
-- music: concerts, DJ sets, classical performances in concert halls, opera performances
-- theater: plays, musicals, tribute shows, cabaret, comedy shows, kabarett — including musical/tribute formats when they run as multi-week series in theater venues (e.g. a "Tribute to Jimi Hendrix" show at a Broadway-style theater is theater, not music)
-- arts: exhibitions, ballet, contemporary dance, literary readings (Lesung)
-- film: cinema screenings, film festivals
-- family: children's events, family-oriented programming
-- food: culinary events, tastings, food festivals
-- sports: sports matches and tournaments
-- tech: tech conferences, hackathons, meetups
-- outdoor: outdoor recreation, nature events, hiking, park festivals
-- other: anything that clearly does not fit the above
+- concerts: a named act performing live — rock, pop, classical, opera, jazz, singer-songwriter, choirs, big band. Seated or standing. Audience is there to LISTEN.
+- party: DJ set, club night, rave, dance party. Audience is there to DANCE. If dancing is the point, it's party even with a live element.
+- comedy: stand-up, Kabarett, sketch comedy, improv comedy.
+- theater: plays (Schauspiel), musicals, multi-week tribute shows in theater venues, traditional Bühnenformate.
+- arts: exhibitions (Ausstellung), ballet, contemporary dance. Static or performance-art visual formats.
+- literature: readings (Lesung), poetry slams, book launches (Buchvorstellung), author talks (Autorengespräch).
+- film: cinema screenings, film festivals.
+- family: events primarily FOR / WITH children — Kinderkonzert, Kindertheater, Bastelkurs für Kinder. A "family-friendly" concert marketed at adults is NOT family; that's concerts. Family wins over content categories only when the event is kids-first.
+- food: culinary events, tastings, food festivals.
+- sports: sports matches, tournaments, athletic competitions.
+- outdoor: hiking, nature events, park festivals without a clear content-category fit.
+- other: anything that clearly does not fit the above.
 
 If you cannot confidently pick one, return "unknown".
 
 Signals to weigh:
-1. Venue name is a strong signal. Ohnsorg-Theater, St. Pauli Theater, Thalia, Ernst-Deutsch-Theater, Komödie Winterhuder Fährhaus, Centralkomitee → theater programming. Elbphilharmonie, Laeiszhalle, Barclays Arena → primarily music but not exclusively (they also host readings, ballet, etc.).
-2. Title and description carry the actual content. A "Klavierabend" in a theater venue is still music. A tribute show with 20+ consecutive performances in a theater venue is theater.
-3. Provider tags and hints are noisy — treat them as weak evidence. Provider tags like "weitere konzerte" are frequently applied to non-concert theater events.
-4. Multi-week runs (30+ consecutive shows) strongly indicate theater rather than concert.
+1. Venue signals. Ohnsorg-Theater, St. Pauli Theater, Thalia, Ernst-Deutsch-Theater, Komödie Winterhuder Fährhaus, Centralkomitee → theater programming. Elbphilharmonie, Laeiszhalle, Barclays Arena → mostly concerts but also host readings, ballet, etc.
+2. Content over hint. Title and description are the actual content. A "Klavierabend" at a theater venue → concerts. A tribute show with 20+ consecutive nights → theater.
+3. Provider tags are noisy. Tags like "weitere konzerte" get applied to non-concert theater events. Weak evidence only.
+4. Multi-week runs (30+ consecutive shows) indicate theater rather than concerts.
+5. Concerts vs party: format decides, not venue. A named act playing their setlist → concerts, even in a club. A DJ playing tracks → party, even in a concert hall. Electronic-music festival with named live performers → concerts. Techno rave with anonymous/rotating DJs → party.
+6. Family precedence: if the target audience is primarily children (title mentions "Kinder", "ab 4 Jahren", "Familienshow für Kinder"), pick family regardless of content. A rock concert marketed "for the whole family" is still concerts — family means kids-first.
+7. Comedy vs theater: stand-up, Kabarett, sketch, improv → comedy. Musical, Schauspiel, drama, tribute show → theater. Comedy at a theater venue is still comedy (venue is weak here).
+8. Literature vs arts: readings, poetry, book events → literature. Ballet, exhibitions, dance → arts. Verbal → literature, visual/movement → arts.
 
 Return only the category value via structured output. No prose."""
 
