@@ -177,6 +177,20 @@ class TestDedupEvents:
         report = dedup_events(db_session)
         assert report.rows_merged == 1
 
+    def test_mixed_naive_and_aware_start_datetimes_do_not_crash(self, db_session):
+        """SQLite strips tzinfo on read, so a session that just wrote aware
+        datetimes will see naive ones once it reloads. Dedup must survive
+        the mix without raising 'can't subtract offset-naive and offset-aware'."""
+        _make_event(db_session, id_="aware", external_id="e1", source="ticketmaster",
+                    title="Hamlet", venue_name="Thalia Theater", start=_NOW)
+        _make_event(db_session, id_="naive", external_id="e2", source="theater_hamburg",
+                    title="Hamlet", venue_name="Thalia Theater",
+                    start=_NOW.replace(tzinfo=None))
+
+        # Should not raise; the two events match and get merged.
+        report = dedup_events(db_session)
+        assert report.rows_merged == 1
+
     def test_time_over_tolerance_not_deduped(self, db_session):
         _make_event(db_session, id_="a", external_id="e1", source="ticketmaster",
                     title="Hamlet", venue_name="Thalia Theater", start=_NOW)

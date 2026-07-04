@@ -6,7 +6,7 @@ Idempotent -- a second run finds no cross-source clusters."""
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -65,9 +65,16 @@ class DedupReport:
     saved_events_migrated: int = 0
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """SQLite strips tzinfo on read while the same session may hold in-memory
+    aware datetimes just written this run. Coerce both to UTC-aware so
+    comparisons and subtraction don't mix the two."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def _time_bucket(dt: datetime) -> int:
     """60-min bucket key from a UTC datetime."""
-    epoch_minutes = int(dt.timestamp()) // 60
+    epoch_minutes = int(_as_utc(dt).timestamp()) // 60
     return epoch_minutes // _TIME_TOLERANCE_MINUTES
 
 
@@ -80,7 +87,7 @@ def _match(a: Event, b: Event) -> bool:
     """Two active events are the same show iff normalized venue + time + title match."""
     if _venue_key(a.venue_name) != _venue_key(b.venue_name):
         return False
-    delta = abs((a.start_datetime - b.start_datetime).total_seconds()) / 60
+    delta = abs((_as_utc(a.start_datetime) - _as_utc(b.start_datetime)).total_seconds()) / 60
     if delta > _TIME_TOLERANCE_MINUTES:
         return False
     if _title_jaccard(a.title, b.title) < _TITLE_JACCARD_MIN:
