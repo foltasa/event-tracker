@@ -5,10 +5,13 @@ mapped category as a hint, not authority. Cache keyed on the hash of the
 event's semantic fields (title, description, venue, tags, provider hint)
 so each unique event is classified exactly once across ingestion runs."""
 import hashlib
+from typing import Literal
 
 from bs4 import BeautifulSoup
+from pydantic import BaseModel
 
 from app.ingestion.normalize import NormalizedEvent
+from app.schemas.common import EventCategory
 
 
 def _strip_html(text: str | None) -> str:
@@ -34,3 +37,10 @@ def content_hash(event: NormalizedEvent) -> str:
     ]
     payload = "\x1f".join(parts).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+class CategoryDecision(BaseModel):
+    """LLM's classification result. `unknown` means the model was not
+    confident enough to pick one of the enum values."""
+
+    category: EventCategory | Literal["unknown"]

@@ -71,3 +71,25 @@ def test_hash_strips_html_from_description():
     plain = content_hash(_ev(description="Hello world"))
     html = content_hash(_ev(description="<p>Hello world</p>"))
     assert plain == html
+
+
+import pytest
+from pydantic import ValidationError
+
+from app.ingestion.categorize import CategoryDecision
+
+
+def test_category_decision_accepts_all_enum_values():
+    for cat in ["music", "arts", "food", "sports", "tech", "outdoor", "film", "theater", "family", "other"]:
+        d = CategoryDecision(category=cat)
+        assert d.category == cat
+
+
+def test_category_decision_accepts_unknown():
+    d = CategoryDecision(category="unknown")
+    assert d.category == "unknown"
+
+
+def test_category_decision_rejects_invalid():
+    with pytest.raises(ValidationError):
+        CategoryDecision(category="music_theater")
