@@ -1,5 +1,6 @@
 'use client'
-import type { DigestPick, EventWithContext, Sentiment } from '@/lib/types'
+import { categoryLabel } from '@/lib/categoryLabel'
+import type { DigestPick, EventCategory, EventWithContext, Sentiment } from '@/lib/types'
 
 type FeedOrMini = { variant: 'feed' | 'chat-mini'; data: EventWithContext }
 type DigestVariant = { variant: 'digest'; data: DigestPick }
@@ -28,10 +29,10 @@ function formatPrice(min: number | null, max: number | null, isFree: boolean) {
   return `€${min}`
 }
 
-function CategoryBadge({ category }: { category: string }) {
+function CategoryBadge({ category }: { category: EventCategory }) {
   return (
     <span className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-accent-gold text-bg-page">
-      {category}
+      {categoryLabel(category)}
     </span>
   )
 }

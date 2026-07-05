@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useChat } from '@/hooks/useChat'
+import { categoryLabel } from '@/lib/categoryLabel'
 import type { EventWithContext, Sentiment } from '@/lib/types'
 import { parseMessageContent } from '@/lib/parseMessageContent'
 import EventChip from '@/components/EventChip'
@@ -154,7 +155,7 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave, onS
           <div className="relative z-10 flex justify-between">
             <div className="flex gap-2">
               <span className="rounded px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-accent-gold text-bg-page">
-                {event.category}
+                {categoryLabel(event.category)}
               </span>
               <a
                 href={event.source_url}
@@ -190,13 +191,6 @@ function OverlayContent({ event, justification, onClose, onFeedback, onSave, onS
             <p className="text-[10px] uppercase tracking-wider text-accent-gold">Price</p>
             <p className="text-[12px] font-semibold text-text-primary">{formatPrice(event.price_min, event.price_max, event.is_free)}</p>
           </div>
-          {event.tags.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {event.tags.map((tag) => (
-                <span key={tag} className="rounded bg-accent-gold-light text-accent-gold text-[10px] px-1.5 py-0.5">{tag}</span>
-              ))}
-            </div>
-          )}
           <div className="ml-auto flex gap-1.5 items-center">
             <button
               aria-label="Like"

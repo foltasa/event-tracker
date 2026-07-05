@@ -2,6 +2,7 @@
 import useSWR, { useSWRConfig } from 'swr'
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { getEventDetail, removeFromCalendar, saveToCalendar, slotInRecommendation } from '@/lib/api'
+import { categoryLabel } from '@/lib/categoryLabel'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-DE', {
@@ -86,7 +87,7 @@ export default function EventChip({ eventId, onCardClick }: Props) {
       }`}
     >
       <span className="flex items-center gap-1.5 min-w-0">
-        <span className="uppercase tracking-wider font-semibold text-accent-gold flex-shrink-0">{event.category}</span>
+        <span className="uppercase tracking-wider font-semibold text-accent-gold flex-shrink-0">{categoryLabel(event.category)}</span>
         <span className="font-semibold truncate min-w-0 flex-1">{event.title}</span>
         <button
           onClick={handleToggle}

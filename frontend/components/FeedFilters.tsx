@@ -1,4 +1,5 @@
 'use client'
+import { categoryLabel } from '@/lib/categoryLabel'
 import type { EventCategory } from '@/lib/types'
 
 export type DatePreset = 'any' | 'today' | 'this-week' | 'this-weekend'
@@ -34,9 +35,9 @@ export default function FeedFilters({ filters, onChange }: Props) {
     <div className="sticky flex flex-wrap items-center gap-1.5 px-5 py-2 border-b border-border bg-bg-page">
       <span className="text-[10px] uppercase tracking-widest text-accent-gold mr-1">Filter:</span>
 
-      {chip('All', filters.category === null, () => onChange({ ...filters, category: null }))}
+      {chip('Alle', filters.category === null, () => onChange({ ...filters, category: null }))}
       {CATEGORIES.map((cat) =>
-        chip(cat.charAt(0).toUpperCase() + cat.slice(1), filters.category === cat, () =>
+        chip(categoryLabel(cat), filters.category === cat, () =>
           onChange({ ...filters, category: cat })
         )
       )}
