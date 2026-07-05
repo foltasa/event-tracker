@@ -19,7 +19,6 @@ interface Props {
 function filtersToQuery(filters: FeedFilterState) {
   const q: Record<string, string> = {}
   if (filters.category) q.category = filters.category
-  if (filters.isFree) q.is_free = 'true'
   if (filters.q)      q.q = filters.q
   if (filters.datePreset === 'today') {
     q.date_from = new Date().toISOString().slice(0, 10)

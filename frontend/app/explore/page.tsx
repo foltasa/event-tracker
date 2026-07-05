@@ -9,7 +9,7 @@ import FeedSection from '@/components/FeedSection'
 import { useAppShell } from '@/components/AppShell'
 
 const DEFAULT_FILTERS: FeedFilterState = {
-  category: null, datePreset: 'any', isFree: false, q: '',
+  category: null, datePreset: 'any', q: '',
 }
 
 export default function DashboardPage() {

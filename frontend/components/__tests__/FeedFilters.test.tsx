@@ -4,7 +4,7 @@ import type { FeedFilterState } from '@/components/FeedFilters'
 import { describe, it, expect, vi } from 'vitest'
 
 const defaultFilters: FeedFilterState = {
-  category: null, datePreset: 'any', isFree: false, q: '',
+  category: null, datePreset: 'any', q: '',
 }
 
 describe('FeedFilters', () => {
@@ -25,13 +25,6 @@ describe('FeedFilters', () => {
     render(<FeedFilters filters={{ ...defaultFilters, category: 'concerts' }} onChange={onChange} />)
     fireEvent.click(screen.getByText('Alle'))
     expect(onChange).toHaveBeenCalledWith({ ...defaultFilters, category: null })
-  })
-
-  it('calls onChange with isFree true when Free chip clicked', () => {
-    const onChange = vi.fn()
-    render(<FeedFilters filters={defaultFilters} onChange={onChange} />)
-    fireEvent.click(screen.getByText('Free only'))
-    expect(onChange).toHaveBeenCalledWith({ ...defaultFilters, isFree: true })
   })
 
   it('calls onChange with updated datePreset when dropdown changed', () => {

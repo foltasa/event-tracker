@@ -19,7 +19,7 @@ const mockEvent: EventCardType = {
 const mockEventCtx: EventWithContext = { ...mockEvent, user_sentiment: null, user_comment: null, is_saved: false }
 const mockFeed: EventsFeedResponse = { events: [mockEventCtx], total: 1, page: 1, page_size: 20 }
 
-const defaultFilters: FeedFilterState = { category: null, datePreset: 'any', isFree: false, q: '' }
+const defaultFilters: FeedFilterState = { category: null, datePreset: 'any', q: '' }
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>

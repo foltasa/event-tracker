@@ -7,7 +7,6 @@ export type DatePreset = 'any' | 'today' | 'this-week' | 'this-weekend'
 export interface FeedFilterState {
   category: EventCategory | null
   datePreset: DatePreset
-  isFree: boolean
   q: string
 }
 
@@ -41,8 +40,6 @@ export default function FeedFilters({ filters, onChange }: Props) {
           onChange({ ...filters, category: cat })
         )
       )}
-
-      {chip('Free only', filters.isFree, () => onChange({ ...filters, isFree: !filters.isFree }))}
 
       <select
         value={filters.datePreset}
