@@ -6,11 +6,14 @@ Detail pages carry schema.org/Event microdata that we parse for
 name, start, venue, and address."""
 from __future__ import annotations
 
+import logging
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
+import httpx
 from bs4 import BeautifulSoup, Tag
 
 _EVENT_ID_RE = re.compile(r"eventId=(\d+)")
@@ -147,3 +150,58 @@ def filter_sitemap(xml_body: str, cutoff: datetime) -> list[tuple[str, datetime]
             entries.append((loc, lastmod))
     entries.sort(key=lambda x: x[1])
     return entries
+
+
+logger = logging.getLogger(__name__)
+
+_RETRY_STATUS_CODES = {429, 503}
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_BASE_SLEEP = 1.0  # exponential: 1s, 2s, 4s
+
+
+@dataclass
+class RetryStats:
+    total_retries: int = 0
+    total_backoff_seconds: float = 0.0
+    exhausted: int = 0
+
+
+def get_with_retry(
+    client: httpx.Client,
+    url: str,
+    *,
+    stats: RetryStats,
+    sleep_fn: Callable[[float], None],
+) -> str | None:
+    """GET `url` with exponential backoff on 429/503. Returns body text or None.
+
+    Non-retriable error statuses (e.g. 404) return None without retrying.
+    Network exceptions propagate — callers handle them at the sitemap level.
+    """
+    for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
+        resp = client.get(url)
+        if resp.status_code == 200:
+            return resp.content.decode("utf-8", errors="replace")
+        if resp.status_code not in _RETRY_STATUS_CODES:
+            logger.warning(
+                "ohschonhell: unexpected status %d for %s — skipping",
+                resp.status_code, url,
+            )
+            return None
+        if attempt < _RETRY_MAX_ATTEMPTS:
+            backoff = _RETRY_BASE_SLEEP * (2 ** (attempt - 1))
+            logger.warning(
+                "ohschonhell: %d from %s — sleeping %.1fs (attempt %d/%d)",
+                resp.status_code, url, backoff, attempt, _RETRY_MAX_ATTEMPTS,
+            )
+            stats.total_retries += 1
+            stats.total_backoff_seconds += backoff
+            sleep_fn(backoff)
+        else:
+            stats.total_retries += 1
+            stats.exhausted += 1
+            logger.warning(
+                "ohschonhell: giving up on %s after %d attempts",
+                url, _RETRY_MAX_ATTEMPTS,
+            )
+    return None
