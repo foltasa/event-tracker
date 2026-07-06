@@ -42,3 +42,20 @@ def test_filter_returns_tz_aware_datetimes():
     assert entries, "fixture must yield entries"
     _, lastmod = entries[0]
     assert lastmod.tzinfo is not None
+
+
+def test_filter_treats_naive_lastmod_as_utc():
+    """A <lastmod> without timezone offset must not crash the comparison
+    against a tz-aware cutoff. We treat naive lastmods as UTC."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://ohschonhell.de/date/venue-naive-hamburg-01-08-2026-x</loc>
+    <lastmod>2026-08-01T10:00:00</lastmod>
+  </url>
+</urlset>"""
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    entries = filter_sitemap(xml, cutoff)
+    assert len(entries) == 1
+    _, lastmod = entries[0]
+    assert lastmod.tzinfo is not None

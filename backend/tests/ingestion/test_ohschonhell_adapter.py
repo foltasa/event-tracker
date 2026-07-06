@@ -186,3 +186,25 @@ def test_non_retriable_http_error_logged_separately(db_session, caplog):
     messages = " || ".join(r.getMessage() for r in caplog.records)
     assert "http error: 1" in messages
     assert "retries exhausted: 0" in messages
+
+
+def test_sitemap_fetch_uses_retry_backoff(db_session):
+    """A transient 503 on the sitemap should retry, not crash the adapter."""
+    sitemap_url = "https://ohschonhell.de/post-sitemap26.xml"
+    url_a = "https://ohschonhell.de/date/venue-a-hamburg-10-07-2026-party-a"
+    single_entry_sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://ohschonhell.de/date/venue-a-hamburg-10-07-2026-party-a</loc>
+    <lastmod>2026-07-01T10:00:00+00:00</lastmod>
+  </url>
+</urlset>"""
+    routes = {
+        # First sitemap request returns 503, second returns 200.
+        sitemap_url: [(503, ""), (200, single_entry_sitemap)],
+        url_a: [(200, _event_html("111", "Party A"))],
+    }
+    scraper = OhschonhellScraper(client=_FakeClient(routes), sleep_fn=lambda _s: None)
+
+    events = list(scraper.fetch(db_session))
+    assert [e.external_id for e in events] == ["111"]

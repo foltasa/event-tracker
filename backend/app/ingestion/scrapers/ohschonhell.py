@@ -152,6 +152,8 @@ def filter_sitemap(xml_body: str, cutoff: datetime) -> list[tuple[str, datetime]
             lastmod = datetime.fromisoformat(lastmod_str)
         except ValueError:
             continue
+        if lastmod.tzinfo is None:
+            lastmod = lastmod.replace(tzinfo=timezone.utc)
         if lastmod > cutoff:
             entries.append((loc, lastmod))
     entries.sort(key=lambda x: x[1])
@@ -217,6 +219,8 @@ def get_with_retry(
     return None
 
 
+# WordPress sitemap files are numbered and roll over at ~1000 URLs each.
+# 26 is the current active file; when it fills we bump this manually.
 _SITEMAP_URL = "https://ohschonhell.de/post-sitemap26.xml"
 _BERLIN = ZoneInfo("Europe/Berlin")
 _UA = "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
@@ -252,11 +256,14 @@ class OhschonhellScraper:
             cutoff = last_seen
             logger.info("ohschonhell: delta since %s", cutoff.isoformat())
 
-        sitemap_body = self._client.get(_SITEMAP_URL).text
+        stats = RetryStats()
+        sitemap_body = get_with_retry(
+            self._client, _SITEMAP_URL, stats=stats, sleep_fn=self._sleep_fn,
+        )
+        if sitemap_body is None:
+            raise RuntimeError("ohschonhell: sitemap fetch failed after retries")
         candidates = filter_sitemap(sitemap_body, cutoff)
         logger.info("ohschonhell: sitemap yielded %d candidate URL(s)", len(candidates))
-
-        stats = RetryStats()
         skipped_missing_time = 0
         skipped_parse_error = 0
         skipped_http_error = 0
