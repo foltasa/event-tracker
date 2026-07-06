@@ -36,6 +36,37 @@ def _val(el: Tag | None) -> str:
     return el.get_text(separator=" ", strip=True)
 
 
+def _street_text(el: Tag | None) -> str:
+    """Return the streetAddress text, excluding nested itemprop spans.
+
+    ohschonhell.de nests <span itemprop=postalCode> and
+    <span itemprop=addressLocality> inside <p itemprop=streetAddress>,
+    so a plain get_text() would concatenate the entire address."""
+    if el is None:
+        return ""
+    parts: list[str] = []
+    for child in el.descendants:
+        if isinstance(child, Tag):
+            if child.has_attr("itemprop"):
+                # Skip nested itemprop children and everything under them.
+                continue
+        else:
+            # NavigableString — check that no ancestor has itemprop.
+            has_itemprop_ancestor = False
+            for anc in child.parents:
+                if anc is el:
+                    break
+                if isinstance(anc, Tag) and anc.has_attr("itemprop"):
+                    has_itemprop_ancestor = True
+                    break
+            if has_itemprop_ancestor:
+                continue
+            text = str(child).strip()
+            if text:
+                parts.append(text)
+    return " ".join(parts)
+
+
 def parse_event(html: str) -> dict[str, Any] | None:
     """Extract a party event from a `/date/{slug}` page's HTML.
 
@@ -72,7 +103,7 @@ def parse_event(html: str) -> dict[str, Any] | None:
         return None
 
     addr = event.find(attrs={"itemtype": "http://schema.org/PostalAddress"})
-    street = _val(_direct_prop(addr, "streetAddress")) if isinstance(addr, Tag) else ""
+    street = _street_text(_direct_prop(addr, "streetAddress")) if isinstance(addr, Tag) else ""
     postal_code = _val(_direct_prop(addr, "postalCode")) if isinstance(addr, Tag) else ""
     city = _val(_direct_prop(addr, "addressLocality")) if isinstance(addr, Tag) else ""
 

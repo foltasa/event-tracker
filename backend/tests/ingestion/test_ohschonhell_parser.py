@@ -60,3 +60,13 @@ def test_umlauts_decoded_correctly():
     assert parsed is not None
     combined = " ".join([parsed["name"], parsed["description"] or "", parsed["venue_name"] or ""])
     assert "�" not in combined  # no U+FFFD replacement char
+
+
+def test_street_excludes_nested_postal_and_city():
+    """ohschonhell nests postalCode/addressLocality spans inside the street
+    paragraph. The parser must extract only the street text, not the
+    concatenation of the entire address."""
+    parsed = parse_event(_read("ohschonhell_event_full.html"))
+    assert parsed is not None
+    assert parsed["postal_code"] not in parsed["street"]
+    assert parsed["city"] not in parsed["street"]
