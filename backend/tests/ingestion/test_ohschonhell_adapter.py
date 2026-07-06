@@ -158,3 +158,31 @@ def test_venue_address_is_combined_string(db_session, routes_two_events):
     scraper = OhschonhellScraper(client=_FakeClient(routes), sleep_fn=lambda _s: None)
     events = list(scraper.fetch(db_session))
     assert events[0].venue_address == "Beispielstraße 1, 20000 Hamburg"
+
+
+def test_non_retriable_http_error_logged_separately(db_session, caplog):
+    """A 404 should count as http-error, not retries-exhausted."""
+    import logging as _logging
+    caplog.set_level(_logging.INFO, logger="app.ingestion.scrapers.ohschonhell")
+
+    sitemap_url = "https://ohschonhell.de/post-sitemap26.xml"
+    url_a = "https://ohschonhell.de/date/venue-a-hamburg-10-07-2026-party-a"
+    single_entry_sitemap = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">
+  <url>
+    <loc>https://ohschonhell.de/date/venue-a-hamburg-10-07-2026-party-a</loc>
+    <lastmod>2026-07-01T10:00:00+00:00</lastmod>
+  </url>
+</urlset>"""
+    routes = {
+        sitemap_url: [(200, single_entry_sitemap)],
+        url_a: [(404, "")],
+    }
+    scraper = OhschonhellScraper(client=_FakeClient(routes), sleep_fn=lambda _s: None)
+
+    events = list(scraper.fetch(db_session))
+    assert events == []
+
+    messages = " || ".join(r.getMessage() for r in caplog.records)
+    assert "http error: 1" in messages
+    assert "retries exhausted: 0" in messages

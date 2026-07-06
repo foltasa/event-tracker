@@ -165,6 +165,10 @@ _RETRY_MAX_ATTEMPTS = 3
 _RETRY_BASE_SLEEP = 1.0  # exponential: 1s, 2s, 4s
 
 
+class _HttpGetter(Protocol):
+    def get(self, url: str, **kwargs) -> httpx.Response: ...
+
+
 @dataclass
 class RetryStats:
     total_retries: int = 0
@@ -173,7 +177,7 @@ class RetryStats:
 
 
 def get_with_retry(
-    client: httpx.Client,
+    client: _HttpGetter,
     url: str,
     *,
     stats: RetryStats,
@@ -221,10 +225,6 @@ _REQUEST_DELAY_SECONDS = 0.15
 _PROGRESS_INTERVAL_SECONDS = 30
 
 
-class _HttpGetter(Protocol):
-    def get(self, url: str, **kwargs) -> httpx.Response: ...
-
-
 class OhschonhellScraper:
     """Ingest Hamburg party events from ohschonhell.de via sitemap-delta."""
 
@@ -257,8 +257,10 @@ class OhschonhellScraper:
         logger.info("ohschonhell: sitemap yielded %d candidate URL(s)", len(candidates))
 
         stats = RetryStats()
-        skipped_parse = 0
-        skipped_retry = 0
+        skipped_missing_time = 0
+        skipped_parse_error = 0
+        skipped_http_error = 0
+        skipped_retries_exhausted = 0
         parsed_count = 0
         max_lastmod: datetime | None = None
         last_log_at = time.monotonic()
@@ -268,14 +270,18 @@ class OhschonhellScraper:
             if i > 0:
                 self._sleep_fn(_REQUEST_DELAY_SECONDS)
 
+            exhausted_before = stats.exhausted
             body = get_with_retry(self._client, url, stats=stats, sleep_fn=self._sleep_fn)
             if body is None:
-                skipped_retry += 1
+                if stats.exhausted > exhausted_before:
+                    skipped_retries_exhausted += 1
+                else:
+                    skipped_http_error += 1
                 continue
 
             parsed = parse_event(body)
             if parsed is None:
-                skipped_parse += 1
+                skipped_parse_error += 1
                 logger.warning("ohschonhell: parse failed for %s — skipping", url)
                 continue
 
@@ -283,7 +289,7 @@ class OhschonhellScraper:
                 naive = datetime.fromisoformat(f"{parsed['date']}T{parsed['time']}")
                 start_dt = naive.replace(tzinfo=_BERLIN)
             except ValueError:
-                skipped_parse += 1
+                skipped_missing_time += 1
                 logger.warning("ohschonhell: bad date/time on %s — skipping", url)
                 continue
 
@@ -333,7 +339,10 @@ class OhschonhellScraper:
                 "ohschonhell: %d retries encountered (avg backoff: %.1fs, exhausted: %d)",
                 stats.total_retries, avg, stats.exhausted,
             )
+        skipped_total = skipped_missing_time + skipped_parse_error + skipped_http_error + skipped_retries_exhausted
         logger.info(
-            "ohschonhell: %d candidates → %d parsed, %d skipped (parse error: %d, retries exhausted: %d)",
-            n_total, parsed_count, skipped_parse + skipped_retry, skipped_parse, skipped_retry,
+            "ohschonhell: %d candidates → %d parsed, %d skipped "
+            "(missing time: %d, parse error: %d, http error: %d, retries exhausted: %d)",
+            n_total, parsed_count, skipped_total,
+            skipped_missing_time, skipped_parse_error, skipped_http_error, skipped_retries_exhausted,
         )
