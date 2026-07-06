@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Callable
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Iterator, Protocol
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup, Tag
+from sqlalchemy.orm import Session
+
+from app.ingestion.normalize import NormalizedEvent
+from app.ingestion.state import get_last_seen, set_last_seen
 
 _EVENT_ID_RE = re.compile(r"eventId=(\d+)")
 _TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
@@ -205,3 +211,129 @@ def get_with_retry(
                 url, _RETRY_MAX_ATTEMPTS,
             )
     return None
+
+
+_SITEMAP_URL = "https://ohschonhell.de/post-sitemap26.xml"
+_BERLIN = ZoneInfo("Europe/Berlin")
+_UA = "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
+_BOOTSTRAP_WINDOW_DAYS = 90
+_REQUEST_DELAY_SECONDS = 0.15
+_PROGRESS_INTERVAL_SECONDS = 30
+
+
+class _HttpGetter(Protocol):
+    def get(self, url: str, **kwargs) -> httpx.Response: ...
+
+
+class OhschonhellScraper:
+    """Ingest Hamburg party events from ohschonhell.de via sitemap-delta."""
+
+    name = "ohschonhell"
+
+    def __init__(
+        self,
+        client: _HttpGetter | None = None,
+        sleep_fn=time.sleep,
+    ):
+        self._client = client or httpx.Client(
+            timeout=15, headers={"User-Agent": _UA}
+        )
+        self._sleep_fn = sleep_fn
+
+    def fetch(self, session: Session) -> Iterator[NormalizedEvent]:
+        last_seen = get_last_seen(session, self.name)
+        if last_seen is None:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=_BOOTSTRAP_WINDOW_DAYS)
+            logger.info(
+                "ohschonhell: bootstrap window %s → %s (%dd, no prior state)",
+                cutoff.date(), datetime.now(timezone.utc).date(), _BOOTSTRAP_WINDOW_DAYS,
+            )
+        else:
+            cutoff = last_seen
+            logger.info("ohschonhell: delta since %s", cutoff.isoformat())
+
+        sitemap_body = self._client.get(_SITEMAP_URL).text
+        candidates = filter_sitemap(sitemap_body, cutoff)
+        logger.info("ohschonhell: sitemap yielded %d candidate URL(s)", len(candidates))
+
+        stats = RetryStats()
+        skipped_parse = 0
+        skipped_retry = 0
+        parsed_count = 0
+        max_lastmod: datetime | None = None
+        last_log_at = time.monotonic()
+        n_total = len(candidates)
+
+        for i, (url, lastmod) in enumerate(candidates):
+            if i > 0:
+                self._sleep_fn(_REQUEST_DELAY_SECONDS)
+
+            body = get_with_retry(self._client, url, stats=stats, sleep_fn=self._sleep_fn)
+            if body is None:
+                skipped_retry += 1
+                continue
+
+            parsed = parse_event(body)
+            if parsed is None:
+                skipped_parse += 1
+                logger.warning("ohschonhell: parse failed for %s — skipping", url)
+                continue
+
+            try:
+                naive = datetime.fromisoformat(f"{parsed['date']}T{parsed['time']}")
+                start_dt = naive.replace(tzinfo=_BERLIN)
+            except ValueError:
+                skipped_parse += 1
+                logger.warning("ohschonhell: bad date/time on %s — skipping", url)
+                continue
+
+            slug = url.rsplit("/date/", 1)[-1]
+            venue_address = ", ".join(
+                p for p in [parsed["street"], f"{parsed['postal_code']} {parsed['city']}".strip()] if p
+            ).strip(", ")
+
+            yield NormalizedEvent(
+                external_id=parsed["event_id"],
+                source=self.name,
+                title=parsed["name"],
+                description=parsed["description"],
+                start_datetime=start_dt,
+                venue_name=parsed["venue_name"],
+                venue_address=venue_address or None,
+                category="party",
+                tags=["party"],
+                is_free=False,
+                currency="EUR",
+                image_url=parsed["image_url"],
+                source_url=url,
+                raw_data={
+                    "event_id": parsed["event_id"],
+                    "slug": slug,
+                    "sitemap_lastmod": lastmod.isoformat(),
+                },
+            )
+            parsed_count += 1
+            if max_lastmod is None or lastmod > max_lastmod:
+                max_lastmod = lastmod
+
+            now = time.monotonic()
+            if now - last_log_at >= _PROGRESS_INTERVAL_SECONDS:
+                logger.info(
+                    "ohschonhell: progress %d/%d fetched (%d%%)",
+                    i + 1, n_total, int((i + 1) * 100 / max(n_total, 1)),
+                )
+                last_log_at = now
+
+        if max_lastmod is not None:
+            set_last_seen(session, self.name, max_lastmod)
+
+        if stats.total_retries > 0:
+            avg = stats.total_backoff_seconds / stats.total_retries
+            logger.info(
+                "ohschonhell: %d retries encountered (avg backoff: %.1fs, exhausted: %d)",
+                stats.total_retries, avg, stats.exhausted,
+            )
+        logger.info(
+            "ohschonhell: %d candidates → %d parsed, %d skipped (parse error: %d, retries exhausted: %d)",
+            n_total, parsed_count, skipped_parse + skipped_retry, skipped_parse, skipped_retry,
+        )
