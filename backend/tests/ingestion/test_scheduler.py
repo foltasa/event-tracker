@@ -272,3 +272,23 @@ def test_ingestion_llm_failure_uses_provider_category(db_session):
     row = db_session.query(Event).filter_by(external_id="ok_1").one()
     assert row.category == "concerts"  # _OkAdapter provider hint
     assert db_session.query(EventCategoryCache).count() == 0
+
+
+def test_run_ingestion_emits_stage_and_adapter_logs(db_session, fake_classifier, caplog):
+    """Ensures the observability-focused log lines fire for every stage
+    and per adapter, so long runs are diagnosable from `tail -f`."""
+    import logging as _logging
+    caplog.set_level(_logging.INFO, logger="app.ingestion.scheduler")
+
+    run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
+
+    messages = [r.getMessage() for r in caplog.records]
+    joined = " || ".join(messages)
+
+    assert "stage: fetch" in joined
+    assert "[ok] fetch starting" in joined
+    assert "[ok] fetched 1 events" in joined
+    assert "stage: categorization" in joined
+    assert "stage: upsert" in joined
+    assert "stage: dedup" in joined
+    assert "stage: embedding" in joined

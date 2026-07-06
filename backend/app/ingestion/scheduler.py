@@ -1,4 +1,5 @@
 import logging
+import time
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -99,19 +100,34 @@ def run_ingestion(
     try:
         cache = CategoryCache(session, model_name=settings.categorization_model)
         all_events = []
+        logger.info("stage: fetch (%d sources)", len(adapters))
         for adapter in adapters:
+            logger.info("[%s] fetch starting", adapter.name)
+            t0 = time.monotonic()
             try:
                 batch = list(adapter.fetch(session))
-                for ev in batch:
-                    ev.category = refine_category(ev, cache, classifier)
-                all_events.extend(batch)
-                logger.info("%s: fetched %d events", adapter.name, len(batch))
+                logger.info(
+                    "[%s] fetched %d events in %.1fs",
+                    adapter.name, len(batch), time.monotonic() - t0,
+                )
             except Exception:
-                logger.exception("%s: fetch failed, skipping", adapter.name)
+                logger.exception(
+                    "[%s] fetch failed after %.1fs — skipping",
+                    adapter.name, time.monotonic() - t0,
+                )
+                continue
+            all_events.extend(batch)
 
+        logger.info("stage: categorization (%d events)", len(all_events))
+        for ev in all_events:
+            ev.category = refine_category(ev, cache, classifier)
+
+        logger.info("stage: upsert")
         report = upsert_events(session, all_events)
         deactivate_past_events(session)
+        logger.info("stage: dedup")
         dedup_events(session)  # logs its own summary
+        logger.info("stage: embedding")
         embed_new_events(session)
 
         if own_session:
