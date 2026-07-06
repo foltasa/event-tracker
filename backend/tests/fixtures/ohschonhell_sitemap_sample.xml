@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="//ohschonhell.de/wp-content/plugins/wordpress-seo/css/main-sitemap.xsl"?>
+<urlset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.google.com/schemas/sitemap-image/1.1 http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd" xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	<url>
+		<loc>https://ohschonhell.de/date/dot-club-hamburg-hamburg-04-04-2026-saturdays-dot</loc>
+		<lastmod>2026-04-01T20:34:44+00:00</lastmod>
+	</url>
+	<url>
+		<loc>https://ohschonhell.de/date/locke-hamburg-12-04-2026-vibe-coding-w-finn</loc>
+		<lastmod>2026-04-02T07:10:08+00:00</lastmod>
+	</url>
+	<url>
+		<loc>https://ohschonhell.de/date/edelfettwerk-hamburg-05-04-2026-oster-rave-2026</loc>
+		<lastmod>2026-04-05T16:59:23+00:00</lastmod>
+	</url>
+	<url>
+		<loc>https://ohschonhell.de/date/suedpol-hamburg-05-04-2026-expedition</loc>
+		<lastmod>2026-04-05T17:01:20+00:00</lastmod>
+	</url>
+	<url>
+		<loc>https://ohschonhell.de/date/suedpol-hamburg-06-04-2026-expedition</loc>
+		<lastmod>2026-04-05T17:01:47+00:00</lastmod>
+	</url>
+</urlset>
