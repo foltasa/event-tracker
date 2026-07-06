@@ -7,12 +7,15 @@ name, start, venue, and address."""
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
+from datetime import datetime
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
 _EVENT_ID_RE = re.compile(r"eventId=(\d+)")
 _TIME_RE = re.compile(r"\b(\d{1,2}):(\d{2})\b")
+_SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
 
 def _direct_prop(scope: Tag, name: str) -> Tag | None:
@@ -124,3 +127,23 @@ def parse_event(html: str) -> dict[str, Any] | None:
         "city": city,
         "image_url": image_url,
     }
+
+
+def filter_sitemap(xml_body: str, cutoff: datetime) -> list[tuple[str, datetime]]:
+    """Return (url, lastmod) tuples for /date/ entries with lastmod > cutoff,
+    sorted ascending by lastmod. Callers ensure `cutoff` is tz-aware."""
+    root = ET.fromstring(xml_body)
+    entries: list[tuple[str, datetime]] = []
+    for url_el in root.findall("sm:url", _SITEMAP_NS):
+        loc = (url_el.findtext("sm:loc", "", _SITEMAP_NS) or "").strip()
+        lastmod_str = (url_el.findtext("sm:lastmod", "", _SITEMAP_NS) or "").strip()
+        if "/date/" not in loc or not lastmod_str:
+            continue
+        try:
+            lastmod = datetime.fromisoformat(lastmod_str)
+        except ValueError:
+            continue
+        if lastmod > cutoff:
+            entries.append((loc, lastmod))
+    entries.sort(key=lambda x: x[1])
+    return entries
