@@ -1,6 +1,5 @@
+import re
 from pathlib import Path
-
-import pytest
 
 from app.ingestion.scrapers.ohschonhell import parse_event
 
@@ -39,7 +38,6 @@ def test_missing_time_returns_none():
     # Take the full page and strip the time from the display text.
     html = _read("ohschonhell_event_full.html")
     # Remove any 'HH:MM' substrings inside itemprop=startDate elements.
-    import re
     stripped = re.sub(
         r'(itemprop=startDate[^>]*>)[^<]*',
         r'\1' + "no-time-here",
@@ -50,7 +48,6 @@ def test_missing_time_returns_none():
 
 def test_missing_event_id_returns_none():
     html = _read("ohschonhell_event_full.html")
-    import re
     stripped = re.sub(r"eventId=\d+", "eventId=", html)
     assert parse_event(stripped) is None
 
