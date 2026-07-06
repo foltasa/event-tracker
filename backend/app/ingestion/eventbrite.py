@@ -50,7 +50,7 @@ class EventbriteAdapter:
         self._client = client or httpx.Client(timeout=15)
         self._token = settings.eventbrite_token
 
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         params: dict = {
             "location.address": "Hamburg, Germany",
             "location.within": "20km",

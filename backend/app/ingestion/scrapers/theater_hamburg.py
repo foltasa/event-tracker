@@ -220,7 +220,7 @@ class TheaterHamburgAdapter:
         body = {"query": _LIST_QUERY, "variables": variables}
         return self._post(body)
 
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         today = datetime.now(tz=_BERLIN).date().isoformat()
         page = 1
         # imxplatform pagination is not fully stable across pages — the same

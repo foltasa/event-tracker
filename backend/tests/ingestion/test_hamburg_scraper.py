@@ -48,12 +48,12 @@ class _FakeClient:
 
 
 def test_returns_two_events():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert len(events) == 2
 
 
 def test_title_and_url():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[0].title == "Jazz Night at Mojo Club"
     assert events[0].source_url == "https://heuteinhamburg.de/event/jazz-night-mojo"
     assert events[0].external_id == "jazz-night-mojo"
@@ -61,44 +61,44 @@ def test_title_and_url():
 
 
 def test_venue():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[0].venue_name == "Mojo Club"
 
 
 def test_paid_price():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[0].is_free is False
     assert events[0].price_min == 18.0
 
 
 def test_free_event():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[1].is_free is True
     assert events[1].price_min is None
 
 
 def test_category_music():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[0].category == "concerts"
 
 
 def test_category_outdoor():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[1].category == "outdoor"
 
 
 def test_image_url():
-    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML)).fetch(None))
     assert events[0].image_url == "https://cdn.heuteinhamburg.de/img1.jpg"
 
 
 def test_empty_page():
-    assert list(HamburgScraper(client=_FakeClient(_EMPTY_HTML)).fetch()) == []
+    assert list(HamburgScraper(client=_FakeClient(_EMPTY_HTML)).fetch(None)) == []
 
 
 def test_http_error_raises():
     with pytest.raises(httpx.HTTPStatusError):
-        list(HamburgScraper(client=_FakeClient("", status_code=500)).fetch())
+        list(HamburgScraper(client=_FakeClient("", status_code=500)).fetch(None))
 
 
 # Detail-page HTML mirrors the real heuteinhamburg.de structure: description
@@ -113,18 +113,18 @@ _DETAIL_HTML = """<!DOCTYPE html>
 
 
 def test_description_from_detail_page():
-    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=_DETAIL_HTML)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=_DETAIL_HTML)).fetch(None))
     assert events[0].description == "Hamburg's finest jazz musicians gather for an unforgettable evening."
 
 
 def test_description_none_when_element_absent():
-    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html="<html><body></body></html>")).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html="<html><body></body></html>")).fetch(None))
     assert events[0].description is None
 
 
 def test_description_empty_meta_content_is_none():
     detail = '<html><head><meta name="description" content="  "></head><body></body></html>'
-    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=detail)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(_HTML, detail_html=detail)).fetch(None))
     assert events[0].description is None
 
 
@@ -135,7 +135,7 @@ def test_description_none_on_detail_http_error():
                 return httpx.Response(500, request=httpx.Request("GET", url))
             return httpx.Response(200, text=_HTML, request=httpx.Request("GET", url))
 
-    events = list(HamburgScraper(client=_ListOkDetailFail()).fetch())
+    events = list(HamburgScraper(client=_ListOkDetailFail()).fetch(None))
     assert len(events) == 2
     assert all(e.description is None for e in events)
 
@@ -161,6 +161,6 @@ def test_skips_malformed_and_continues():
     # bad-event has no category, venue, or price but is structurally valid enough
     # that _parse_card returns None (caught by the except guard) or just yields nothing.
     # good-event must always be yielded.
-    events = list(HamburgScraper(client=_FakeClient(html)).fetch())
+    events = list(HamburgScraper(client=_FakeClient(html)).fetch(None))
     slugs = [e.external_id for e in events]
     assert "good-event" in slugs

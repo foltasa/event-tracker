@@ -58,7 +58,7 @@ class _FakeClient:
 
 def test_fetch_maps_music_event():
     adapter = EventbriteAdapter(client=_FakeClient([_PAGE_1, _EMPTY]))
-    events = list(adapter.fetch())
+    events = list(adapter.fetch(None))
     assert len(events) == 1
     e = events[0]
     assert e.external_id == "eb_001"
@@ -76,7 +76,7 @@ def test_fetch_maps_music_event():
 
 def test_fetch_paginates():
     adapter = EventbriteAdapter(client=_FakeClient([_PAGE_1, _PAGE_2]))
-    events = list(adapter.fetch())
+    events = list(adapter.fetch(None))
     assert len(events) == 2
     assert events[1].external_id == "eb_002"
 
@@ -84,7 +84,7 @@ def test_fetch_paginates():
 def test_fetch_maps_free_event():
     page = {"events": [_EVENT_FREE], "pagination": {"has_more_items": False}}
     adapter = EventbriteAdapter(client=_FakeClient([page]))
-    events = list(adapter.fetch())
+    events = list(adapter.fetch(None))
     assert events[0].is_free is True
     assert events[0].price_min is None
     assert events[0].price_max is None
@@ -93,19 +93,19 @@ def test_fetch_maps_free_event():
 def test_fetch_maps_arts_category():
     page = {"events": [_EVENT_FREE], "pagination": {"has_more_items": False}}
     adapter = EventbriteAdapter(client=_FakeClient([page]))
-    events = list(adapter.fetch())
+    events = list(adapter.fetch(None))
     assert events[0].category == "arts"
 
 
 def test_fetch_returns_empty_on_no_events():
     adapter = EventbriteAdapter(client=_FakeClient([_EMPTY]))
-    assert list(adapter.fetch()) == []
+    assert list(adapter.fetch(None)) == []
 
 
 def test_fetch_skips_malformed_event():
     bad = {"id": "eb_bad"}  # missing name, url, start
     page = {"events": [bad, _EVENT_1], "pagination": {"has_more_items": False}}
     adapter = EventbriteAdapter(client=_FakeClient([page]))
-    events = list(adapter.fetch())
+    events = list(adapter.fetch(None))
     assert len(events) == 1
     assert events[0].external_id == "eb_001"

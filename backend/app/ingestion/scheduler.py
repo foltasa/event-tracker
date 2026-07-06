@@ -99,7 +99,7 @@ def run_ingestion(
         all_events = []
         for adapter in adapters:
             try:
-                batch = list(adapter.fetch())
+                batch = list(adapter.fetch(session))
                 for ev in batch:
                     ev.category = refine_category(ev, cache, classifier)
                 all_events.extend(batch)

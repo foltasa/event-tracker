@@ -37,13 +37,13 @@ def _ev(slug: str = "evt_1") -> NormalizedEvent:
 
 class _OkAdapter:
     name = "ok"
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         yield _ev("ok_1")
 
 
 class _FailAdapter:
     name = "fail"
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         raise RuntimeError("source down")
 
 
@@ -60,7 +60,7 @@ def test_failing_adapter_does_not_abort_run(db_session, fake_classifier):
 def test_aggregates_across_adapters(db_session, fake_classifier):
     class _OkAdapter2:
         name = "ok2"
-        def fetch(self):
+        def fetch(self, session):
             yield _ev("ok_2")
 
     report = run_ingestion(adapters=[_OkAdapter(), _OkAdapter2()], session=db_session, classifier=fake_classifier)
@@ -207,7 +207,7 @@ def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monk
 
     class _NoOpAdapter:
         name = "noop"
-        def fetch(self):
+        def fetch(self, session):
             return iter([])
 
     scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session, classifier=fake_classifier)
@@ -226,7 +226,7 @@ def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch, fake_clas
 
     class _NoOpAdapter:
         name = "noop"
-        def fetch(self):
+        def fetch(self, session):
             return iter([])
 
     with pytest.raises(RuntimeError, match="dedup blew up"):

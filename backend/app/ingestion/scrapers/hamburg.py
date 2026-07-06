@@ -68,7 +68,7 @@ class HamburgScraper:
             timeout=15, headers={"User-Agent": "EventTrackerBot/1.0"}
         )
 
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         resp = self._client.get(_BASE_URL)
         resp.raise_for_status()
 

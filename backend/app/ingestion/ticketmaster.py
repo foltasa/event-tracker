@@ -65,7 +65,7 @@ class TicketmasterAdapter:
         # Per-run cache: wiki URL -> description text or None (negative caching too).
         self._wiki_cache: dict[str, str | None] = {}
 
-    def fetch(self) -> Iterator[NormalizedEvent]:
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
         params: dict = {
             "city": "Hamburg",
             "countryCode": "DE",

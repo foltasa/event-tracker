@@ -181,7 +181,7 @@ class TestListFetch:
             post_map={_API_URL: lambda body: _list_response([node], total_pages=1)},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 2
         assert events[0].title == "Hamlet"
         assert events[0].description == "Nice show."
@@ -204,7 +204,7 @@ class TestListFetch:
             post_map={_API_URL: handler},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert {e.title for e in events} == {"A", "B"}
 
     def test_duplicate_external_ids_across_pages_are_dropped(self):
@@ -222,7 +222,7 @@ class TestListFetch:
             post_map={_API_URL: handler},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
         assert events[0].external_id == "dup#2026-07-20T20:00:00"
 
@@ -236,7 +236,7 @@ class TestListFetch:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
 
     def test_401_triggers_one_rescrape_and_retry(self):
@@ -268,7 +268,7 @@ class TestListFetch:
 
         client = _RotatingClient()
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
         assert widget_calls["count"] == 2
 
@@ -281,7 +281,7 @@ class TestDescriptionParsing:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].description == "Line one. Line two."
 
     def test_missing_short_description_leaves_none(self):
@@ -291,7 +291,7 @@ class TestDescriptionParsing:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].description is None
 
     def test_empty_short_description_string_leaves_none(self):
@@ -301,7 +301,7 @@ class TestDescriptionParsing:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].description is None
 
     def test_real_fixture_end_to_end(self):
@@ -320,7 +320,7 @@ class TestDescriptionParsing:
             post_map={_API_URL: lambda body: search},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         # Fixture has 5 nodes, each with 1 eventDate → 5 events.
         assert len(events) == 5
         assert all(e.source == "theater_hamburg" for e in events)
@@ -341,7 +341,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url == "https://cdn.example/a.jpg"
 
     def test_lowest_sorting_value_wins(self):
@@ -356,7 +356,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url == "https://cdn.example/a.jpg"
 
     def test_deactivated_images_are_skipped(self):
@@ -371,7 +371,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url == "https://cdn.example/on.jpg"
 
     def test_non_image_media_types_are_skipped(self):
@@ -386,7 +386,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url == "https://cdn.example/a.jpg"
 
     def test_empty_media_list_yields_none(self):
@@ -396,7 +396,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url is None
 
     def test_missing_media_field_yields_none(self):
@@ -407,7 +407,7 @@ class TestImageExtraction:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events[0].image_url is None
 
 
@@ -420,7 +420,7 @@ class TestMalformedResilience:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert events == []
 
     def test_date_entry_without_date_field_skipped(self):
@@ -433,7 +433,7 @@ class TestMalformedResilience:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
         assert events[0].start_datetime.date().isoformat() == "2026-07-20"
 
@@ -445,7 +445,7 @@ class TestMalformedResilience:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
         assert events[0].latitude is None and events[0].longitude is None
 
@@ -457,6 +457,6 @@ class TestMalformedResilience:
             post_map={_API_URL: lambda body: _list_response([node])},
         )
         adapter = TheaterHamburgAdapter(client=client)
-        events = list(adapter.fetch())
+        events = list(adapter.fetch(None))
         assert len(events) == 1
         assert events[0].venue_name is None
