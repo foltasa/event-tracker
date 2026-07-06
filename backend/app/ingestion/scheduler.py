@@ -19,6 +19,7 @@ from app.ingestion.categorize import (
 from app.ingestion.dedup import dedup_events
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
+from app.ingestion.scrapers.ohschonhell import OhschonhellScraper
 from app.ingestion.scrapers.theater_hamburg import TheaterHamburgAdapter
 from app.ingestion.ticketmaster import TicketmasterAdapter
 from app.rag import chroma_store
@@ -68,6 +69,7 @@ def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAda
         TicketmasterAdapter(wiki_client=wiki_client),
         HamburgScraper(),
         TheaterHamburgAdapter(),
+        OhschonhellScraper(),
     ]
 
 
