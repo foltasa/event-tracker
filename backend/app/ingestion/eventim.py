@@ -95,26 +95,40 @@ def get_json_with_retry(
 
 
 _CATEGORY_MAP: dict[str, EventCategory] = {
-    # Konzerte subcategories
+    # Konzerte subcategories (real Eventim leaves)
     "Rock & Pop": "concerts",
-    "HipHop & R'n'B": "concerts",
-    "Schlager & Volksmusik": "concerts",
+    "HipHop & R’n‘B": "concerts",  # Eventim uses typographic quotes, not ASCII
     "Jazz & Blues": "concerts",
-    "Elektronische Musik": "concerts",
-    "Metal & Hardrock": "concerts",
+    "Electronic & Dance": "concerts",
+    "Hard & Heavy": "concerts",
+    "Country & Folk": "concerts",
+    "Clubkonzerte": "concerts",
+    "Festivals": "concerts",
     "Weitere Konzerte": "concerts",
-    # Kultur subcategories
+    "Party": "party",
+    # Kultur subcategories (real Eventim leaves)
     "Klassische Konzerte": "concerts",
-    "Oper": "theater",
-    "Ballett & Tanz": "theater",
+    "Oper & Operette": "theater",
+    "Tanz": "theater",
     "Theater": "theater",
+    "Ausstellungen": "arts",
+    "Lesungen & Vorträge": "literature",
     # Musical & Show subcategories
     "Musical": "theater",
     "Show": "other",
-    # Sport subcategories
+    "Comedy": "comedy",
+    "Kleinkunst": "comedy",
+    # Sport subcategories (real Eventim leaves)
     "Fußball": "sports",
-    "Handball": "sports",
-    "Weitere Sportarten": "sports",
+    "Basketball": "sports",
+    "Boxen & Kampfsport": "sports",
+    "Motorsport": "sports",
+    "Tennis": "sports",
+    "Wintersport": "sports",
+    "Wrestling": "sports",
+    "Weitere Sport-Events": "sports",
+    # VIP & Extras (occasionally leaks into targeted categories)
+    "VIP & Specials": "other",
 }
 
 _SOURCE_NAME = "eventim"

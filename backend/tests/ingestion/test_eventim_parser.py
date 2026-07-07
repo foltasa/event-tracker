@@ -120,22 +120,40 @@ def test_parse_missing_image_url_ok():
 
 def test_category_map_covers_all_known_leaves():
     expected = {
+        # Konzerte
         "Rock & Pop": "concerts",
-        "HipHop & R'n'B": "concerts",
-        "Schlager & Volksmusik": "concerts",
+        "HipHop & R’n‘B": "concerts",  # typographic quotes, matches real Eventim data
         "Jazz & Blues": "concerts",
-        "Elektronische Musik": "concerts",
-        "Metal & Hardrock": "concerts",
+        "Electronic & Dance": "concerts",
+        "Hard & Heavy": "concerts",
+        "Country & Folk": "concerts",
+        "Clubkonzerte": "concerts",
+        "Festivals": "concerts",
         "Weitere Konzerte": "concerts",
+        "Party": "party",
+        # Kultur
         "Klassische Konzerte": "concerts",
-        "Oper": "theater",
-        "Ballett & Tanz": "theater",
+        "Oper & Operette": "theater",
+        "Tanz": "theater",
         "Theater": "theater",
+        "Ausstellungen": "arts",
+        "Lesungen & Vorträge": "literature",
+        # Musical & Show
         "Musical": "theater",
         "Show": "other",
+        "Comedy": "comedy",
+        "Kleinkunst": "comedy",
+        # Sport
         "Fußball": "sports",
-        "Handball": "sports",
-        "Weitere Sportarten": "sports",
+        "Basketball": "sports",
+        "Boxen & Kampfsport": "sports",
+        "Motorsport": "sports",
+        "Tennis": "sports",
+        "Wintersport": "sports",
+        "Wrestling": "sports",
+        "Weitere Sport-Events": "sports",
+        # VIP leaks
+        "VIP & Specials": "other",
     }
     for leaf, cat in expected.items():
         assert _CATEGORY_MAP[leaf] == cat
