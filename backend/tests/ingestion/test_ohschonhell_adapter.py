@@ -160,10 +160,9 @@ def test_venue_address_is_combined_string(db_session, routes_two_events):
     assert events[0].venue_address == "Beispielstraße 1, 20000 Hamburg"
 
 
-def test_non_retriable_http_error_logged_separately(db_session, caplog):
-    """A 404 should count as http-error, not retries-exhausted."""
-    import logging as _logging
-    caplog.set_level(_logging.INFO, logger="app.ingestion.scrapers.ohschonhell")
+def test_non_retriable_http_error_logged_separately(db_session):
+    """A 404 counts as an http_status warning, not http_retry_exhausted."""
+    from app.ingestion.logging_util import FetchContext, ProgressReporter, WarningCollector
 
     sitemap_url = "https://ohschonhell.de/post-sitemap26.xml"
     url_a = "https://ohschonhell.de/date/venue-a-hamburg-10-07-2026-party-a"
@@ -179,13 +178,19 @@ def test_non_retriable_http_error_logged_separately(db_session, caplog):
         url_a: [(404, "")],
     }
     scraper = OhschonhellScraper(client=_FakeClient(routes), sleep_fn=lambda _s: None)
+    ctx = FetchContext(
+        progress=ProgressReporter("ohschonhell"),
+        warns=WarningCollector("ohschonhell"),
+    )
 
-    events = list(scraper.fetch(db_session))
+    events = list(scraper.fetch(db_session, ctx))
     assert events == []
 
-    messages = " || ".join(r.getMessage() for r in caplog.records)
-    assert "http error: 1" in messages
-    assert "retries exhausted: 0" in messages
+    summary = ctx.warns.summary()
+    # 404 → http_status (from get_with_retry) then body is None → http_error at fetch level.
+    assert summary.get("http_status", 0) == 1
+    assert summary.get("http_error", 0) == 1
+    assert summary.get("http_retry_exhausted", 0) == 0
 
 
 def test_sitemap_fetch_uses_retry_backoff(db_session):

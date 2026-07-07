@@ -184,38 +184,32 @@ def get_with_retry(
     *,
     stats: RetryStats,
     sleep_fn: Callable[[float], None],
+    warns=None,
 ) -> str | None:
     """GET `url` with exponential backoff on 429/503. Returns body text or None.
 
     Non-retriable error statuses (e.g. 404) return None without retrying.
     Network exceptions propagate — callers handle them at the sitemap level.
     """
+    from app.ingestion.logging_util import NullWarns
+    if warns is None:
+        warns = NullWarns()
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
         resp = client.get(url)
         if resp.status_code == 200:
             return resp.content.decode("utf-8", errors="replace")
         if resp.status_code not in _RETRY_STATUS_CODES:
-            logger.warning(
-                "ohschonhell: unexpected status %d for %s — skipping",
-                resp.status_code, url,
-            )
+            warns.warn("http_status", f"{resp.status_code} {url}")
             return None
         if attempt < _RETRY_MAX_ATTEMPTS:
             backoff = _RETRY_BASE_SLEEP * (2 ** (attempt - 1))
-            logger.warning(
-                "ohschonhell: %d from %s — sleeping %.1fs (attempt %d/%d)",
-                resp.status_code, url, backoff, attempt, _RETRY_MAX_ATTEMPTS,
-            )
             stats.total_retries += 1
             stats.total_backoff_seconds += backoff
             sleep_fn(backoff)
         else:
             stats.total_retries += 1
             stats.exhausted += 1
-            logger.warning(
-                "ohschonhell: giving up on %s after %d attempts",
-                url, _RETRY_MAX_ATTEMPTS,
-            )
+            warns.warn("http_retry_exhausted", url)
     return None
 
 
@@ -226,7 +220,6 @@ _BERLIN = ZoneInfo("Europe/Berlin")
 _UA = "EventTrackerBot/1.0 (https://github.com/alexander-foltas/event-tracker)"
 _BOOTSTRAP_WINDOW_DAYS = 90
 _REQUEST_DELAY_SECONDS = 0.15
-_PROGRESS_INTERVAL_SECONDS = 30
 
 
 class OhschonhellScraper:
@@ -244,60 +237,53 @@ class OhschonhellScraper:
         )
         self._sleep_fn = sleep_fn
 
-    def fetch(self, session: Session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session: Session, ctx: "FetchContext | None" = None) -> Iterator[NormalizedEvent]:
+        from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
+
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         last_seen = get_last_seen(session, self.name)
         if last_seen is None:
             cutoff = datetime.now(timezone.utc) - timedelta(days=_BOOTSTRAP_WINDOW_DAYS)
-            logger.info(
-                "ohschonhell: bootstrap window %s → %s (%dd, no prior state)",
-                cutoff.date(), datetime.now(timezone.utc).date(), _BOOTSTRAP_WINDOW_DAYS,
-            )
         else:
             cutoff = last_seen
-            logger.info("ohschonhell: delta since %s", cutoff.isoformat())
 
         stats = RetryStats()
         sitemap_body = get_with_retry(
-            self._client, _SITEMAP_URL, stats=stats, sleep_fn=self._sleep_fn,
+            self._client, _SITEMAP_URL,
+            stats=stats, sleep_fn=self._sleep_fn, warns=warns,
         )
         if sitemap_body is None:
             raise RuntimeError("ohschonhell: sitemap fetch failed after retries")
         candidates = filter_sitemap(sitemap_body, cutoff)
-        logger.info("ohschonhell: sitemap yielded %d candidate URL(s)", len(candidates))
-        skipped_missing_time = 0
-        skipped_parse_error = 0
-        skipped_http_error = 0
-        skipped_retries_exhausted = 0
-        parsed_count = 0
+
         max_lastmod: datetime | None = None
-        last_log_at = time.monotonic()
+        parsed_count = 0
         n_total = len(candidates)
 
         for i, (url, lastmod) in enumerate(candidates):
             if i > 0:
                 self._sleep_fn(_REQUEST_DELAY_SECONDS)
 
-            exhausted_before = stats.exhausted
-            body = get_with_retry(self._client, url, stats=stats, sleep_fn=self._sleep_fn)
+            body = get_with_retry(
+                self._client, url,
+                stats=stats, sleep_fn=self._sleep_fn, warns=warns,
+            )
             if body is None:
-                if stats.exhausted > exhausted_before:
-                    skipped_retries_exhausted += 1
-                else:
-                    skipped_http_error += 1
+                warns.warn("http_error", url)
                 continue
 
             parsed = parse_event(body)
             if parsed is None:
-                skipped_parse_error += 1
-                logger.warning("ohschonhell: parse failed for %s — skipping", url)
+                warns.warn("parse_error", url)
                 continue
 
             try:
                 naive = datetime.fromisoformat(f"{parsed['date']}T{parsed['time']}")
                 start_dt = naive.replace(tzinfo=_BERLIN)
-            except ValueError:
-                skipped_missing_time += 1
-                logger.warning("ohschonhell: bad date/time on %s — skipping", url)
+            except ValueError as e:
+                warns.warn("bad_date", url, exc=e)
                 continue
 
             slug = url.rsplit("/date/", 1)[-1]
@@ -326,30 +312,9 @@ class OhschonhellScraper:
                 },
             )
             parsed_count += 1
+            progress.tick(parsed=parsed_count, seen=i + 1, total=n_total)
             if max_lastmod is None or lastmod > max_lastmod:
                 max_lastmod = lastmod
 
-            now = time.monotonic()
-            if now - last_log_at >= _PROGRESS_INTERVAL_SECONDS:
-                logger.info(
-                    "ohschonhell: progress %d/%d fetched (%d%%)",
-                    i + 1, n_total, int((i + 1) * 100 / max(n_total, 1)),
-                )
-                last_log_at = now
-
         if max_lastmod is not None:
             set_last_seen(session, self.name, max_lastmod)
-
-        if stats.total_retries > 0:
-            avg = stats.total_backoff_seconds / stats.total_retries
-            logger.info(
-                "ohschonhell: %d retries encountered (avg backoff: %.1fs, exhausted: %d)",
-                stats.total_retries, avg, stats.exhausted,
-            )
-        skipped_total = skipped_missing_time + skipped_parse_error + skipped_http_error + skipped_retries_exhausted
-        logger.info(
-            "ohschonhell: %d candidates → %d parsed, %d skipped "
-            "(missing time: %d, parse error: %d, http error: %d, retries exhausted: %d)",
-            n_total, parsed_count, skipped_total,
-            skipped_missing_time, skipped_parse_error, skipped_http_error, skipped_retries_exhausted,
-        )
