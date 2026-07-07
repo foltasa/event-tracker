@@ -5,6 +5,7 @@ from typing import Iterator
 import httpx
 
 from app.config import settings
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 from app.ingestion.wikipedia import extract_summary, wiki_title_from_url
 
@@ -65,7 +66,10 @@ class TicketmasterAdapter:
         # Per-run cache: wiki URL -> description text or None (negative caching too).
         self._wiki_cache: dict[str, str | None] = {}
 
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         params: dict = {
             "city": "Hamburg",
             "countryCode": "DE",
@@ -75,17 +79,23 @@ class TicketmasterAdapter:
         if self._api_key:
             params["apikey"] = self._api_key
 
+        events = 0
+        page_num = 0
         while True:
+            page_num += 1
             resp = self._client.get(f"{_BASE_URL}/events.json", params=params)
             resp.raise_for_status()
             data = resp.json()
 
             for raw in data.get("_embedded", {}).get("events", []):
                 # One extra call per event to fetch description; acceptable for nightly batch at this scale.
-                detail = self._fetch_detail(raw.get("id", ""))
-                event = self._parse(raw, detail)
+                detail = self._fetch_detail(raw.get("id", ""), warns)
+                event = self._parse(raw, detail, warns)
                 if event:
+                    events += 1
                     yield event
+
+            progress.tick(page=page_num, events=events)
 
             page_info = data.get("page", {})
             total = page_info.get("totalPages", 1)
@@ -94,7 +104,9 @@ class TicketmasterAdapter:
                 break
             params["page"] = current + 1
 
-    def _fetch_detail(self, event_id: str) -> dict:
+    def _fetch_detail(self, event_id: str, warns=None) -> dict:
+        if warns is None:
+            warns = NullWarns()
         if not event_id:
             return {}
         params = {"apikey": self._api_key} if self._api_key else {}
@@ -102,25 +114,29 @@ class TicketmasterAdapter:
             resp = self._client.get(f"{_BASE_URL}/events/{event_id}.json", params=params)
             resp.raise_for_status()
             return resp.json()
-        except Exception:
-            logger.warning("TM detail fetch failed for event %s", event_id)
+        except Exception as e:
+            warns.warn("detail_fetch", event_id, exc=e)
             return {}
 
-    def _fetch_wiki_description_for_event(self, raw: dict) -> str | None:
+    def _fetch_wiki_description_for_event(self, raw: dict, warns=None) -> str | None:
         """Iterate the event's embedded attractions; return the first
         Wikipedia summary text found via externalLinks.wiki."""
+        if warns is None:
+            warns = NullWarns()
         if self._wiki_client is None:
             return None
         for att in (raw.get("_embedded") or {}).get("attractions") or []:
             wiki_links = ((att.get("externalLinks") or {}).get("wiki")) or []
             for link in wiki_links:
                 url = link.get("url") if isinstance(link, dict) else None
-                desc = self._lookup_wiki_summary(url)
+                desc = self._lookup_wiki_summary(url, warns)
                 if desc:
                     return desc
         return None
 
-    def _lookup_wiki_summary(self, url: str | None) -> str | None:
+    def _lookup_wiki_summary(self, url: str | None, warns=None) -> str | None:
+        if warns is None:
+            warns = NullWarns()
         if not url:
             return None
         if url in self._wiki_cache:
@@ -135,15 +151,17 @@ class TicketmasterAdapter:
             resp = self._wiki_client.get(api, headers={"User-Agent": _WIKI_USER_AGENT})
             resp.raise_for_status()
             body = resp.json()
-        except Exception:
-            logger.warning("Wikipedia summary fetch failed for %s", api)
+        except Exception as e:
+            warns.warn("wiki_fetch", api, exc=e)
             self._wiki_cache[url] = None
             return None
         text = extract_summary(body)
         self._wiki_cache[url] = text
         return text
 
-    def _parse(self, raw: dict, detail: dict | None = None) -> NormalizedEvent | None:
+    def _parse(self, raw: dict, detail: dict | None = None, warns=None) -> NormalizedEvent | None:
+        if warns is None:
+            warns = NullWarns()
         try:
             start_info = raw["dates"]["start"]
             start_str = start_info.get("dateTime") or start_info["localDate"] + "T00:00:00+02:00"
@@ -164,7 +182,7 @@ class TicketmasterAdapter:
                     detail.get("info") or detail.get("additionalInfo") or detail.get("pleaseNote")
                 ) or None
             if not description:
-                description = self._fetch_wiki_description_for_event(raw)
+                description = self._fetch_wiki_description_for_event(raw, warns)
 
             return NormalizedEvent(
                 external_id=str(raw["id"]),
@@ -186,6 +204,6 @@ class TicketmasterAdapter:
                 source_url=raw["url"],
                 raw_data=raw,
             )
-        except (KeyError, ValueError, TypeError):
-            logger.exception("Skipping malformed Ticketmaster event: %s", raw.get("id"))
+        except (KeyError, ValueError, TypeError) as e:
+            warns.warn("parse_error", str(raw.get("id", "<no-id>")), exc=e)
             return None
