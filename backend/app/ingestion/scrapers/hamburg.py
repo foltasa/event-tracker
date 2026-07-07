@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,10 @@ class HamburgScraper:
             timeout=15, headers={"User-Agent": "EventTrackerBot/1.0"}
         )
 
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         resp = self._client.get(_BASE_URL)
         resp.raise_for_status()
 
@@ -76,6 +80,7 @@ class HamburgScraper:
         soup = BeautifulSoup(resp.text, "html.parser")
 
         seen: set[str] = set()
+        events = 0
         for link in soup.find_all("a", href=True):
             href: str = link["href"]
             if not href.startswith("/event/"):
@@ -90,18 +95,22 @@ class HamburgScraper:
                 continue
             seen.add(slug)
 
-            description = self._fetch_description(slug)
-            ev = self._parse_card(link, slug, title, today, description=description)
+            description = self._fetch_description(slug, warns)
+            ev = self._parse_card(link, slug, title, today, description=description, warns=warns)
             if ev:
+                events += 1
+                progress.tick(events=events)
                 yield ev
 
-    def _fetch_description(self, slug: str) -> str | None:
+    def _fetch_description(self, slug: str, warns=None) -> str | None:
+        if warns is None:
+            warns = NullWarns()
         url = f"{_BASE_URL}/event/{slug}"
         try:
             resp = self._client.get(url)
             resp.raise_for_status()
-        except Exception:
-            logger.warning("Hamburg detail fetch failed for %s", slug)
+        except Exception as e:
+            warns.warn("detail_fetch", slug, exc=e)
             return None
         try:
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -113,8 +122,8 @@ class HamburgScraper:
                 text = el.get("content", "").strip()
                 return text or None
             return None
-        except Exception:
-            logger.exception("Hamburg detail parse failed for %s", slug)
+        except Exception as e:
+            warns.warn("detail_parse", slug, exc=e)
             return None
 
     def _parse_card(
@@ -124,7 +133,10 @@ class HamburgScraper:
         title: str,
         today: date,
         description: str | None = None,
+        warns=None,
     ) -> NormalizedEvent | None:
+        if warns is None:
+            warns = NullWarns()
         try:
             source_url = f"{_BASE_URL}/event/{slug}"
 
@@ -204,6 +216,6 @@ class HamburgScraper:
                 source_url=source_url,
                 raw_data={"slug": slug},
             )
-        except Exception:
-            logger.exception("Skipping malformed heuteinhamburg event: %s", slug)
+        except Exception as e:
+            warns.warn("parse_error", slug, exc=e)
             return None
