@@ -65,6 +65,7 @@ class CategoryCache:
     def __init__(self, session: Session, model_name: str):
         self._session = session
         self._model_name = model_name
+        self.stats = {"hits": 0}
 
     def get(self, content_hash: str) -> str | None:
         row = (
@@ -72,7 +73,10 @@ class CategoryCache:
             .filter_by(content_hash=content_hash)
             .one_or_none()
         )
-        return row.category if row else None
+        if row is not None:
+            self.stats["hits"] += 1
+            return row.category
+        return None
 
     def set(self, content_hash: str, category: str) -> None:
         stmt = sqlite_insert(EventCategoryCache).values(
@@ -153,8 +157,10 @@ class LangchainClassifier:
     def __init__(self, llm: ChatOpenAI | None = None):
         base = llm if llm is not None else build_categorization_llm()
         self._structured = base.with_structured_output(CategoryDecision)
+        self.stats = {"calls": 0}
 
     def classify(self, event: NormalizedEvent) -> CategoryDecision:
+        self.stats["calls"] += 1
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=render_user_prompt(event)),
