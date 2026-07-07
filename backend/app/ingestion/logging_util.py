@@ -7,6 +7,7 @@ are added in later tasks in this same module."""
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from datetime import datetime
 
@@ -75,3 +76,21 @@ class IngestionFormatter(logging.Formatter):
         # blank event column so the alignment stays.
         message = record.getMessage()
         return f"{ts} {level} {' ' * _EVENT_COL_WIDTH} {message}".rstrip()
+
+
+def configure_logging(level: int = logging.INFO, stream=None) -> None:
+    """Install IngestionFormatter on the root logger.
+
+    Idempotent: replaces any handlers previously installed by this function
+    (marked with `_ingestion_managed`). Leaves foreign handlers alone so
+    pytest capture and other stacks continue to work."""
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers = [
+        h for h in root.handlers
+        if not getattr(h, "_ingestion_managed", False)
+    ]
+    handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
+    handler.setFormatter(IngestionFormatter())
+    handler._ingestion_managed = True  # type: ignore[attr-defined]
+    root.addHandler(handler)

@@ -80,3 +80,25 @@ def test_formatter_falls_back_for_legacy_records():
     # Legacy path: still prints ts + level + msg. Event column is blank.
     assert "hello world" in line
     assert "INFO " in line
+
+
+def test_configure_logging_installs_formatter_on_root():
+    import io
+
+    from app.ingestion.logging_util import configure_logging
+
+    root = logging.getLogger()
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
+    try:
+        stream = io.StringIO()
+        configure_logging(level=logging.INFO, stream=stream)
+        logging.getLogger("app.ingestion.scheduler").info(
+            "", extra={"event": "run.start", "body": {"run": "abcd", "sources": 2}},
+        )
+        output = stream.getvalue()
+        assert "run.start" in output
+        assert "run=abcd sources=2" in output
+    finally:
+        root.handlers = saved_handlers
+        root.setLevel(saved_level)
