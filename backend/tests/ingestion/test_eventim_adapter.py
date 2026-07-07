@@ -123,14 +123,21 @@ def test_query_params_are_correct(db_session):
     assert p["categories"] in {"Konzerte", "Musical & Show", "Kultur", "Sport"}
 
 
-def test_all_categories_fail_page_1_raises(db_session):
-    import pytest
+def test_all_categories_fail_page_1_trips_breaker(db_session):
+    from unittest.mock import patch
+    from app.db.models.ingestion_state import IngestionState
+    # 503 (retriable, non-403) so we hit the all-cats trip rather than the 403 budget.
     routes = {
-        ("Konzerte", 1): (403, ""),
-        ("Musical & Show", 1): (403, ""),
-        ("Kultur", 1): (403, ""),
-        ("Sport", 1): (403, ""),
+        ("Konzerte", 1): (503, ""),
+        ("Musical & Show", 1): (503, ""),
+        ("Kultur", 1): (503, ""),
+        ("Sport", 1): (503, ""),
     }
     adapter = EventimAdapter(client=_FakeClient(routes), sleep_fn=lambda _s: None)
-    with pytest.raises(RuntimeError, match="all categories failed page 1"):
-        list(adapter.fetch(db_session))
+    with patch("app.ingestion.eventim.SessionLocal", return_value=db_session):
+        events = list(adapter.fetch(db_session))
+    assert events == []
+    row = db_session.get(IngestionState, "eventim")
+    assert row is not None
+    assert row.disabled_at is not None
+    assert row.disabled_reason == "all_categories_failed_page_1"

@@ -10,7 +10,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Protocol
 
 import httpx
@@ -258,6 +258,9 @@ class EventimAdapter:
 
     name = _SOURCE_NAME
 
+    _TRIP_CONSECUTIVE_EXHAUSTIONS = 3
+    _TRIP_TOTAL_403_BUDGET = 15
+
     def __init__(
         self,
         client: _HttpGetter | None = None,
@@ -275,23 +278,33 @@ class EventimAdapter:
 
         stats = RetryStats()
         categories_failed_page_1 = 0
-        for category in _CATEGORIES:
+        consecutive_exhaustions = 0
+        events_yielded_this_run = 0
+
+        for i, category in enumerate(_CATEGORIES):
             first = get_json_with_retry(
                 self._client, _API,
                 params=self._params(category, page=1),
                 stats=stats, sleep_fn=self._sleep_fn,
             )
+            if stats.akamai_403s >= self._TRIP_TOTAL_403_BUDGET:
+                self._trip(f"total_403_budget_exceeded: {stats.akamai_403s}",
+                           events_yielded_this_run, category, i)
+                return
             if first is None:
                 logger.warning(
-                    "eventim: page 1 of category '%s' failed after retries - skipping category",
+                    "eventim: page 1 of category '%s' failed after retries — skipping category",
                     category,
                 )
                 categories_failed_page_1 += 1
+                # Category-level failures do NOT feed consecutive_exhaustions.
                 continue
 
-            yield from self._products(first)
-            total_pages = int(first.get("totalPages") or 1)
+            for ev in self._products(first):
+                events_yielded_this_run += 1
+                yield ev
 
+            total_pages = int(first.get("totalPages") or 1)
             for page in range(2, total_pages + 1):
                 self._sleep_fn(_REQUEST_DELAY_SECONDS)
                 body = get_json_with_retry(
@@ -299,16 +312,71 @@ class EventimAdapter:
                     params=self._params(category, page=page),
                     stats=stats, sleep_fn=self._sleep_fn,
                 )
+                if stats.akamai_403s >= self._TRIP_TOTAL_403_BUDGET:
+                    self._trip(f"total_403_budget_exceeded: {stats.akamai_403s}",
+                               events_yielded_this_run, category, i)
+                    return
                 if body is None:
                     logger.warning(
-                        "eventim: page %d of category '%s' failed after retries - skipping page",
+                        "eventim: page %d of category '%s' failed after retries — skipping page",
                         page, category,
                     )
+                    consecutive_exhaustions += 1
+                    if consecutive_exhaustions >= self._TRIP_CONSECUTIVE_EXHAUSTIONS:
+                        self._trip(
+                            f"consecutive_retry_exhaustion: {consecutive_exhaustions} pages",
+                            events_yielded_this_run, category, i,
+                        )
+                        return
                     continue
-                yield from self._products(body)
+                consecutive_exhaustions = 0
+                for ev in self._products(body):
+                    events_yielded_this_run += 1
+                    yield ev
 
+        # Post-loop: if every category's page 1 failed, trip.
         if categories_failed_page_1 == len(_CATEGORIES):
-            raise RuntimeError("eventim: all categories failed page 1")
+            self._trip("all_categories_failed_page_1",
+                       events_yielded_this_run,
+                       _CATEGORIES[-1], len(_CATEGORIES) - 1)
+            return
+
+    def _trip(self, reason: str, events_before: int, at_category: str, category_index: int) -> None:
+        now = datetime.now(timezone.utc)
+        # Persist trip in its own transaction so it survives a caller rollback.
+        own_session = SessionLocal()
+        try:
+            row = own_session.get(IngestionState, self.name)
+            if row is None:
+                row = IngestionState(
+                    source=self.name,
+                    last_seen_lastmod=None,
+                    disabled_at=now,
+                    disabled_reason=reason,
+                    runs_while_disabled=0,
+                )
+                own_session.add(row)
+            else:
+                row.disabled_at = now
+                row.disabled_reason = reason
+                row.runs_while_disabled = 0
+            own_session.commit()
+        finally:
+            own_session.close()
+
+        skipped = [c for c in _CATEGORIES[category_index + 1:]]
+        skipped_str = ", ".join(skipped) if skipped else "(none)"
+        logger.warning(
+            "\n!! ============================================================\n"
+            "!! EVENTIM CIRCUIT BREAKER TRIPPED THIS RUN\n"
+            "!!   At:       %s\n"
+            "!!   Reason:   %s\n"
+            "!!   Partial:  ingested %d events from %s before trip\n"
+            "!!   Skipped:  %s\n"
+            "!!   Reset:    python -m scripts.reset_adapter_lock eventim\n"
+            "!! ============================================================",
+            now.isoformat(), reason, events_before, at_category, skipped_str,
+        )
 
     def _params(self, category: str, *, page: int) -> dict:
         return {
