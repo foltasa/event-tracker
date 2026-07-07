@@ -18,7 +18,11 @@ _BERLIN = ZoneInfo("Europe/Berlin")
 def fake_classifier():
     """Default classifier: returns the provider hint unchanged."""
     class _Passthrough:
+        def __init__(self):
+            self.stats = {"calls": 0}
+
         def classify(self, event):
+            self.stats["calls"] += 1
             return CategoryDecision(category=event.category)
     return _Passthrough()
 
@@ -37,13 +41,13 @@ def _ev(slug: str = "evt_1") -> NormalizedEvent:
 
 class _OkAdapter:
     name = "ok"
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx=None) -> Iterator[NormalizedEvent]:
         yield _ev("ok_1")
 
 
 class _FailAdapter:
     name = "fail"
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx=None) -> Iterator[NormalizedEvent]:
         raise RuntimeError("source down")
 
 
@@ -60,7 +64,7 @@ def test_failing_adapter_does_not_abort_run(db_session, fake_classifier):
 def test_aggregates_across_adapters(db_session, fake_classifier):
     class _OkAdapter2:
         name = "ok2"
-        def fetch(self, session):
+        def fetch(self, session, ctx=None):
             yield _ev("ok_2")
 
     report = run_ingestion(adapters=[_OkAdapter(), _OkAdapter2()], session=db_session, classifier=fake_classifier)
@@ -76,7 +80,9 @@ def test_calls_deactivate(db_session, fake_classifier):
 def test_calls_embed_stub(db_session, fake_classifier):
     with patch("app.ingestion.scheduler.embed_new_events") as mock_embed:
         run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
-    mock_embed.assert_called_once_with(db_session)
+    mock_embed.assert_called_once()
+    # embed_new_events(session, body=...) — first positional is the session.
+    assert mock_embed.call_args.args[0] is db_session
 
 
 def test_db_error_rolls_back(db_session, fake_classifier):
@@ -198,7 +204,7 @@ def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monk
         call_order.append("dedup")
         return DedupReport()
 
-    def fake_embed(session):
+    def fake_embed(session, body=None):
         call_order.append("embed")
 
     monkeypatch.setattr(scheduler, "deactivate_past_events", fake_deactivate)
@@ -207,7 +213,7 @@ def test_run_ingestion_calls_dedup_between_deactivate_and_embed(db_session, monk
 
     class _NoOpAdapter:
         name = "noop"
-        def fetch(self, session):
+        def fetch(self, session, ctx=None):
             return iter([])
 
     scheduler.run_ingestion(adapters=[_NoOpAdapter()], session=db_session, classifier=fake_classifier)
@@ -222,11 +228,11 @@ def test_run_ingestion_propagates_dedup_error(db_session, monkeypatch, fake_clas
 
     monkeypatch.setattr(scheduler, "deactivate_past_events", lambda s: 0)
     monkeypatch.setattr(scheduler, "dedup_events", fake_dedup)
-    monkeypatch.setattr(scheduler, "embed_new_events", lambda s: None)
+    monkeypatch.setattr(scheduler, "embed_new_events", lambda s, body=None: None)
 
     class _NoOpAdapter:
         name = "noop"
-        def fetch(self, session):
+        def fetch(self, session, ctx=None):
             return iter([])
 
     with pytest.raises(RuntimeError, match="dedup blew up"):
@@ -237,9 +243,11 @@ class _FixedClassifier:
     def __init__(self, category="theater"):
         self._category = category
         self.calls = 0
+        self.stats = {"calls": 0}
 
     def classify(self, event):
         self.calls += 1
+        self.stats["calls"] += 1
         return CategoryDecision(category=self._category)
 
 
@@ -265,7 +273,9 @@ def test_ingestion_second_run_hits_cache(db_session):
 
 def test_ingestion_llm_failure_uses_provider_category(db_session):
     class _BrokenClassifier:
+        stats = {"calls": 0}
         def classify(self, event):
+            self.stats["calls"] += 1
             raise RuntimeError("openrouter timeout")
     run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=_BrokenClassifier())
     db_session.commit()
@@ -275,30 +285,35 @@ def test_ingestion_llm_failure_uses_provider_category(db_session):
 
 
 def test_run_ingestion_emits_stage_and_adapter_logs(db_session, fake_classifier, caplog):
-    """Ensures the observability-focused log lines fire for every stage
-    and per adapter, so long runs are diagnosable from `tail -f`."""
+    """Ensures the vocabulary events fire for every stage and per adapter,
+    so long runs are diagnosable from `tail -f`."""
     import logging as _logging
-    caplog.set_level(_logging.INFO, logger="app.ingestion.scheduler")
+    caplog.set_level(_logging.INFO)
 
     run_ingestion(adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier)
 
-    messages = [r.getMessage() for r in caplog.records]
-    joined = " || ".join(messages)
+    events = [getattr(r, "event", None) for r in caplog.records if getattr(r, "event", None)]
+    assert "run.start" in events
+    assert "fetch.start" in events
+    assert "fetch.done" in events
+    assert "stage.categorize" in events
+    assert "stage.upsert" in events
+    assert "stage.dedup" in events
+    assert "stage.embed" in events
+    assert "run.done" in events
 
-    assert "stage: fetch" in joined
-    assert "[ok] fetch starting" in joined
-    assert "[ok] fetched 1 events" in joined
-    assert "stage: categorization" in joined
-    assert "stage: upsert" in joined
-    assert "stage: dedup" in joined
-    assert "stage: embedding" in joined
+    # The fetch.done body should carry the event count for [ok].
+    done = [r for r in caplog.records if getattr(r, "event", None) == "fetch.done"]
+    assert any(
+        r.body.get("adapter") == "ok" and r.body.get("events") == 1 for r in done
+    )
 
 
 class _TrippedAdapter:
     """Adapter that mimics an Eventim-style tripped-breaker no-op fetch."""
     name = "eventim"
 
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx=None) -> Iterator[NormalizedEvent]:
         # Real adapter would log its own banner + return. We just return.
         return
         yield  # pragma: no cover
@@ -323,7 +338,8 @@ def test_scheduler_summary_marks_tripped_adapter(db_session, fake_classifier, ca
             session=db_session,
             classifier=fake_classifier,
         )
-    lines = [rec.message for rec in caplog.records]
-    joined = "\n".join(lines)
-    assert "*** SKIPPED - CIRCUIT BREAKER TRIPPED ***" in joined
-    assert "eventim" in joined
+    # New vocabulary: tripped adapter emits fetch.skipped with reason.
+    skipped = [r for r in caplog.records if getattr(r, "event", None) == "fetch.skipped"]
+    assert len(skipped) == 1
+    assert skipped[0].body["adapter"] == "eventim"
+    assert skipped[0].body["reason"] == "breaker-tripped"

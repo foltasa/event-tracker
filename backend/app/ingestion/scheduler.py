@@ -1,4 +1,5 @@
 import logging
+import secrets
 import time
 
 import httpx
@@ -19,6 +20,12 @@ from app.ingestion.categorize import (
     refine_category,
 )
 from app.ingestion.dedup import dedup_events
+from app.ingestion.logging_util import (
+    FetchContext,
+    ProgressReporter,
+    WarningCollector,
+    timer,
+)
 from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
 from app.ingestion.scrapers.hamburg import HamburgScraper
 from app.ingestion.scrapers.ohschonhell import OhschonhellScraper
@@ -31,12 +38,15 @@ from app.rag.chroma_store import upsert_events as chroma_upsert_events
 logger = logging.getLogger(__name__)
 
 
-def embed_new_events(session: Session) -> None:
+def embed_new_events(session: Session, body: dict | None = None) -> None:
     """Embed all currently-visible events into Chroma and drop stale vectors.
 
     Stale = a Chroma id whose event no longer passes visible_events_filter()
     (deleted, deactivated, or — when the hide toggle is on — missing a
-    description). Idempotent: upsert by id, delete by id."""
+    description). Idempotent: upsert by id, delete by id.
+
+    If `body` is provided (used by the scheduler's stage.embed timer),
+    it is populated with `upserted` and `purged` counts."""
     visible_ids = {
         row[0]
         for row in session.query(Event.id).filter(visible_events_filter()).all()
@@ -44,12 +54,8 @@ def embed_new_events(session: Session) -> None:
     stale = list(chroma_store.all_ids() - visible_ids)
     if stale:
         chroma_store.delete_by_ids(stale)
-        logger.info("embed_new_events: purged %d stale Chroma vector(s)", len(stale))
 
     rows = session.query(Event).filter(visible_events_filter()).all()
-    if not rows:
-        logger.info("embed_new_events: no visible events")
-        return
     payload = [
         EventForEmbedding(
             id=r.id,
@@ -62,8 +68,11 @@ def embed_new_events(session: Session) -> None:
         )
         for r in rows
     ]
-    chroma_upsert_events(payload)
-    logger.info("embed_new_events: embedded %d events", len(payload))
+    if payload:
+        chroma_upsert_events(payload)
+    if body is not None:
+        body["upserted"] = len(payload)
+        body["purged"] = len(stale)
 
 
 def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAdapter]:
@@ -84,9 +93,9 @@ def run_ingestion(
 ) -> UpsertReport:
     """Fetch all sources, upsert to DB, deactivate past events.
 
-    Between fetch and upsert each event is passed through `refine_category`
-    so the LLM classifier (with content-hash cache) has final say over the
-    provider's substring-mapped category hint."""
+    Emits the standard ingestion vocabulary: run.start, per-adapter
+    fetch.start/fetch.done (or fetch.skipped/fetch.failed), stage.categorize,
+    stage.upsert, stage.dedup, stage.embed, run.done."""
     own_wiki_client = adapters is None
     wiki_client = httpx.Client(timeout=15) if own_wiki_client else None
     if adapters is None:
@@ -100,68 +109,131 @@ def run_ingestion(
     if classifier is None:
         classifier = LangchainClassifier()
 
+    run_id = secrets.token_hex(2)
+    run_start = time.monotonic()
+    run_logger = logging.getLogger("app.ingestion.run")
+    fetch_logger = logging.getLogger("app.ingestion.fetch")
+    run_logger.info(
+        "",
+        extra={"event": "run.start", "body": {"run": run_id, "sources": len(adapters)}},
+    )
+
+    total_events = 0
+
     try:
         cache = CategoryCache(session, model_name=settings.categorization_model)
-        all_events = []
-        per_adapter_counts: dict[str, int | None] = {}  # None = tripped/skipped
-        logger.info("stage: fetch (%d sources)", len(adapters))
+        all_events: list = []
+
         for adapter in adapters:
             state = session.get(IngestionState, adapter.name)
             tripped = state is not None and state.disabled_at is not None
-            logger.info("[%s] fetch starting", adapter.name)
+
+            if tripped:
+                fetch_logger.warning(
+                    "",
+                    extra={
+                        "event": "fetch.skipped",
+                        "body": {
+                            "adapter": adapter.name,
+                            "reason": "breaker-tripped",
+                            "since": state.disabled_at.date().isoformat(),
+                        },
+                    },
+                )
+                continue
+
+            fetch_logger.info(
+                "", extra={"event": "fetch.start", "body": {"adapter": adapter.name}}
+            )
+            ctx = FetchContext(
+                progress=ProgressReporter(adapter.name),
+                warns=WarningCollector(adapter.name),
+            )
             t0 = time.monotonic()
             try:
-                batch = list(adapter.fetch(session))
-                elapsed = time.monotonic() - t0
-                logger.info("[%s] fetched %d events in %.1fs", adapter.name, len(batch), elapsed)
-            except Exception:
-                logger.exception(
-                    "[%s] fetch failed after %.1fs — skipping",
-                    adapter.name, time.monotonic() - t0,
+                batch = list(adapter.fetch(session, ctx))
+            except Exception as exc:
+                fetch_logger.exception(
+                    "",
+                    extra={
+                        "event": "fetch.failed",
+                        "body": {
+                            "adapter": adapter.name,
+                            "err": type(exc).__name__,
+                            "elapsed_s": time.monotonic() - t0,
+                        },
+                    },
                 )
-                per_adapter_counts[adapter.name] = None
                 continue
+
+            counters = ctx.progress.done()
+            warnings_summary = ctx.warns.summary()
+            body: dict = {"adapter": adapter.name, "events": len(batch)}
+            # Merge counters (page=…, events=…) but avoid double-writing events.
+            counters.pop("events", None)
+            body.update(counters)
+            if warnings_summary:
+                body["warnings"] = warnings_summary
+            fetch_logger.info("", extra={"event": "fetch.done", "body": body})
+
             all_events.extend(batch)
-            # If the adapter was tripped, it returned an empty batch on purpose.
-            per_adapter_counts[adapter.name] = None if (tripped and not batch) else len(batch)
+            total_events += len(batch)
 
-        logger.info("stage: categorization (%d events)", len(all_events))
-        for ev in all_events:
-            ev.category = refine_category(ev, cache, classifier)
+        # --- Categorization ---
+        stats = {"events": len(all_events), "cache_hits": 0, "llm_calls": 0}
+        with timer("stage.categorize", body=stats):
+            for ev in all_events:
+                ev.category = refine_category(ev, cache, classifier)
+            stats["cache_hits"] = cache.stats["hits"]
+            stats["llm_calls"] = classifier.stats["calls"]
 
-        logger.info("stage: upsert")
-        report = upsert_events(session, all_events)
-        deactivate_past_events(session)
-        logger.info("stage: dedup")
-        dedup_events(session)  # logs its own summary
-        logger.info("stage: embedding")
-        embed_new_events(session)
+        # --- Upsert ---
+        upsert_body: dict = {}
+        with timer("stage.upsert", body=upsert_body):
+            report = upsert_events(session, all_events)
+            deactivate_past_events(session)
+            upsert_body.update(
+                inserted=report.inserted, updated=report.updated, skipped=report.skipped,
+            )
+
+        # --- Dedup ---
+        dedup_body: dict = {}
+        with timer("stage.dedup", body=dedup_body):
+            dr = dedup_events(session)
+            dedup_body.update(groups=dr.groups_found, merged=dr.rows_merged)
+
+        # --- Embed ---
+        embed_body: dict = {}
+        with timer("stage.embed", body=embed_body):
+            embed_new_events(session, body=embed_body)
 
         if own_session:
             session.commit()
 
-        # Per-adapter summary at end of run
-        logger.info("ingest summary:")
-        name_w = max(len(a.name) for a in adapters)
-        for adapter in adapters:
-            n = per_adapter_counts.get(adapter.name)
-            if n is None:
-                logger.info(
-                    "  %-*s : *** SKIPPED - CIRCUIT BREAKER TRIPPED *** (see WARNING above)",
-                    name_w, adapter.name,
-                )
-            else:
-                logger.info("  %-*s : %d events", name_w, adapter.name, n)
-
-        logger.info(
-            "Ingestion complete — inserted=%d updated=%d skipped=%d",
-            report.inserted, report.updated, report.skipped,
+        run_logger.info(
+            "",
+            extra={
+                "event": "run.done",
+                "body": {
+                    "events": total_events,
+                    "elapsed_s": time.monotonic() - run_start,
+                },
+            },
         )
         return report
-    except Exception:
+    except Exception as exc:
         if own_session:
             session.rollback()
-        logger.exception("run_ingestion failed, rolled back")
+        run_logger.exception(
+            "",
+            extra={
+                "event": "run.failed",
+                "body": {
+                    "err": type(exc).__name__,
+                    "elapsed_s": time.monotonic() - run_start,
+                },
+            },
+        )
         raise
     finally:
         if own_session:
