@@ -177,10 +177,4 @@ def dedup_events(session: Session) -> DedupReport:
         report.rows_merged += len(losers)
 
     session.flush()
-    logger.info(
-        "dedup_events: groups=%d merged=%d saved_migrated=%d",
-        report.groups_found,
-        report.rows_merged,
-        report.saved_events_migrated,
-    )
     return report
