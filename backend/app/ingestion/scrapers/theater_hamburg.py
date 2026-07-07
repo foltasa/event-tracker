@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 
 logger = logging.getLogger(__name__)
@@ -187,14 +188,16 @@ class TheaterHamburgAdapter:
         self._jwt = token
         return token
 
-    def _post(self, body: dict) -> dict:
+    def _post(self, body: dict, warns=None) -> dict:
         """POST to GraphQL, transparently re-scraping JWT once on 401."""
+        if warns is None:
+            warns = NullWarns()
         jwt = self._get_jwt()
         resp = self._client.post(
             _API_URL, json=body, headers={"Authorization": f"Bearer {jwt}"}
         )
         if resp.status_code == 401:
-            logger.info("theater_hamburg: 401 — re-scraping widget JWT")
+            warns.op("jwt-rescrape", reason="401")
             self._jwt = None
             jwt = self._rescrape_jwt()
             resp = self._client.post(
@@ -203,7 +206,7 @@ class TheaterHamburgAdapter:
         resp.raise_for_status()
         return resp.json()
 
-    def _list_page(self, page: int, from_date: str) -> dict:
+    def _list_page(self, page: int, from_date: str, warns=None) -> dict:
         variables = {
             "filter": {
                 "and": [
@@ -218,9 +221,12 @@ class TheaterHamburgAdapter:
             "appearance": {"deliveryChannel": 76},
         }
         body = {"query": _LIST_QUERY, "variables": variables}
-        return self._post(body)
+        return self._post(body, warns=warns)
 
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         today = datetime.now(tz=_BERLIN).date().isoformat()
         page = 1
         # imxplatform pagination is not fully stable across pages — the same
@@ -228,25 +234,30 @@ class TheaterHamburgAdapter:
         # a node's eventDates can list the same slot twice. Dedupe emitted
         # rows by external_id to avoid unique-constraint violations at upsert.
         emitted: set[str] = set()
+        events = 0
         while True:
-            data = self._list_page(page, today)
+            data = self._list_page(page, today, warns)
             events_root = (data.get("data") or {}).get("events") or {}
             nodes = events_root.get("nodes") or []
             pagination = events_root.get("pagination") or {}
             total_pages = pagination.get("totalPages", 1)
 
             for node in nodes:
-                for parsed in self._expand_node(node):
+                for parsed in self._expand_node(node, warns):
                     if parsed.external_id in emitted:
                         continue
                     emitted.add(parsed.external_id)
+                    events += 1
                     yield parsed
+            progress.tick(page=page, events=events)
 
             if page >= total_pages or not nodes:
                 break
             page += 1
 
-    def _expand_node(self, node: dict) -> Iterator[NormalizedEvent]:
+    def _expand_node(self, node: dict, warns=None) -> Iterator[NormalizedEvent]:
+        if warns is None:
+            warns = NullWarns()
         """One list node yields one NormalizedEvent per entry in eventDates."""
         permalink = node.get("permaLink") or ""
         title = node.get("title") or ""
@@ -283,5 +294,5 @@ class TheaterHamburgAdapter:
                     source_url=source_url,
                     raw_data={"node": node, "eventDate": ed},
                 )
-            except (KeyError, ValueError, TypeError):
-                logger.exception("theater_hamburg: skipping malformed date on %s", permalink)
+            except (KeyError, ValueError, TypeError) as e:
+                warns.warn("parse_error", permalink, exc=e)
