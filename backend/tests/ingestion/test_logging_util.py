@@ -196,3 +196,42 @@ def test_warning_collector_warn_includes_exc_info(caplog):
 
     # Both records carry exc_info so tracebacks are preserved.
     assert all(r.exc_info is not None for r in caplog.records)
+
+
+def test_fetch_context_wires_progress_and_warns():
+    from app.ingestion.logging_util import FetchContext, ProgressReporter, WarningCollector
+
+    ctx = FetchContext(
+        progress=ProgressReporter("x"),
+        warns=WarningCollector("x"),
+    )
+    assert ctx.progress is not None
+    assert ctx.warns is not None
+
+
+def test_null_helpers_are_safe_no_ops():
+    from app.ingestion.logging_util import NullProgress, NullWarns
+
+    p = NullProgress()
+    p.tick(page=1, events=1)
+    assert p.done() == {"elapsed_s": 0.0}
+
+    w = NullWarns()
+    w.warn("cat", "detail")
+    w.op("msg", key="value")
+    assert w.summary() == {}
+
+
+def test_timer_emits_stage_event_with_elapsed(caplog):
+    from app.ingestion.logging_util import timer
+
+    fake_now = [100.0]
+    caplog.set_level(logging.INFO, logger="app.ingestion.stage")
+    body: dict = {"inserted": 0}
+    with timer("stage.upsert", body=body, clock=lambda: fake_now[0]):
+        body["inserted"] = 42
+        fake_now[0] = 100.5
+
+    records = [r for r in caplog.records if getattr(r, "event", None) == "stage.upsert"]
+    assert len(records) == 1
+    assert records[0].body == {"inserted": 42, "elapsed_s": 0.5}

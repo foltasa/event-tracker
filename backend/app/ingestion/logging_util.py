@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 
 _EVENT_COL_WIDTH = 20
@@ -173,3 +175,49 @@ class WarningCollector:
 
     def summary(self) -> dict[str, int]:
         return dict(self._counts)
+
+
+class NullProgress:
+    """No-op ProgressReporter for adapters called with ctx=None (tests, CLI)."""
+
+    def tick(self, **counters: int) -> None: ...
+    def done(self) -> dict:
+        return {"elapsed_s": 0.0}
+
+
+class NullWarns:
+    """No-op WarningCollector for adapters called with ctx=None."""
+
+    def warn(self, cat: str, detail: str, exc: Exception | None = None) -> None: ...
+    def op(self, msg: str, **fields) -> None: ...
+    def summary(self) -> dict[str, int]:
+        return {}
+
+
+@dataclass
+class FetchContext:
+    """Bundle handed to SourceAdapter.fetch by the scheduler.
+
+    Scheduler constructs one per adapter, passes it in, then reads
+    progress.done() and warns.summary() after the generator drains so
+    the fetch.done line has full counters."""
+
+    progress: "ProgressReporter | NullProgress"
+    warns: "WarningCollector | NullWarns"
+
+
+_stage_logger = logging.getLogger("app.ingestion.stage")
+
+
+@contextmanager
+def timer(event: str, body: dict, clock=time.monotonic):
+    """Time a block; on exit, emit `event` with `body` + elapsed_s.
+
+    Body is a mutable dict; callers mutate it inside the block to accumulate
+    counters (cache_hits, llm_calls, etc.). The clock kwarg is for tests."""
+    start = clock()
+    try:
+        yield body
+    finally:
+        body["elapsed_s"] = clock() - start
+        _stage_logger.info("", extra={"event": event, "body": dict(body)})
