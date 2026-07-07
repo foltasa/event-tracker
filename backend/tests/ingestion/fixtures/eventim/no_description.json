@@ -1,0 +1,21 @@
+{
+  "attractions": [{"name": "Wade Black"}],
+  "categories": [
+    {"name": "Konzerte"},
+    {"name": "Metal & Hardrock", "parentCategory": {"name": "Konzerte"}}
+  ],
+  "currency": "EUR",
+  "imageUrl": "https://www.eventim.de/obj/media/wade.jpg",
+  "link": "https://www.eventim.de/event/wade-blacks-35-years-of-metal-marx-21340085/",
+  "name": "Wade Black's 35 Years Of Metal",
+  "price": 35.0,
+  "productGroupId": "5001",
+  "productId": "21340085",
+  "type": "LiveEntertainment",
+  "typeAttributes": {
+    "liveEntertainment": {
+      "location": {"city": "Hamburg", "name": "Marx", "postalCode": "22765"},
+      "startDate": "2026-10-12T20:00:00+02:00"
+    }
+  }
+}

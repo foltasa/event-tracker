@@ -1,0 +1,27 @@
+{
+  "attractions": [{"name": "Beirut"}],
+  "categories": [
+    {"name": "Konzerte"},
+    {"name": "Rock & Pop", "parentCategory": {"name": "Konzerte"}}
+  ],
+  "currency": "EUR",
+  "description": "Mit A Study of Losses im Gepack geht Beirut nun erneut auf Tour",
+  "imageUrl": "https://www.eventim.de/obj/media/DE-eventim/teaser/222x222/2025/beirut.jpg",
+  "link": "https://www.eventim.de/event/beirut-stadtpark-open-air-20925654/",
+  "name": "Beirut",
+  "price": 60.4,
+  "productGroupId": "4028322",
+  "productId": "20925654",
+  "type": "LiveEntertainment",
+  "typeAttributes": {
+    "liveEntertainment": {
+      "location": {
+        "city": "Hamburg",
+        "geoLocation": {"latitude": 53.596, "longitude": 10.051},
+        "name": "Stadtpark Open Air",
+        "postalCode": "22303"
+      },
+      "startDate": "2026-07-07T19:00:00+02:00"
+    }
+  }
+}

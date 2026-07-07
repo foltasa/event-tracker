@@ -1,0 +1,14 @@
+{
+  "categories": [
+    {"name": "Freizeit"},
+    {"name": "Fuhrungen & Rundfahrten", "parentCategory": {"name": "Freizeit"}}
+  ],
+  "currency": "EUR",
+  "link": "https://www.eventim.de/event/hafen-tour-99999/",
+  "name": "Grosse Hafenrundfahrt",
+  "price": 25.0,
+  "productGroupId": "7001",
+  "productId": "99999",
+  "type": "Package",
+  "typeAttributes": {}
+}

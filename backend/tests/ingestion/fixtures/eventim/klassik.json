@@ -1,0 +1,21 @@
+{
+  "attractions": [{"name": "NDR Elbphilharmonie Orchester"}],
+  "categories": [
+    {"name": "Kultur"},
+    {"name": "Klassische Konzerte", "parentCategory": {"name": "Kultur"}}
+  ],
+  "currency": "EUR",
+  "description": "Ein Abend mit Mahlers 5. Symphonie",
+  "link": "https://www.eventim.de/event/ndr-elphi-12345/",
+  "name": "Mahler: Symphonie Nr. 5",
+  "price": 45.0,
+  "productGroupId": "9001",
+  "productId": "12345",
+  "type": "LiveEntertainment",
+  "typeAttributes": {
+    "liveEntertainment": {
+      "location": {"city": "Hamburg", "name": "Elbphilharmonie", "postalCode": "20457"},
+      "startDate": "2026-09-14T20:00:00+02:00"
+    }
+  }
+}

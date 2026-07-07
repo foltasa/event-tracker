@@ -9,9 +9,13 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Protocol
 
 import httpx
+
+from app.ingestion.normalize import NormalizedEvent
+from app.schemas.common import EventCategory
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +88,135 @@ def get_json_with_retry(
                 url, _RETRY_MAX_ATTEMPTS,
             )
     return None
+
+
+_CATEGORY_MAP: dict[str, EventCategory] = {
+    # Konzerte subcategories
+    "Rock & Pop": "concerts",
+    "HipHop & R'n'B": "concerts",
+    "Schlager & Volksmusik": "concerts",
+    "Jazz & Blues": "concerts",
+    "Elektronische Musik": "concerts",
+    "Metal & Hardrock": "concerts",
+    "Weitere Konzerte": "concerts",
+    # Kultur subcategories
+    "Klassische Konzerte": "concerts",
+    "Oper": "theater",
+    "Ballett & Tanz": "theater",
+    "Theater": "theater",
+    # Musical & Show subcategories
+    "Musical": "theater",
+    "Show": "other",
+    # Sport subcategories
+    "Fußball": "sports",
+    "Handball": "sports",
+    "Weitere Sportarten": "sports",
+}
+
+_SOURCE_NAME = "eventim"
+_TARGET_CITY = "Hamburg"
+
+
+def _category_for(product: dict) -> EventCategory:
+    """Map the leaf (sub-level) Eventim category to our EventCategory.
+
+    Unknown leaves fall back to 'other' with a WARNING log so operators
+    notice drift in Eventim's taxonomy."""
+    for cat in product.get("categories", []):
+        parent = cat.get("parentCategory")
+        if not parent:
+            continue
+        name = cat.get("name")
+        mapped = _CATEGORY_MAP.get(name)
+        if mapped is not None:
+            return mapped
+        logger.warning(
+            "eventim: unknown leaf category '%s' -> falling back to 'other'",
+            name,
+        )
+        return "other"
+    return "other"
+
+
+def _tags_for(product: dict) -> list[str]:
+    tags: list[str] = []
+    for cat in product.get("categories", []):
+        name = cat.get("name")
+        if name and name not in tags:
+            tags.append(name)
+    for attr in product.get("attractions", []):
+        name = attr.get("name")
+        if name and name not in tags:
+            tags.append(name)
+    return tags
+
+
+def parse_product(product: dict) -> NormalizedEvent | None:
+    """Convert one Eventim product dict to a NormalizedEvent.
+
+    Returns None when required fields are missing, type is not
+    LiveEntertainment, or city is not the target. Pure - no I/O."""
+    if product.get("type") != "LiveEntertainment":
+        return None
+
+    product_id = product.get("productId")
+    name = product.get("name")
+    live = (product.get("typeAttributes") or {}).get("liveEntertainment") or {}
+    start_raw = live.get("startDate")
+    location = live.get("location") or {}
+
+    if not product_id or not name or not start_raw:
+        return None
+    if location.get("city") != _TARGET_CITY:
+        return None
+
+    try:
+        start_dt = datetime.fromisoformat(start_raw)
+    except ValueError:
+        return None
+    if start_dt.tzinfo is None:
+        return None
+
+    venue_name = location.get("name") or ""
+    if not venue_name:
+        return None
+
+    postal = (location.get("postalCode") or "").strip()
+    city = (location.get("city") or "").strip()
+    venue_address = f"{postal} {city}".strip() or None
+
+    geo = location.get("geoLocation") or {}
+    lat = geo.get("latitude")
+    lng = geo.get("longitude")
+
+    price = product.get("price")
+    price_min = float(price) if price is not None else None
+    is_free = price_min == 0
+
+    description = product.get("description") or None
+
+    return NormalizedEvent(
+        external_id=str(product_id),
+        source=_SOURCE_NAME,
+        title=name,
+        description=description,
+        start_datetime=start_dt,
+        venue_name=venue_name,
+        venue_address=venue_address,
+        latitude=lat,
+        longitude=lng,
+        category=_category_for(product),
+        tags=_tags_for(product),
+        price_min=price_min,
+        price_max=None,
+        is_free=is_free,
+        currency=product.get("currency") or "EUR",
+        image_url=product.get("imageUrl") or None,
+        source_url=product.get("link") or "",
+        raw_data={
+            "productId": str(product_id),
+            "productGroupId": product.get("productGroupId"),
+            "eventim_categories": product.get("categories", []),
+            "startDate_raw": start_raw,
+        },
+    )
