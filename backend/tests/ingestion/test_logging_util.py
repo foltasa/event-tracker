@@ -144,3 +144,55 @@ def test_progress_reporter_done_returns_final_state():
     p.tick(page=11, events=612)
     result = p.done()
     assert result == {"page": 11, "events": 612, "elapsed_s": 33.4}
+
+
+def test_warning_collector_first_per_cat_warn_rest_debug(caplog):
+    from app.ingestion.logging_util import WarningCollector
+
+    caplog.set_level(logging.DEBUG, logger="app.ingestion.warn")
+    w = WarningCollector("ticketmaster")
+    w.warn("wiki_fetch", "Bad Bunny")
+    w.warn("wiki_fetch", "Beyoncé")
+    w.warn("detail_fetch", "id-42")
+    w.warn("wiki_fetch", "Coldplay")
+
+    warns = [r for r in caplog.records if r.levelno == logging.WARNING]
+    debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(warns) == 2
+    assert warns[0].body == {"adapter": "ticketmaster", "cat": "wiki_fetch", "first": "Bad Bunny"}
+    assert warns[1].body == {"adapter": "ticketmaster", "cat": "detail_fetch", "first": "id-42"}
+    assert len(debugs) == 2  # Beyoncé, Coldplay
+    assert w.summary() == {"wiki_fetch": 3, "detail_fetch": 1}
+
+
+def test_warning_collector_op_always_warn_not_counted(caplog):
+    from app.ingestion.logging_util import WarningCollector
+
+    caplog.set_level(logging.DEBUG, logger="app.ingestion.warn")
+    w = WarningCollector("eventim")
+    w.op("unexpected status", status=418, url="https://example.com")
+    w.op("giving up on url", url="https://example.com", attempts=4)
+
+    ops = [r for r in caplog.records if getattr(r, "event", None) == "fetch.op"]
+    assert len(ops) == 2
+    assert ops[0].levelno == logging.WARNING
+    assert ops[0].body == {
+        "adapter": "eventim", "msg": "unexpected status",
+        "status": 418, "url": "https://example.com",
+    }
+    assert w.summary() == {}  # op() does not count
+
+
+def test_warning_collector_warn_includes_exc_info(caplog):
+    from app.ingestion.logging_util import WarningCollector
+
+    caplog.set_level(logging.DEBUG, logger="app.ingestion.warn")
+    w = WarningCollector("ohschonhell")
+    try:
+        raise ValueError("bad date")
+    except ValueError as e:
+        w.warn("bad_date", "https://example.com/x", exc=e)
+        w.warn("bad_date", "https://example.com/y", exc=e)
+
+    # Both records carry exc_info so tracebacks are preserved.
+    assert all(r.exc_info is not None for r in caplog.records)

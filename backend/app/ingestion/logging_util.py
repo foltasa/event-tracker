@@ -132,3 +132,44 @@ class ProgressReporter:
 
     def done(self) -> dict:
         return {**self._latest, "elapsed_s": self._clock() - self._start}
+
+
+_warn_logger = logging.getLogger("app.ingestion.warn")
+
+
+class WarningCollector:
+    """Per-adapter warning aggregator.
+
+    Two channels:
+      - warn(cat, detail): first per cat → WARN with detail; rest → DEBUG.
+        All are counted; summary() returns the {cat: n} dict for fetch.done.
+      - op(msg, **fields): always WARN, never suppressed, never counted.
+        For anti-bot / operational signals that must always be visible."""
+
+    def __init__(self, adapter: str):
+        self._adapter = adapter
+        self._counts: dict[str, int] = {}
+        self._seen_cats: set[str] = set()
+
+    def warn(self, cat: str, detail: str, exc: Exception | None = None) -> None:
+        self._counts[cat] = self._counts.get(cat, 0) + 1
+        body = {"adapter": self._adapter, "cat": cat, "first": detail}
+        exc_info = (type(exc), exc, exc.__traceback__) if exc is not None else None
+        if cat not in self._seen_cats:
+            self._seen_cats.add(cat)
+            _warn_logger.warning(
+                "", extra={"event": "fetch.warn", "body": body}, exc_info=exc_info,
+            )
+        else:
+            _warn_logger.debug(
+                "",
+                extra={"event": "fetch.warn", "body": {**body, "detail": detail}},
+                exc_info=exc_info,
+            )
+
+    def op(self, msg: str, **fields) -> None:
+        body = {"adapter": self._adapter, "msg": msg, **fields}
+        _warn_logger.warning("", extra={"event": "fetch.op", "body": body})
+
+    def summary(self) -> dict[str, int]:
+        return dict(self._counts)
