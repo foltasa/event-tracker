@@ -5,6 +5,7 @@ from typing import Iterator
 import httpx
 
 from app.config import settings
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,10 @@ class EventbriteAdapter:
         self._client = client or httpx.Client(timeout=15)
         self._token = settings.eventbrite_token
 
-    def fetch(self, session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         params: dict = {
             "location.address": "Hamburg, Germany",
             "location.within": "20km",
@@ -61,7 +65,10 @@ class EventbriteAdapter:
             params["token"] = self._token
 
         continuation: str | None = None
+        page_num = 0
+        events = 0
         while True:
+            page_num += 1
             if continuation:
                 params["continuation"] = continuation
 
@@ -70,9 +77,11 @@ class EventbriteAdapter:
             data = resp.json()
 
             for raw in data.get("events", []):
-                event = self._parse(raw)
+                event = self._parse(raw, warns)
                 if event:
+                    events += 1
                     yield event
+            progress.tick(page=page_num, events=events)
 
             pagination = data.get("pagination", {})
             if not pagination.get("has_more_items"):
@@ -81,7 +90,9 @@ class EventbriteAdapter:
             if not continuation:
                 break
 
-    def _parse(self, raw: dict) -> NormalizedEvent | None:
+    def _parse(self, raw: dict, warns=None) -> NormalizedEvent | None:
+        if warns is None:
+            warns = NullWarns()
         try:
             venue = raw.get("venue") or {}
             address = venue.get("address") or {}
@@ -121,6 +132,6 @@ class EventbriteAdapter:
                 source_url=raw["url"],
                 raw_data=raw,
             )
-        except (KeyError, ValueError, TypeError):
-            logger.exception("Skipping malformed Eventbrite event: %s", raw.get("id"))
+        except (KeyError, ValueError, TypeError) as e:
+            warns.warn("parse_error", str(raw.get("id", "<no-id>")), exc=e)
             return None
