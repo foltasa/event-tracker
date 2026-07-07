@@ -67,22 +67,22 @@ Adapter tag `[name]` is the first body token when the event is adapter-scoped. `
 
 Anything not in this table gets logged at DEBUG (silent by default). This is the "high but not overwhelming" cap.
 
-| Event | Emitted by | Body |
-|---|---|---|
-| `run.start` | scheduler | `run=<hex4>` `sources=<n>` |
-| `run.done` | scheduler | `events=<n>` `elapsed=<Ns>` |
-| `run.failed` | scheduler | `stage=<name>` `err="<type>"` `elapsed=<Ns>` |
-| `fetch.start` | scheduler (per adapter) | `[adapter]` |
-| `fetch.progress` | adapter via `ProgressReporter` | `[adapter]` `<counters>` `elapsed=<Ns>` |
-| `fetch.warn` | adapter via `WarningCollector` | `[adapter]` `cat=<slug>` `first="<detail>"` |
-| `fetch.op` | adapter via `WarningCollector.op` | `[adapter]` `<free-form key=val>` (Eventim-style operational warnings) |
-| `fetch.done` | scheduler after adapter returns | `[adapter]` `events=<n>` `<counters>` `warnings={cat:n,…}` `elapsed=<Ns>` |
-| `fetch.skipped` | scheduler | `[adapter]` `reason=<slug>` `[since=<date>]` |
-| `fetch.failed` | scheduler | `[adapter]` `err="<type>"` `elapsed=<Ns>` |
-| `stage.categorize` | scheduler | `events=<n>` `cache_hits=<n>` `llm_calls=<n>` `elapsed=<Ns>` |
-| `stage.upsert` | scheduler | `inserted=<n>` `updated=<n>` `skipped=<n>` `elapsed=<Ns>` |
-| `stage.dedup` | scheduler | `groups=<n>` `merged=<n>` `elapsed=<Ns>` |
-| `stage.embed` | scheduler | `upserted=<n>` `purged=<n>` `elapsed=<Ns>` |
+| Event                | Emitted by                         | Body                                                                                 |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `run.start`        | scheduler                          | `run=<hex4>` `sources=<n>`                                                       |
+| `run.done`         | scheduler                          | `events=<n>` `elapsed=<Ns>`                                                      |
+| `run.failed`       | scheduler                          | `stage=<name>` `err="<type>"` `elapsed=<Ns>`                                   |
+| `fetch.start`      | scheduler (per adapter)            | `[adapter]`                                                                        |
+| `fetch.progress`   | adapter via`ProgressReporter`    | `[adapter]` `<counters>` `elapsed=<Ns>`                                        |
+| `fetch.warn`       | adapter via`WarningCollector`    | `[adapter]` `cat=<slug>` `first="<detail>"`                                    |
+| `fetch.op`         | adapter via`WarningCollector.op` | `[adapter]` `<free-form key=val>` (Eventim-style operational warnings)           |
+| `fetch.done`       | scheduler after adapter returns    | `[adapter]` `events=<n>` `<counters>` `warnings={cat:n,…}` `elapsed=<Ns>` |
+| `fetch.skipped`    | scheduler                          | `[adapter]` `reason=<slug>` `[since=<date>]`                                   |
+| `fetch.failed`     | scheduler                          | `[adapter]` `err="<type>"` `elapsed=<Ns>`                                      |
+| `stage.categorize` | scheduler                          | `events=<n>` `cache_hits=<n>` `llm_calls=<n>` `elapsed=<Ns>`                 |
+| `stage.upsert`     | scheduler                          | `inserted=<n>` `updated=<n>` `skipped=<n>` `elapsed=<Ns>`                    |
+| `stage.dedup`      | scheduler                          | `groups=<n>` `merged=<n>` `elapsed=<Ns>`                                       |
+| `stage.embed`      | scheduler                          | `upserted=<n>` `purged=<n>` `elapsed=<Ns>`                                     |
 
 ### Warning classification
 
