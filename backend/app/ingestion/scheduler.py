@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import run_migrations
 from app.db.models import Event
 from app.db.models.event import visible_events_filter
+from app.db.models.ingestion_state import IngestionState
 from app.db.session import SessionLocal
 from app.ingestion.base import SourceAdapter
 from app.ingestion.categorize import (
@@ -66,11 +67,13 @@ def embed_new_events(session: Session) -> None:
 
 
 def _default_adapters(wiki_client: httpx.Client | None = None) -> list[SourceAdapter]:
+    from app.ingestion.eventim import EventimAdapter
     return [
         TicketmasterAdapter(wiki_client=wiki_client),
         HamburgScraper(),
         TheaterHamburgAdapter(),
         OhschonhellScraper(),
+        EventimAdapter(),
     ]
 
 
@@ -100,23 +103,27 @@ def run_ingestion(
     try:
         cache = CategoryCache(session, model_name=settings.categorization_model)
         all_events = []
+        per_adapter_counts: dict[str, int | None] = {}  # None = tripped/skipped
         logger.info("stage: fetch (%d sources)", len(adapters))
         for adapter in adapters:
+            state = session.get(IngestionState, adapter.name)
+            tripped = state is not None and state.disabled_at is not None
             logger.info("[%s] fetch starting", adapter.name)
             t0 = time.monotonic()
             try:
                 batch = list(adapter.fetch(session))
-                logger.info(
-                    "[%s] fetched %d events in %.1fs",
-                    adapter.name, len(batch), time.monotonic() - t0,
-                )
+                elapsed = time.monotonic() - t0
+                logger.info("[%s] fetched %d events in %.1fs", adapter.name, len(batch), elapsed)
             except Exception:
                 logger.exception(
                     "[%s] fetch failed after %.1fs — skipping",
                     adapter.name, time.monotonic() - t0,
                 )
+                per_adapter_counts[adapter.name] = None
                 continue
             all_events.extend(batch)
+            # If the adapter was tripped, it returned an empty batch on purpose.
+            per_adapter_counts[adapter.name] = None if (tripped and not batch) else len(batch)
 
         logger.info("stage: categorization (%d events)", len(all_events))
         for ev in all_events:
@@ -132,6 +139,19 @@ def run_ingestion(
 
         if own_session:
             session.commit()
+
+        # Per-adapter summary at end of run
+        logger.info("ingest summary:")
+        name_w = max(len(a.name) for a in adapters)
+        for adapter in adapters:
+            n = per_adapter_counts.get(adapter.name)
+            if n is None:
+                logger.info(
+                    "  %-*s : *** SKIPPED - CIRCUIT BREAKER TRIPPED *** (see WARNING above)",
+                    name_w, adapter.name,
+                )
+            else:
+                logger.info("  %-*s : %d events", name_w, adapter.name, n)
 
         logger.info(
             "Ingestion complete — inserted=%d updated=%d skipped=%d",

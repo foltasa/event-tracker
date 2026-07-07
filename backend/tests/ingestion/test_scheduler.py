@@ -292,3 +292,38 @@ def test_run_ingestion_emits_stage_and_adapter_logs(db_session, fake_classifier,
     assert "stage: upsert" in joined
     assert "stage: dedup" in joined
     assert "stage: embedding" in joined
+
+
+class _TrippedAdapter:
+    """Adapter that mimics an Eventim-style tripped-breaker no-op fetch."""
+    name = "eventim"
+
+    def fetch(self, session) -> Iterator[NormalizedEvent]:
+        # Real adapter would log its own banner + return. We just return.
+        return
+        yield  # pragma: no cover
+
+
+def test_scheduler_summary_marks_tripped_adapter(db_session, fake_classifier, caplog):
+    from datetime import timezone
+    import logging as _logging
+    from app.db.models.ingestion_state import IngestionState
+
+    db_session.add(IngestionState(
+        source="eventim",
+        last_seen_lastmod=None,
+        disabled_at=datetime(2026, 7, 7, 14, 22, tzinfo=timezone.utc),
+        disabled_reason="all_categories_failed_page_1",
+        runs_while_disabled=0,
+    ))
+    db_session.flush()
+    with caplog.at_level(_logging.INFO):
+        run_ingestion(
+            adapters=[_TrippedAdapter(), _OkAdapter()],
+            session=db_session,
+            classifier=fake_classifier,
+        )
+    lines = [rec.message for rec in caplog.records]
+    joined = "\n".join(lines)
+    assert "*** SKIPPED - CIRCUIT BREAKER TRIPPED ***" in joined
+    assert "eventim" in joined
