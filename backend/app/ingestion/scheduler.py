@@ -35,8 +35,6 @@ from app.rag import chroma_store
 from app.rag.chroma_store import EventForEmbedding
 from app.rag.chroma_store import upsert_events as chroma_upsert_events
 
-logger = logging.getLogger(__name__)
-
 
 def embed_new_events(session: Session, body: dict | None = None) -> None:
     """Embed all currently-visible events into Chroma and drop stale vectors.
@@ -119,6 +117,7 @@ def run_ingestion(
     )
 
     total_events = 0
+    current_stage = "fetch"
 
     try:
         cache = CategoryCache(session, model_name=settings.categorization_model)
@@ -180,6 +179,7 @@ def run_ingestion(
             total_events += len(batch)
 
         # --- Categorization ---
+        current_stage = "categorize"
         stats = {"events": len(all_events), "cache_hits": 0, "llm_calls": 0}
         with timer("stage.categorize", body=stats):
             for ev in all_events:
@@ -188,6 +188,7 @@ def run_ingestion(
             stats["llm_calls"] = classifier.stats["calls"]
 
         # --- Upsert ---
+        current_stage = "upsert"
         upsert_body: dict = {}
         with timer("stage.upsert", body=upsert_body):
             report = upsert_events(session, all_events)
@@ -197,12 +198,14 @@ def run_ingestion(
             )
 
         # --- Dedup ---
+        current_stage = "dedup"
         dedup_body: dict = {}
         with timer("stage.dedup", body=dedup_body):
             dr = dedup_events(session)
             dedup_body.update(groups=dr.groups_found, merged=dr.rows_merged)
 
         # --- Embed ---
+        current_stage = "embed"
         embed_body: dict = {}
         with timer("stage.embed", body=embed_body):
             embed_new_events(session, body=embed_body)
@@ -229,6 +232,7 @@ def run_ingestion(
             extra={
                 "event": "run.failed",
                 "body": {
+                    "stage": current_stage,
                     "err": type(exc).__name__,
                     "elapsed_s": time.monotonic() - run_start,
                 },

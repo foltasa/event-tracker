@@ -6,7 +6,6 @@ Detail pages carry schema.org/Event microdata that we parse for
 name, start, venue, and address."""
 from __future__ import annotations
 
-import logging
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -19,6 +18,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 from sqlalchemy.orm import Session
 
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 from app.ingestion.state import get_last_seen, set_last_seen
 
@@ -160,8 +160,6 @@ def filter_sitemap(xml_body: str, cutoff: datetime) -> list[tuple[str, datetime]
     return entries
 
 
-logger = logging.getLogger(__name__)
-
 _RETRY_STATUS_CODES = {429, 503}
 _RETRY_MAX_ATTEMPTS = 3
 _RETRY_BASE_SLEEP = 1.0  # exponential: 1s, 2s, 4s
@@ -191,7 +189,6 @@ def get_with_retry(
     Non-retriable error statuses (e.g. 404) return None without retrying.
     Network exceptions propagate — callers handle them at the sitemap level.
     """
-    from app.ingestion.logging_util import NullWarns
     if warns is None:
         warns = NullWarns()
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
@@ -237,9 +234,7 @@ class OhschonhellScraper:
         )
         self._sleep_fn = sleep_fn
 
-    def fetch(self, session: Session, ctx: "FetchContext | None" = None) -> Iterator[NormalizedEvent]:
-        from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
-
+    def fetch(self, session: Session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
         progress = ctx.progress if ctx else NullProgress()
         warns = ctx.warns if ctx else NullWarns()
 

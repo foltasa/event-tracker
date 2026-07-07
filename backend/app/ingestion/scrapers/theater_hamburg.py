@@ -256,9 +256,9 @@ class TheaterHamburgAdapter:
             page += 1
 
     def _expand_node(self, node: dict, warns=None) -> Iterator[NormalizedEvent]:
+        """One list node yields one NormalizedEvent per entry in eventDates."""
         if warns is None:
             warns = NullWarns()
-        """One list node yields one NormalizedEvent per entry in eventDates."""
         permalink = node.get("permaLink") or ""
         title = node.get("title") or ""
         description = _strip_html(node.get("shortDescription"))
