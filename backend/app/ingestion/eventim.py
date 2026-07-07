@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterator, Protocol
 
 import httpx
+from sqlalchemy.orm import Session
 
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
@@ -220,3 +222,99 @@ def parse_product(product: dict) -> NormalizedEvent | None:
             "startDate_raw": start_raw,
         },
     )
+
+
+_API = "https://public-api.eventim.com/websearch/search/api/exploration/v1/products"
+_CATEGORIES = ["Konzerte", "Musical & Show", "Kultur", "Sport"]
+_TOP = 50
+_REQUEST_DELAY_SECONDS = 0.2
+
+_DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+    "Origin": "https://www.eventim.de",
+    "Referer": "https://www.eventim.de/city/hamburg-72/",
+    "Sec-Ch-Ua": '"Chromium";v="126", "Not:A-Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Site": "cross-site",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Dest": "empty",
+}
+
+
+class EventimAdapter:
+    """Ingest Hamburg events from Eventim's public JSON search API.
+
+    Full-crawl every run across four top-level categories; idempotent via
+    upsert on (external_id, source). Circuit breaker (Task 5-6) gates the
+    entire run when Akamai flags us."""
+
+    name = _SOURCE_NAME
+
+    def __init__(
+        self,
+        client: _HttpGetter | None = None,
+        sleep_fn: Callable[[float], None] = time.sleep,
+    ):
+        self._client = client or httpx.Client(timeout=20, headers=_DEFAULT_HEADERS)
+        self._sleep_fn = sleep_fn
+
+    def fetch(self, session: Session) -> Iterator[NormalizedEvent]:
+        stats = RetryStats()
+        categories_failed_page_1 = 0
+        for category in _CATEGORIES:
+            first = get_json_with_retry(
+                self._client, _API,
+                params=self._params(category, page=1),
+                stats=stats, sleep_fn=self._sleep_fn,
+            )
+            if first is None:
+                logger.warning(
+                    "eventim: page 1 of category '%s' failed after retries - skipping category",
+                    category,
+                )
+                categories_failed_page_1 += 1
+                continue
+
+            yield from self._products(first)
+            total_pages = int(first.get("totalPages") or 1)
+
+            for page in range(2, total_pages + 1):
+                self._sleep_fn(_REQUEST_DELAY_SECONDS)
+                body = get_json_with_retry(
+                    self._client, _API,
+                    params=self._params(category, page=page),
+                    stats=stats, sleep_fn=self._sleep_fn,
+                )
+                if body is None:
+                    logger.warning(
+                        "eventim: page %d of category '%s' failed after retries - skipping page",
+                        page, category,
+                    )
+                    continue
+                yield from self._products(body)
+
+        if categories_failed_page_1 == len(_CATEGORIES):
+            raise RuntimeError("eventim: all categories failed page 1")
+
+    def _params(self, category: str, *, page: int) -> dict:
+        return {
+            "city_names": _TARGET_CITY,
+            "categories": category,
+            "webId": "web__eventim-de",
+            "language": "de",
+            "page": page,
+            "top": _TOP,
+            "sort": "DateAsc",
+        }
+
+    def _products(self, body: dict) -> Iterator[NormalizedEvent]:
+        for product in body.get("products", []) or []:
+            ev = parse_product(product)
+            if ev is not None:
+                yield ev
