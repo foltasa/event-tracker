@@ -16,6 +16,8 @@ from typing import Any, Callable, Iterator, Protocol
 import httpx
 from sqlalchemy.orm import Session
 
+from app.db.models.ingestion_state import IngestionState
+from app.db.session import SessionLocal
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
 
@@ -265,6 +267,12 @@ class EventimAdapter:
         self._sleep_fn = sleep_fn
 
     def fetch(self, session: Session) -> Iterator[NormalizedEvent]:
+        state = session.get(IngestionState, self.name)
+        if state is not None and state.disabled_at is not None:
+            self._log_disabled_banner(state)
+            self._bump_runs_while_disabled()
+            return
+
         stats = RetryStats()
         categories_failed_page_1 = 0
         for category in _CATEGORIES:
@@ -318,3 +326,29 @@ class EventimAdapter:
             ev = parse_product(product)
             if ev is not None:
                 yield ev
+
+    def _log_disabled_banner(self, state: IngestionState) -> None:
+        logger.warning(
+            "\n!! ============================================================\n"
+            "!! EVENTIM ADAPTER DISABLED\n"
+            "!!   Tripped at:  %s\n"
+            "!!   Reason:      %s\n"
+            "!!   Runs since:  %d\n"
+            "!!   To re-enable: python -m scripts.reset_adapter_lock eventim\n"
+            "!! ============================================================",
+            state.disabled_at.isoformat(),
+            state.disabled_reason,
+            state.runs_while_disabled,
+        )
+
+    def _bump_runs_while_disabled(self) -> None:
+        """Persist counter bump in its own transaction so it survives even
+        if the caller's ingestion transaction later rolls back."""
+        own_session = SessionLocal()
+        try:
+            row = own_session.get(IngestionState, self.name)
+            if row is not None and row.disabled_at is not None:
+                row.runs_while_disabled = (row.runs_while_disabled or 0) + 1
+                own_session.commit()
+        finally:
+            own_session.close()
