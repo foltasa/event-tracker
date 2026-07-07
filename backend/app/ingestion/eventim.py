@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.ingestion_state import IngestionState
 from app.db.session import SessionLocal
+from app.ingestion.logging_util import FetchContext, NullProgress, NullWarns
 from app.ingestion.normalize import NormalizedEvent
 from app.schemas.common import EventCategory
 
@@ -56,13 +57,20 @@ def get_json_with_retry(
     params: dict[str, Any],
     stats: RetryStats,
     sleep_fn: Callable[[float], None],
+    warns=None,
 ) -> dict | None:
     """GET a JSON endpoint with exponential backoff on 403/429/503.
 
     Returns parsed JSON dict on 2xx, or None if all attempts exhausted or the
     status is non-retriable. On 403, extracts the Akamai Reference ID from
     the body (capped at _AKAMAI_REF_MAX in stats). Network exceptions
-    propagate — callers handle them at the pagination level."""
+    propagate — callers handle them at the pagination level.
+
+    All warnings are operational (`warns.op`) — never suppressed — because
+    Eventim's anti-bot fingerprinting means a rate of failures is itself
+    the signal that our access is at risk."""
+    if warns is None:
+        warns = NullWarns()
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
         resp = client.get(url, params=params)
         if 200 <= resp.status_code < 300:
@@ -73,13 +81,14 @@ def get_json_with_retry(
             if ref and len(stats.akamai_refs) < _AKAMAI_REF_MAX:
                 stats.akamai_refs.append(ref)
         if resp.status_code not in _RETRY_STATUS_CODES:
-            logger.warning("eventim: unexpected status %d for %s — skipping", resp.status_code, url)
+            warns.op("unexpected-status", status=resp.status_code, url=url)
             return None
         if attempt < _RETRY_MAX_ATTEMPTS:
             backoff = _RETRY_BASE_SLEEP * (2 ** (attempt - 1))
-            logger.warning(
-                "eventim: %d from %s — sleeping %.1fs (attempt %d/%d)",
-                resp.status_code, url, backoff, attempt, _RETRY_MAX_ATTEMPTS,
+            warns.op(
+                "retry-backoff",
+                status=resp.status_code, url=url, backoff_s=backoff,
+                attempt=attempt, max=_RETRY_MAX_ATTEMPTS,
             )
             stats.total_retries += 1
             stats.total_backoff_seconds += backoff
@@ -87,10 +96,7 @@ def get_json_with_retry(
         else:
             stats.total_retries += 1
             stats.exhausted += 1
-            logger.warning(
-                "eventim: giving up on %s after %d attempts",
-                url, _RETRY_MAX_ATTEMPTS,
-            )
+            warns.op("retry-exhausted", url=url, attempts=_RETRY_MAX_ATTEMPTS)
     return None
 
 
@@ -135,11 +141,13 @@ _SOURCE_NAME = "eventim"
 _TARGET_CITY = "Hamburg"
 
 
-def _category_for(product: dict) -> EventCategory:
+def _category_for(product: dict, warns=None) -> EventCategory:
     """Map the leaf (sub-level) Eventim category to our EventCategory.
 
-    Unknown leaves fall back to 'other' with a WARNING log so operators
+    Unknown leaves fall back to 'other' via a fetch.warn so operators
     notice drift in Eventim's taxonomy."""
+    if warns is None:
+        warns = NullWarns()
     for cat in product.get("categories", []):
         parent = cat.get("parentCategory")
         if not parent:
@@ -148,10 +156,7 @@ def _category_for(product: dict) -> EventCategory:
         mapped = _CATEGORY_MAP.get(name)
         if mapped is not None:
             return mapped
-        logger.warning(
-            "eventim: unknown leaf category '%s' -> falling back to 'other'",
-            name,
-        )
+        warns.warn("unknown-category-leaf", str(name))
         return "other"
     return "other"
 
@@ -169,11 +174,13 @@ def _tags_for(product: dict) -> list[str]:
     return tags
 
 
-def parse_product(product: dict) -> NormalizedEvent | None:
+def parse_product(product: dict, warns=None) -> NormalizedEvent | None:
     """Convert one Eventim product dict to a NormalizedEvent.
 
     Returns None when required fields are missing, type is not
     LiveEntertainment, or city is not the target. Pure - no I/O."""
+    if warns is None:
+        warns = NullWarns()
     if product.get("type") != "LiveEntertainment":
         return None
 
@@ -223,7 +230,7 @@ def parse_product(product: dict) -> NormalizedEvent | None:
         venue_address=venue_address,
         latitude=lat,
         longitude=lng,
-        category=_category_for(product),
+        category=_category_for(product, warns),
         tags=_tags_for(product),
         price_min=price_min,
         price_max=None,
@@ -283,7 +290,10 @@ class EventimAdapter:
         self._client = client or httpx.Client(timeout=20, headers=_DEFAULT_HEADERS)
         self._sleep_fn = sleep_fn
 
-    def fetch(self, session: Session) -> Iterator[NormalizedEvent]:
+    def fetch(self, session: Session, ctx: FetchContext | None = None) -> Iterator[NormalizedEvent]:
+        progress = ctx.progress if ctx else NullProgress()
+        warns = ctx.warns if ctx else NullWarns()
+
         state = session.get(IngestionState, self.name)
         if state is not None and state.disabled_at is not None:
             self._log_disabled_banner(state)
@@ -299,23 +309,21 @@ class EventimAdapter:
             first = get_json_with_retry(
                 self._client, _API,
                 params=self._params(category, page=1),
-                stats=stats, sleep_fn=self._sleep_fn,
+                stats=stats, sleep_fn=self._sleep_fn, warns=warns,
             )
             if stats.akamai_403s >= self._TRIP_TOTAL_403_BUDGET:
                 self._trip(f"total_403_budget_exceeded: {stats.akamai_403s}",
                            events_yielded_this_run, category, i)
                 return
             if first is None:
-                logger.warning(
-                    "eventim: page 1 of category '%s' failed after retries — skipping category",
-                    category,
-                )
+                warns.op("category-page-1-failed", category=category)
                 categories_failed_page_1 += 1
                 # Category-level failures do NOT feed consecutive_exhaustions.
                 continue
 
-            for ev in self._products(first):
+            for ev in self._products(first, warns):
                 events_yielded_this_run += 1
+                progress.tick(category=category, events=events_yielded_this_run)
                 yield ev
 
             total_pages = int(first.get("totalPages") or 1)
@@ -324,17 +332,14 @@ class EventimAdapter:
                 body = get_json_with_retry(
                     self._client, _API,
                     params=self._params(category, page=page),
-                    stats=stats, sleep_fn=self._sleep_fn,
+                    stats=stats, sleep_fn=self._sleep_fn, warns=warns,
                 )
                 if stats.akamai_403s >= self._TRIP_TOTAL_403_BUDGET:
                     self._trip(f"total_403_budget_exceeded: {stats.akamai_403s}",
                                events_yielded_this_run, category, i)
                     return
                 if body is None:
-                    logger.warning(
-                        "eventim: page %d of category '%s' failed after retries — skipping page",
-                        page, category,
-                    )
+                    warns.op("category-page-failed", category=category, page=page)
                     consecutive_exhaustions += 1
                     if consecutive_exhaustions >= self._TRIP_CONSECUTIVE_EXHAUSTIONS:
                         self._trip(
@@ -344,8 +349,9 @@ class EventimAdapter:
                         return
                     continue
                 consecutive_exhaustions = 0
-                for ev in self._products(body):
+                for ev in self._products(body, warns):
                     events_yielded_this_run += 1
+                    progress.tick(category=category, events=events_yielded_this_run)
                     yield ev
 
         # Post-loop: if every category's page 1 failed, trip.
@@ -403,9 +409,9 @@ class EventimAdapter:
             "sort": "DateAsc",
         }
 
-    def _products(self, body: dict) -> Iterator[NormalizedEvent]:
+    def _products(self, body: dict, warns=None) -> Iterator[NormalizedEvent]:
         for product in body.get("products", []) or []:
-            ev = parse_product(product)
+            ev = parse_product(product, warns)
             if ev is not None:
                 yield ev
 

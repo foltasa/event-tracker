@@ -159,17 +159,20 @@ def test_category_map_covers_all_known_leaves():
         assert _CATEGORY_MAP[leaf] == cat
 
 
-def test_unknown_leaf_falls_back_to_other_and_warns(caplog):
+def test_unknown_leaf_falls_back_to_other_and_warns():
+    from app.ingestion.logging_util import WarningCollector
+
     p = _load("full_konzert.json")
     p["categories"] = [
         {"name": "Konzerte"},
         {"name": "Nu-Weirdcore", "parentCategory": {"name": "Konzerte"}},
     ]
-    with caplog.at_level(logging.WARNING, logger="app.ingestion.eventim"):
-        ev = parse_product(p)
+    warns = WarningCollector("eventim")
+    ev = parse_product(p, warns)
     assert ev is not None
     assert ev.category == "other"
-    assert any("Nu-Weirdcore" in rec.message for rec in caplog.records)
+    # Unknown leaf categories are aggregated as fetch.warn under a fixed cat.
+    assert warns.summary().get("unknown-category-leaf") == 1
 
 
 def test_no_leaf_category_falls_back_to_other():
