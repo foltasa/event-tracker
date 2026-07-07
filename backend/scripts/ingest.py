@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import sys
 
+from app.ingestion.logging_util import configure_logging
 from app.ingestion.scheduler import run_ingestion
 
 
 def main() -> int:
+    configure_logging()
     try:
         report = run_ingestion()
     except Exception as exc:  # noqa: BLE001 — surface any failure to the caller
