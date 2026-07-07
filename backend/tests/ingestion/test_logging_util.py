@@ -102,3 +102,45 @@ def test_configure_logging_installs_formatter_on_root():
     finally:
         root.handlers = saved_handlers
         root.setLevel(saved_level)
+
+
+def test_progress_reporter_throttles_to_interval(caplog):
+    from app.ingestion.logging_util import ProgressReporter
+
+    fake_now = [0.0]
+
+    def clock():
+        return fake_now[0]
+
+    caplog.set_level(logging.INFO, logger="app.ingestion.progress")
+    p = ProgressReporter("ticketmaster", interval_s=30.0, clock=clock)
+    p.tick(page=1, events=60)              # first tick: no emission (start baseline)
+    fake_now[0] = 10.0
+    p.tick(page=2, events=120)             # under interval: silent
+    fake_now[0] = 31.0
+    p.tick(page=3, events=180)             # crossed interval: emit
+    fake_now[0] = 45.0
+    p.tick(page=4, events=240)             # under interval since last emit
+    fake_now[0] = 62.0
+    p.tick(page=5, events=300)             # crossed again: emit
+
+    progress_records = [r for r in caplog.records if getattr(r, "event", None) == "fetch.progress"]
+    assert len(progress_records) == 2
+    assert progress_records[0].body == {
+        "adapter": "ticketmaster", "page": 3, "events": 180, "elapsed_s": 31.0,
+    }
+    assert progress_records[1].body == {
+        "adapter": "ticketmaster", "page": 5, "events": 300, "elapsed_s": 62.0,
+    }
+
+
+def test_progress_reporter_done_returns_final_state():
+    from app.ingestion.logging_util import ProgressReporter
+
+    fake_now = [0.0]
+    p = ProgressReporter("ticketmaster", interval_s=30.0, clock=lambda: fake_now[0])
+    p.tick(page=1, events=60)
+    fake_now[0] = 33.4
+    p.tick(page=11, events=612)
+    result = p.done()
+    assert result == {"page": 11, "events": 612, "elapsed_s": 33.4}

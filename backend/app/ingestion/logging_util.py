@@ -94,3 +94,41 @@ def configure_logging(level: int = logging.INFO, stream=None) -> None:
     handler.setFormatter(IngestionFormatter())
     handler._ingestion_managed = True  # type: ignore[attr-defined]
     root.addHandler(handler)
+
+
+_progress_logger = logging.getLogger("app.ingestion.progress")
+
+
+class ProgressReporter:
+    """Throttled progress emitter.
+
+    Adapters call `tick(**counters)` freely; the reporter emits `fetch.progress`
+    at most once every `interval_s` seconds. The first `tick()` establishes the
+    baseline and never emits (no progress yet). `done()` returns the final
+    counter snapshot plus `elapsed_s` for the scheduler to fold into
+    `fetch.done`."""
+
+    def __init__(self, adapter: str, interval_s: float = 30.0, clock=time.monotonic):
+        self._adapter = adapter
+        self._interval = interval_s
+        self._clock = clock
+        self._start = clock()
+        self._last_emit = self._start
+        self._latest: dict[str, int] = {}
+
+    def tick(self, **counters: int) -> None:
+        self._latest = dict(counters)
+        now = self._clock()
+        if now - self._last_emit < self._interval:
+            return
+        self._last_emit = now
+        _progress_logger.info(
+            "",
+            extra={
+                "event": "fetch.progress",
+                "body": {"adapter": self._adapter, **self._latest, "elapsed_s": now - self._start},
+            },
+        )
+
+    def done(self) -> dict:
+        return {**self._latest, "elapsed_s": self._clock() - self._start}
