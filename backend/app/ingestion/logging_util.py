@@ -16,6 +16,19 @@ from datetime import datetime
 _EVENT_COL_WIDTH = 20
 _LEVEL_COL_WIDTH = 5
 
+# Libraries that log at INFO on every network call and would otherwise
+# drown the ingestion vocabulary. Silenced to WARNING by configure_logging.
+_NOISY_LIBRARY_LOGGERS: tuple[str, ...] = (
+    "httpx",
+    "httpcore",
+    "openai",
+    "urllib3",
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "apscheduler",
+)
+
 
 def _render_value(v: object) -> str:
     """Render a body value for the k=v tail.
@@ -85,7 +98,9 @@ def configure_logging(level: int = logging.INFO, stream=None) -> None:
 
     Idempotent: replaces any handlers previously installed by this function
     (marked with `_ingestion_managed`). Leaves foreign handlers alone so
-    pytest capture and other stacks continue to work."""
+    pytest capture and other stacks continue to work. Also pins known-noisy
+    third-party loggers to WARNING so their per-request INFO lines don't
+    flood the terminal (see _NOISY_LIBRARY_LOGGERS)."""
     root = logging.getLogger()
     root.setLevel(level)
     root.handlers = [
@@ -96,6 +111,8 @@ def configure_logging(level: int = logging.INFO, stream=None) -> None:
     handler.setFormatter(IngestionFormatter())
     handler._ingestion_managed = True  # type: ignore[attr-defined]
     root.addHandler(handler)
+    for name in _NOISY_LIBRARY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 _progress_logger = logging.getLogger("app.ingestion.progress")

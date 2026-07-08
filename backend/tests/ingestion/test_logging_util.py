@@ -235,3 +235,30 @@ def test_timer_emits_stage_event_with_elapsed(caplog):
     records = [r for r in caplog.records if getattr(r, "event", None) == "stage.upsert"]
     assert len(records) == 1
     assert records[0].body == {"inserted": 42, "elapsed_s": 0.5}
+
+
+def test_configure_logging_silences_noisy_libraries():
+    import io
+
+    from app.ingestion.logging_util import configure_logging
+
+    root = logging.getLogger()
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
+    noisy = ["httpx", "httpcore", "openai", "urllib3",
+             "langchain", "langchain_core", "langchain_openai",
+             "apscheduler"]
+    saved_levels = {name: logging.getLogger(name).level for name in noisy}
+    try:
+        stream = io.StringIO()
+        configure_logging(level=logging.INFO, stream=stream)
+        for name in noisy:
+            lvl = logging.getLogger(name).level
+            assert lvl >= logging.WARNING, f"{name} at level {lvl}, expected WARNING+"
+        # Sanity: root itself is still at the configured level.
+        assert root.level == logging.INFO
+    finally:
+        root.handlers = saved_handlers
+        root.setLevel(saved_level)
+        for name, lvl in saved_levels.items():
+            logging.getLogger(name).setLevel(lvl)
