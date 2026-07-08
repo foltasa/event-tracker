@@ -122,6 +122,7 @@ def run_ingestion(
     )
 
     total_events = 0
+    failed_adapters: dict[str, str] = {}
     current_stage = "fetch"
 
     try:
@@ -157,6 +158,7 @@ def run_ingestion(
             try:
                 batch = list(adapter.fetch(session, ctx))
             except Exception as exc:
+                failed_adapters[adapter.name] = type(exc).__name__
                 fetch_logger.exception(
                     "",
                     extra={
@@ -233,16 +235,20 @@ def run_ingestion(
         if own_session:
             session.commit()
 
-        run_logger.info(
-            "",
-            extra={
-                "event": "run.done",
-                "body": {
-                    "events": total_events,
-                    "elapsed_s": time.monotonic() - run_start,
-                },
-            },
-        )
+        run_done_body: dict = {
+            "events": total_events,
+            "elapsed_s": time.monotonic() - run_start,
+        }
+        if failed_adapters:
+            run_done_body["failed_adapters"] = failed_adapters
+        run_logger.info("", extra={"event": "run.done", "body": run_done_body})
+
+        if failed_adapters:
+            successful = [
+                a.name for a in adapters if a.name not in failed_adapters
+            ]
+            _emit_failure_banner(run_logger, successful, failed_adapters)
+
         return report
     except Exception as exc:
         if own_session:
@@ -264,6 +270,27 @@ def run_ingestion(
             session.close()
         if own_wiki_client and wiki_client is not None:
             wiki_client.close()
+
+
+def _emit_failure_banner(
+    logger_: logging.Logger,
+    successful: list[str],
+    failed: dict[str, str],
+) -> None:
+    """Log a highly-visible multi-line banner listing successful and failed
+    adapters. Mirrors the style of the Eventim circuit-breaker banner so
+    operators recognize the shape immediately."""
+    succ_str = ", ".join(successful) if successful else "(none)"
+    fail_str = ", ".join(f"{name} ({err})" for name, err in failed.items())
+    logger_.warning(
+        "\n!! ============================================================\n"
+        "!! INGESTION RUN COMPLETED WITH FAILURES\n"
+        "!!   Successful: %s\n"
+        "!!   Failed:     %s\n"
+        "!!   Note: successful adapter data was persisted.\n"
+        "!! ============================================================",
+        succ_str, fail_str,
+    )
 
 
 def create_scheduler() -> BackgroundScheduler:

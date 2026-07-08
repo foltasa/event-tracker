@@ -378,6 +378,62 @@ def test_scheduler_omits_batch_dedup_log_when_no_duplicates(db_session, fake_cla
     assert dedup_events == []
 
 
+def test_scheduler_end_of_run_banner_lists_failed_adapters(db_session, fake_classifier, caplog):
+    """Partial failure: one adapter throws, others succeed.
+
+    Post-run.done we expect:
+      - `run.done` body carries `failed_adapters={fail: RuntimeError}`.
+      - A multi-line WARNING banner is logged with the successful and
+        failed adapter names, right after run.done."""
+    import logging as _logging
+
+    caplog.set_level(_logging.INFO)
+    run_ingestion(
+        adapters=[_OkAdapter(), _FailAdapter()],
+        session=db_session, classifier=fake_classifier,
+    )
+
+    # run.done carries the failure map.
+    run_done = [r for r in caplog.records if getattr(r, "event", None) == "run.done"]
+    assert len(run_done) == 1
+    assert run_done[0].body.get("failed_adapters") == {"fail": "RuntimeError"}
+
+    # Banner appears AFTER run.done in the record stream, at WARNING level.
+    all_msgs = [r.getMessage() for r in caplog.records]
+    banner_indices = [
+        i for i, m in enumerate(all_msgs)
+        if "INGESTION RUN COMPLETED WITH FAILURES" in m
+    ]
+    run_done_index = next(
+        i for i, r in enumerate(caplog.records)
+        if getattr(r, "event", None) == "run.done"
+    )
+    assert len(banner_indices) == 1, "expected exactly one banner"
+    assert banner_indices[0] > run_done_index
+    banner = all_msgs[banner_indices[0]]
+    assert "Successful: ok" in banner
+    assert "Failed:     fail (RuntimeError)" in banner
+    # Banner logged at WARNING so it stands out.
+    assert caplog.records[banner_indices[0]].levelno == _logging.WARNING
+
+
+def test_scheduler_no_banner_when_all_adapters_succeed(db_session, fake_classifier, caplog):
+    """Healthy run: no banner, no failed_adapters field on run.done."""
+    import logging as _logging
+
+    caplog.set_level(_logging.INFO)
+    run_ingestion(
+        adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier,
+    )
+
+    run_done = [r for r in caplog.records if getattr(r, "event", None) == "run.done"]
+    assert len(run_done) == 1
+    assert "failed_adapters" not in run_done[0].body
+
+    all_msgs = [r.getMessage() for r in caplog.records]
+    assert not any("INGESTION RUN COMPLETED WITH FAILURES" in m for m in all_msgs)
+
+
 def test_scheduler_summary_marks_tripped_adapter(db_session, fake_classifier, caplog):
     from datetime import timezone
     import logging as _logging
