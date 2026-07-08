@@ -110,3 +110,32 @@ def deactivate_past_events(session: Session) -> int:
         .filter(Event.start_datetime < now, Event.is_active.is_(True))
         .update({"is_active": False}, synchronize_session="fetch")
     )
+
+
+def dedup_by_external_id(
+    events: Iterable[NormalizedEvent],
+) -> tuple[list[NormalizedEvent], dict[str, int]]:
+    """Collapse events sharing `(source, external_id)`; keep first occurrence.
+
+    Some adapters (e.g. Eventim) iterate overlapping category endpoints and
+    can yield the same product twice in one run. Since SessionLocal uses
+    autoflush=False, upsert_events cannot see pending INSERTs during its own
+    SELECTs and would enqueue a duplicate row -- blowing up UNIQUE
+    (external_id, source) at the first flush downstream. Deduping at the
+    ingestion boundary keeps upsert honest.
+
+    Returns (kept_events, drops_by_source) where drops_by_source only lists
+    sources that actually had drops. First occurrence is kept for stability
+    and to align with the semantic that later occurrences don't carry new
+    information."""
+    seen: set[tuple[str, str]] = set()
+    kept: list[NormalizedEvent] = []
+    drops: dict[str, int] = {}
+    for ev in events:
+        key = (ev.source, ev.external_id)
+        if key in seen:
+            drops[ev.source] = drops.get(ev.source, 0) + 1
+            continue
+        seen.add(key)
+        kept.append(ev)
+    return kept, drops

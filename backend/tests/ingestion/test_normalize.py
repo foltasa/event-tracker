@@ -69,7 +69,7 @@ def test_is_free_requires_zero_or_null_prices():
 # ---------------------------------------------------------------------------
 # Upsert + deactivation tests (added in ingestion pipeline task)
 # ---------------------------------------------------------------------------
-from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events  # noqa: E402
+from app.ingestion.normalize import UpsertReport, deactivate_past_events, dedup_by_external_id, upsert_events  # noqa: E402
 from datetime import timedelta
 
 
@@ -180,3 +180,37 @@ def test_deactivate_does_not_double_count_already_inactive(db_session):
     db_session.commit()
 
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# dedup_by_external_id tests
+# ---------------------------------------------------------------------------
+
+def test_dedup_by_external_id_passes_through_when_no_duplicates():
+    events = [_normed_event(source="eventim", external_id="1"), _normed_event(source="eventim", external_id="2"), _normed_event(source="hamburg", external_id="1")]
+    result, drops = dedup_by_external_id(events)
+    assert [(e.source, e.external_id) for e in result] == [
+        ("eventim", "1"), ("eventim", "2"), ("hamburg", "1"),
+    ]
+    assert drops == {}
+
+
+def test_dedup_by_external_id_keeps_first_and_counts_drops_per_source():
+    a = _normed_event(source="eventim", external_id="1", title="Original")
+    b = _normed_event(source="eventim", external_id="1", title="Duplicate-later")
+    c = _normed_event(source="eventim", external_id="2")
+    d = _normed_event(source="hamburg", external_id="1")
+    e = _normed_event(source="hamburg", external_id="1")  # duplicate of d
+    f = _normed_event(source="hamburg", external_id="1")  # duplicate of d again
+    result, drops = dedup_by_external_id([a, b, c, d, e, f])
+
+    # First occurrence wins (a for eventim/1, d for hamburg/1).
+    assert result == [a, c, d]
+    # Drop counts per source; sources with zero drops omitted.
+    assert drops == {"eventim": 1, "hamburg": 2}
+
+
+def test_dedup_by_external_id_empty_input():
+    result, drops = dedup_by_external_id([])
+    assert result == []
+    assert drops == {}
