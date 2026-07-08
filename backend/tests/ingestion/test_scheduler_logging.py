@@ -54,7 +54,7 @@ def test_scheduler_emits_full_vocabulary_in_order(db_session, caplog):
     # ordering, which is the vocabulary guardrail.
     seen = [
         e for e in events
-        if e not in {"fetch.progress", "fetch.warn", "fetch.op"}
+        if e not in {"fetch.progress", "fetch.warn", "fetch.op", "stage.batch_dedup"}
     ]
 
     expected = [

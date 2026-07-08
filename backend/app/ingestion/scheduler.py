@@ -26,7 +26,12 @@ from app.ingestion.logging_util import (
     WarningCollector,
     timer,
 )
-from app.ingestion.normalize import UpsertReport, deactivate_past_events, upsert_events
+from app.ingestion.normalize import (
+    UpsertReport,
+    deactivate_past_events,
+    dedup_by_external_id,
+    upsert_events,
+)
 from app.ingestion.scrapers.hamburg import HamburgScraper
 from app.ingestion.scrapers.ohschonhell import OhschonhellScraper
 from app.ingestion.scrapers.theater_hamburg import TheaterHamburgAdapter
@@ -177,6 +182,21 @@ def run_ingestion(
 
             all_events.extend(batch)
             total_events += len(batch)
+
+        # --- In-batch dedup ---
+        # Collapse (source, external_id) duplicates before they reach the
+        # session. Without this, autoflush=False lets duplicate INSERTs
+        # queue up and blow the UNIQUE constraint at the next flush.
+        all_events, batch_drops = dedup_by_external_id(all_events)
+        total_events = len(all_events)
+        if batch_drops:
+            logging.getLogger("app.ingestion.stage").info(
+                "",
+                extra={
+                    "event": "stage.batch_dedup",
+                    "body": {"dropped": batch_drops},
+                },
+            )
 
         # --- Categorization ---
         current_stage = "categorize"

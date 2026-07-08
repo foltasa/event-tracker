@@ -319,6 +319,65 @@ class _TrippedAdapter:
         yield  # pragma: no cover
 
 
+def test_scheduler_collapses_intra_batch_duplicates(db_session, fake_classifier, caplog):
+    """Adapter yields the same (source, external_id) twice in one fetch.
+
+    The scheduler must dedup in RAM before upsert so we don't crash the
+    session with a UNIQUE (external_id, source) IntegrityError at flush."""
+    import logging as _logging
+
+    class _DupAdapter:
+        name = "dup"
+
+        def fetch(self, session, ctx=None):
+            # Same external_id yielded twice: the adapter has an overlapping
+            # category iteration bug (mimics real Eventim behaviour).
+            yield NormalizedEvent(
+                external_id="X", source="dup", title="First",
+                start_datetime=datetime(2026, 8, 1, 20, 0, tzinfo=_BERLIN),
+                category="concerts", is_free=False,
+                source_url="https://example.com/dup/X",
+            )
+            yield NormalizedEvent(
+                external_id="X", source="dup", title="Second-copy",
+                start_datetime=datetime(2026, 8, 1, 20, 0, tzinfo=_BERLIN),
+                category="concerts", is_free=False,
+                source_url="https://example.com/dup/X",
+            )
+
+    caplog.set_level(_logging.INFO)
+    report = run_ingestion(
+        adapters=[_DupAdapter()], session=db_session, classifier=fake_classifier,
+    )
+    # Only ONE row inserted despite two yields.
+    assert report.inserted == 1
+    # First occurrence wins.
+    stored = db_session.query(Event).filter_by(source="dup", external_id="X").one()
+    assert stored.title == "First"
+    # A stage.batch_dedup event was emitted with the drop count.
+    dedup_events = [
+        r for r in caplog.records
+        if getattr(r, "event", None) == "stage.batch_dedup"
+    ]
+    assert len(dedup_events) == 1
+    assert dedup_events[0].body == {"dropped": {"dup": 1}}
+
+
+def test_scheduler_omits_batch_dedup_log_when_no_duplicates(db_session, fake_classifier, caplog):
+    """When adapters are clean, no stage.batch_dedup line should appear."""
+    import logging as _logging
+
+    caplog.set_level(_logging.INFO)
+    run_ingestion(
+        adapters=[_OkAdapter()], session=db_session, classifier=fake_classifier,
+    )
+    dedup_events = [
+        r for r in caplog.records
+        if getattr(r, "event", None) == "stage.batch_dedup"
+    ]
+    assert dedup_events == []
+
+
 def test_scheduler_summary_marks_tripped_adapter(db_session, fake_classifier, caplog):
     from datetime import timezone
     import logging as _logging
