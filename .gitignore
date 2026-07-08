@@ -47,3 +47,4 @@ out/
 *.db.bak*
 *.sqlite
 *.sqlite.bak*
+*.sqlite3
