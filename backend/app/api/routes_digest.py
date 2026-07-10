@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
+from app.agent import retrieval
+from app.agent.categories import USER_SELECTABLE_CATEGORIES
 from app.agent.memory import get_current_user_id
 from app.agent.prompts import CURATION_PROMPT
 from app.agent.schemas import LLMDigestResponse
@@ -122,16 +124,43 @@ def _parse_picks_fallback(messages: list) -> LLMDigestResponse | None:
         return None
 
 
-def _candidate_pool(db, today: date) -> list[Event]:
-    end = datetime.combine(today + timedelta(days=7), datetime.max.time(), tzinfo=timezone.utc)
-    start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+def _per_category_pool(db, user: User, today: date) -> list[Event]:
+    date_from = today.isoformat()
+    date_to = (today + timedelta(days=7)).isoformat()
+    if not user.active_categories:
+        return []
+    all_ids: set[str] = set()
+    for cat in user.active_categories:
+        hits = retrieval.get_category_candidates(
+            db, user, cat, date_from=date_from, date_to=date_to, k=30,
+        )
+        all_ids.update(h.event_id for h in hits)
+    if not all_ids:
+        return []
     return (
         db.query(Event)
-        .filter(Event.is_active == True, Event.start_datetime >= start, Event.start_datetime <= end)  # noqa: E712
+        .filter(Event.id.in_(all_ids))
         .order_by(Event.start_datetime.asc())
-        .limit(150)
         .all()
     )
+
+
+def _extract_disliked(user: User) -> dict:
+    out: dict = {}
+    for cat, facets in (user.taste_facets or {}).items():
+        d = {}
+        for key in ("disliked.artists", "disliked.genres"):
+            entries = (facets or {}).get(key) or {}
+            if entries:
+                d[key] = sorted(entries.keys())
+        if d:
+            out[cat] = d
+    return out
+
+
+def _compact_facets(user: User) -> dict:
+    active = set(user.active_categories or [])
+    return {c: f for c, f in (user.taste_facets or {}).items() if c in active}
 
 
 def _build_response(picks_raw: list[dict], db, today: date, generated_at: datetime, is_cached: bool) -> DigestResponse:
@@ -147,15 +176,25 @@ def _build_response(picks_raw: list[dict], db, today: date, generated_at: dateti
 
 
 def _generate_digest(db, user: User, today: date) -> DigestResponse:
-    pool = _candidate_pool(db, today)
+    if user.active_categories is None:
+        raise HTTPException(status_code=409, detail="about_me_required")
+    if not user.active_categories:
+        raise HTTPException(status_code=409, detail="no_active_categories")
+
+    pool = _per_category_pool(db, user, today)
     if not pool:
         raise HTTPException(status_code=503, detail="no events available")
+
+    inactive = sorted(set(USER_SELECTABLE_CATEGORIES) - set(user.active_categories))
 
     prompt = CURATION_PROMPT.format(
         interests=", ".join(user.interest_tags) or "(none)",
         about_me=user.about_me or "(none)",
-        facts_md=user.facts_md or "(empty)",
+        active_categories=", ".join(user.active_categories) or "(none)",
+        inactive_categories=", ".join(inactive) or "(none)",
         taste_summary=user.taste_summary or "(empty)",
+        taste_facets_json=json.dumps(_compact_facets(user), indent=2),
+        disliked_json=json.dumps(_extract_disliked(user), indent=2),
         event_pool=json.dumps([_serialise_event_for_prompt(e) for e in pool], indent=2),
     )
 

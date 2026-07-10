@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,8 +11,13 @@ from app.db.models import DigestCache, Event, User
 
 @pytest.fixture
 def setup(db_session):
-    db_session.add(User(id="local", interest_tags=["music"],
-                        taste_summary="loves jazz", facts_md=""))
+    db_session.add(User(
+        id="local",
+        interest_tags=["music"],
+        taste_summary="loves jazz",
+        facts_md="",
+        active_categories=["concerts"],
+    ))
     for i in range(5):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
@@ -23,6 +28,10 @@ def setup(db_session):
     db_session.commit()
 
 
+def _fake_hits(event_ids):
+    return [SimpleNamespace(event_id=eid, similarity_score=0.9) for eid in event_ids]
+
+
 def _fake_agent_with_picks(picks):
     agent = MagicMock()
     response = LLMDigestResponse(picks=[LLMDigestPick(event_id=p, justification="because " + p + " is great") for p in picks])
@@ -31,8 +40,10 @@ def _fake_agent_with_picks(picks):
 
 
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits(["e0", "e1", "e2", "e3", "e4"]))
 @patch("app.api.routes_digest.get_agent")
-def test_digest_generates_on_miss_and_caches(mock_agent, _today, client, setup, db_session):
+def test_digest_generates_on_miss_and_caches(mock_agent, _retr, _today, client, setup, db_session):
     mock_agent.return_value = _fake_agent_with_picks(["e0", "e1", "e2"])
     r = client.get("/digest")
     assert r.status_code == 200
@@ -45,8 +56,10 @@ def test_digest_generates_on_miss_and_caches(mock_agent, _today, client, setup, 
 
 
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits(["e0", "e1", "e2", "e3", "e4"]))
 @patch("app.api.routes_digest.get_agent")
-def test_digest_returns_cache_without_invoking_llm(mock_agent, _today, client, setup, db_session):
+def test_digest_returns_cache_without_invoking_llm(mock_agent, _retr, _today, client, setup, db_session):
     mock_agent.return_value = _fake_agent_with_picks(["e0", "e1", "e2"])
     client.get("/digest")  # populate cache
     mock_agent.reset_mock()
@@ -57,8 +70,10 @@ def test_digest_returns_cache_without_invoking_llm(mock_agent, _today, client, s
 
 
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits(["e0", "e1", "e2", "e3", "e4"]))
 @patch("app.api.routes_digest.get_agent")
-def test_digest_refresh_overwrites_cache(mock_agent, _today, client, setup, db_session):
+def test_digest_refresh_overwrites_cache(mock_agent, _retr, _today, client, setup, db_session):
     mock_agent.return_value = _fake_agent_with_picks(["e0", "e1", "e2"])
     client.get("/digest")
 
@@ -69,8 +84,10 @@ def test_digest_refresh_overwrites_cache(mock_agent, _today, client, setup, db_s
 
 
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits(["e0", "e1", "e2", "e3", "e4"]))
 @patch("app.api.routes_digest.get_agent")
-def test_digest_502_when_agent_returns_too_few_picks(mock_agent, _today, client, setup):
+def test_digest_502_when_agent_returns_too_few_picks(mock_agent, _retr, _today, client, setup):
     agent = MagicMock()
     agent.invoke.return_value = {"structured_response": None}
     mock_agent.return_value = agent
@@ -139,9 +156,11 @@ def test_fallback_returns_none_on_too_few_picks():
 
 
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits(["e0", "e1", "e2", "e3", "e4"]))
 @patch("app.api.routes_digest.get_agent")
 def test_digest_recovers_via_fallback_when_structured_response_missing(
-    mock_agent, _today, client, setup, db_session
+    mock_agent, _retr, _today, client, setup, db_session
 ):
     agent = MagicMock()
     fenced_json = (
@@ -185,3 +204,65 @@ def test_digest_agent_tool_set_excludes_edit_tools():
         "get_user_profile",
         "update_user_profile",
     } <= names
+
+
+# ---------------------------------------------------------------------------
+# Task 14: Per-category retrieval + 409 hints for missing/empty active_categories
+# ---------------------------------------------------------------------------
+
+
+def _seed_events(db):
+    for i, cat in enumerate(["concerts", "party", "theater"]):
+        db.add(Event(
+            id=f"e{i}", external_id=f"e{i}", source="test",
+            title=f"{cat} event", description="d",
+            start_datetime=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            category=cat, tags=[], source_url="http://e", raw_data={},
+        ))
+
+
+def test_digest_pool_is_built_per_active_category(client, db_session):
+    _seed_events(db_session)
+    db_session.add(User(
+        id="local",
+        active_categories=["concerts", "party"],
+        taste_centroids={"concerts": [1.0, 0.0], "party": [0.0, 1.0]},
+    ))
+    db_session.commit()
+
+    called_categories: list[str] = []
+
+    def fake_candidates(session, user, category, **kwargs):
+        called_categories.append(category)
+        return [type("H", (), {"event_id": f"e{['concerts','party','theater'].index(category)}", "similarity_score": 0.9})()]
+
+    fake_agent = MagicMock()
+    fake_agent.invoke.return_value = {
+        "structured_response": type("R", (), {"picks": [
+            type("P", (), {"event_id": "e0", "justification": "great match"})(),
+            type("P", (), {"event_id": "e1", "justification": "great match"})(),
+            type("P", (), {"event_id": "e0", "justification": "again"})(),
+        ]})(),
+        "messages": [],
+    }
+    with patch("app.api.routes_digest.retrieval.get_category_candidates", side_effect=fake_candidates), \
+         patch("app.api.routes_digest.get_agent", return_value=fake_agent):
+        res = client.get("/digest")
+    assert res.status_code == 200
+    assert set(called_categories) == {"concerts", "party"}
+
+
+def test_digest_returns_hint_when_no_active_categories(client, db_session):
+    db_session.add(User(id="local", active_categories=[]))
+    db_session.commit()
+    res = client.get("/digest")
+    assert res.status_code == 409
+    assert "no_active_categories" in res.json().get("detail", "")
+
+
+def test_digest_redirects_new_user(client, db_session):
+    db_session.add(User(id="local"))  # active_categories = None
+    db_session.commit()
+    res = client.get("/digest")
+    assert res.status_code == 409
+    assert "about_me_required" in res.json().get("detail", "")
