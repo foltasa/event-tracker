@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes_appointments, routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
+from app.api import routes_about_me, routes_appointments, routes_calendar, routes_chat, routes_digest, routes_events, routes_feedback, routes_profile
 from app.api.deps import current_user_id_middleware
 from app.config import settings
 from app.db import run_migrations
@@ -56,6 +56,7 @@ app.include_router(routes_appointments.router)
 app.include_router(routes_calendar.router)
 app.include_router(routes_digest.router)
 app.include_router(routes_chat.router)
+app.include_router(routes_about_me.router)
 
 
 @app.get("/health")

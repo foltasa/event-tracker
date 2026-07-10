@@ -1,0 +1,45 @@
+from fastapi import APIRouter, HTTPException
+
+from app.agent.memory import get_current_user_id
+from app.api.deps import DbSession
+from app.db.models import User
+from app.schemas.about_me import AboutMeResponse, AboutMeUpdate
+
+router = APIRouter(prefix="/about-me", tags=["about-me"])
+
+
+def _to_response(u: User) -> AboutMeResponse:
+    return AboutMeResponse(
+        active_categories=u.active_categories,
+        taste_facets=dict(u.taste_facets or {}),
+        taste_summary=u.taste_summary,
+    )
+
+
+@router.get("", response_model=AboutMeResponse)
+def get_about_me(db: DbSession) -> AboutMeResponse:
+    user_id = get_current_user_id()
+    u = db.query(User).filter_by(id=user_id).one_or_none()
+    if u is None:
+        raise HTTPException(status_code=404, detail="user not onboarded")
+    return _to_response(u)
+
+
+@router.put("", response_model=AboutMeResponse)
+def update_about_me(payload: AboutMeUpdate, db: DbSession) -> AboutMeResponse:
+    user_id = get_current_user_id()
+    u = db.query(User).filter_by(id=user_id).one_or_none()
+    if u is None:
+        raise HTTPException(status_code=404, detail="user not onboarded")
+    if payload.active_categories is not None:
+        u.active_categories = payload.active_categories
+    if payload.taste_facets is not None:
+        merged = dict(u.taste_facets or {})
+        for cat, cat_facets in payload.taste_facets.items():
+            merged[cat] = cat_facets
+        u.taste_facets = merged
+    if payload.taste_summary is not None:
+        u.taste_summary = payload.taste_summary
+    db.commit()
+    db.refresh(u)
+    return _to_response(u)
