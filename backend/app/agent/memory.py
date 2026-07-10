@@ -56,26 +56,80 @@ def record_message(
     return msg
 
 
-def refresh_taste_centroid(session: Session, user_id: str) -> None:
-    liked = (
-        session.query(Feedback)
-        .filter_by(user_id=user_id, sentiment="like")
+def refresh_taste_centroids(session: Session, user_id: str) -> None:
+    """Recompute per-category centroids and the global fallback centroid.
+
+    Positive signals:
+      like               → weight 1.0
+      saved_to_calendar  → weight 2.0
+    An event with both like and save gets the max (2.0), not the sum.
+    Dislikes never contribute.
+    """
+    from app.agent.categories import CATEGORIES
+    from app.db.models import Event, SavedEvent
+
+    liked_rows = (
+        session.query(Feedback.event_id, Event.category)
+        .join(Event, Event.id == Feedback.event_id)
+        .filter(Feedback.user_id == user_id, Feedback.sentiment == "like")
         .all()
     )
+    saved_rows = (
+        session.query(SavedEvent.event_id, Event.category)
+        .join(Event, Event.id == SavedEvent.event_id)
+        .filter(SavedEvent.user_id == user_id)
+        .all()
+    )
+
+    # (event_id → (category, weight))
+    per_event: dict[str, tuple[str, float]] = {}
+    for eid, cat in liked_rows:
+        per_event[eid] = (cat, 1.0)
+    for eid, cat in saved_rows:
+        # Save dominates like.
+        per_event[eid] = (cat, 2.0)
+
     user = session.query(User).filter_by(id=user_id).one()
-
-    if not liked:
+    if not per_event:
+        user.taste_centroids = {}
         user.taste_centroid = None
         session.flush()
         return
 
-    embeddings = get_embeddings_for_ids([f.event_id for f in liked])
+    embeddings = get_embeddings_for_ids(list(per_event.keys()))
     if not embeddings:
+        user.taste_centroids = {}
         user.taste_centroid = None
         session.flush()
         return
 
-    matrix = np.array(list(embeddings.values()), dtype=np.float32)
-    centroid = matrix.mean(axis=0).tolist()
-    user.taste_centroid = centroid
+    # Group by category, weighted mean per group.
+    per_cat_vecs: dict[str, list[np.ndarray]] = {}
+    per_cat_wts: dict[str, list[float]] = {}
+    for eid, (cat, w) in per_event.items():
+        vec = embeddings.get(eid)
+        if vec is None:
+            continue
+        per_cat_vecs.setdefault(cat, []).append(np.array(vec, dtype=np.float32))
+        per_cat_wts.setdefault(cat, []).append(w)
+
+    taste_centroids: dict[str, list[float]] = {}
+    for cat, vecs in per_cat_vecs.items():
+        weights = np.array(per_cat_wts[cat], dtype=np.float32)
+        matrix = np.stack(vecs)
+        weighted = np.average(matrix, axis=0, weights=weights)
+        taste_centroids[cat] = weighted.tolist()
+
+    user.taste_centroids = taste_centroids
+
+    if taste_centroids:
+        stacked = np.stack([np.array(v, dtype=np.float32) for v in taste_centroids.values()])
+        user.taste_centroid = stacked.mean(axis=0).tolist()
+    else:
+        user.taste_centroid = None
     session.flush()
+
+
+# Compatibility alias kept so old imports don't break during the migration
+# transition. New code MUST call refresh_taste_centroids.
+refresh_taste_centroid = refresh_taste_centroids
