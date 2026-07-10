@@ -5,6 +5,8 @@
 // NOT mutate the fixture files.
 
 import type {
+  AboutMeResponse,
+  AboutMeUpdate,
   Appointment,
   AppointmentCreate,
   AppointmentUpdate,
@@ -264,6 +266,30 @@ export async function updateProfileSettings(body: SettingsUpdate): Promise<UserP
   return jsonFetch<UserProfileResponse>('/profile/settings', {
     method: 'PUT', body: JSON.stringify(body),
   })
+}
+
+// ---------- About Me ----------
+
+export async function getAboutMe(): Promise<AboutMeResponse> {
+  if (MOCK) {
+    return { active_categories: null, taste_facets: {}, taste_summary: null };
+  }
+  return jsonFetch<AboutMeResponse>("/about-me");
+}
+
+export async function updateAboutMe(body: AboutMeUpdate): Promise<AboutMeResponse> {
+  if (MOCK) {
+    console.info("[mock] PUT /about-me", body);
+    return {
+      active_categories: body.active_categories ?? null,
+      taste_facets: body.taste_facets ?? {},
+      taste_summary: body.taste_summary ?? null,
+    };
+  }
+  return jsonFetch<AboutMeResponse>("/about-me", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 // ---------- Usage ----------
