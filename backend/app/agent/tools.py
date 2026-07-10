@@ -164,6 +164,8 @@ def get_user_profile() -> dict:
             "interest_tags": list(user.interest_tags),
             "about_me": user.about_me,
             "taste_summary": user.taste_summary,
+            "active_categories": list(user.active_categories) if user.active_categories is not None else None,
+            "taste_facets": dict(user.taste_facets or {}),
         }
     finally:
         session.close()

@@ -106,6 +106,8 @@ def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
         "interest_tags": ["music"],
         "about_me": None,
         "taste_summary": "loves jazz",
+        "active_categories": None,
+        "taste_facets": {},
     }
 
 
