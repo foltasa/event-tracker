@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from app.db.models import User
 
 
@@ -71,3 +73,25 @@ def test_deselecting_a_category_preserves_its_facets(client, db_session):
     assert u.active_categories == ["concerts"]
     # Deselected category's facets stay in the DB.
     assert u.taste_facets["theater"]["venues"]["Thalia"] == 0.8
+
+
+def test_notes_field_triggers_extractor(client, db_session):
+    from app.db.models import User
+    db_session.add(User(id="local"))
+    db_session.commit()
+
+    payload = {
+        "active_categories": ["concerts"],
+        "taste_facets": {
+            "concerts": {
+                "artists": {"Die Sterne": 0.8},
+                "notes": "small venues only, no EDM",
+            }
+        },
+    }
+    with patch("app.api.routes_about_me.extract_and_apply") as m:
+        res = client.put("/about-me", json=payload)
+    assert res.status_code == 200
+    calls = [c for c in m.call_args_list if c.kwargs.get("input_", None)]
+    # One call per category that carries a non-empty "notes" field.
+    assert len(calls) == 1
