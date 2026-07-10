@@ -1,10 +1,11 @@
 'use client'
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import useSWR, { useSWRConfig } from 'swr'
 import { ChatProvider } from '@/lib/ChatContext'
 import {
   deleteFeedback,
+  getAboutMe,
   getEventDetail,
   postFeedback,
   removeFromCalendar,
@@ -60,6 +61,14 @@ function EventDetailOverlayLoader({
 
 function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { data: aboutMe } = useSWR('/about-me', getAboutMe)
+  useEffect(() => {
+    if (!aboutMe) return
+    if (aboutMe.active_categories === null && pathname !== '/about-me') {
+      router.replace('/about-me')
+    }
+  }, [aboutMe, pathname, router])
   const active: 'timetable' | 'explore' | 'about-me' | 'settings' =
     pathname?.startsWith('/explore') ? 'explore'
     : pathname?.startsWith('/about-me') ? 'about-me'
