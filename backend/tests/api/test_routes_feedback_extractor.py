@@ -52,3 +52,35 @@ def test_calendar_delete_triggers_centroid_refresh(client, db_session):
         res = client.delete("/calendar/e1")
     assert res.status_code == 204
     m.assert_called_once()
+
+
+def test_feedback_with_comment_schedules_extractor(client, db_session):
+    _seed_event(db_session)
+    db_session.add(User(id="local"))
+    db_session.commit()
+
+    with patch("app.api.routes_feedback.extract_and_apply") as m:
+        res = client.post(
+            "/feedback",
+            json={"event_id": "e1", "sentiment": "like", "comment": "great punk"},
+        )
+    assert res.status_code == 200
+    m.assert_called_once()
+    kwargs = m.call_args.kwargs or {}
+    inp = kwargs.get("input_") or m.call_args.args[2]
+    assert inp.category == "concerts"
+    assert inp.text == "great punk"
+
+
+def test_feedback_without_comment_does_not_call_extractor(client, db_session):
+    _seed_event(db_session)
+    db_session.add(User(id="local"))
+    db_session.commit()
+
+    with patch("app.api.routes_feedback.extract_and_apply") as m:
+        res = client.post(
+            "/feedback",
+            json={"event_id": "e1", "sentiment": "like", "comment": None},
+        )
+    assert res.status_code == 200
+    m.assert_not_called()
