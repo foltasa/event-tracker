@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.agent import retrieval
 from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
@@ -263,11 +264,18 @@ def get_recommendations(
     date_from: str | None = None,
     date_to: str | None = None,
     n: int = 10,
-) -> list[dict]:
-    """Recommend events ranked by similarity to the user's taste.
+    category: str | None = None,
+) -> list[dict] | dict:
+    """Recommend events for the current user, per category.
 
-    Uses the user's taste centroid (mean of liked-event embeddings) when
-    available; otherwise falls back to embedding their interest tags."""
+    Args:
+        date_from: ISO date lower bound (inclusive).
+        date_to: ISO date upper bound (inclusive).
+        n: max results across all queried categories.
+        category: if given, restrict to this category (overrides active_categories).
+                  if None, uses active_categories and returns [] with a
+                  structured hint when no categories are active.
+    """
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -275,43 +283,45 @@ def get_recommendations(
         if user is None:
             raise ToolError("user not found")
 
-        if user.taste_centroid is not None and len(user.taste_centroid) > 0:
-            vector = list(user.taste_centroid)
-        elif user.interest_tags:
-            vector = embed_one(", ".join(user.interest_tags))
+        if category is not None:
+            targets = [category]
         else:
-            return []
-
-        where = None
-        ranges = []
-        if date_from:
-            ranges.append({"start_time": {"$gte": int(datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc).timestamp())}})
-        if date_to:
-            ranges.append({"start_time": {"$lte": int(datetime.combine(date.fromisoformat(date_to), time.max, tzinfo=timezone.utc).timestamp())}})
-        if ranges:
-            where = {"$and": ranges} if len(ranges) > 1 else ranges[0]
+            if not user.active_categories:
+                return {"error": "no_active_categories"}
+            targets = list(user.active_categories)
 
         try:
-            hits = chroma_store.query_by_vector(vector, n=min(n, 30), where=where)
+            hits_per_category: list[chroma_store.QueryHit] = []
+            for cat in targets:
+                hits_per_category.extend(retrieval.get_category_candidates(
+                    session, user, cat,
+                    date_from=date_from, date_to=date_to, k=min(n * 3, 30),
+                ))
         except Exception as exc:
             logger.exception("chroma query failed")
             raise ToolError("recommendations temporarily unavailable") from exc
 
-        if not hits:
+        if not hits_per_category:
             return []
 
-        id_to_score = {h.event_id: h.similarity_score for h in hits}
+        id_to_score = {}
+        for h in hits_per_category:
+            prev = id_to_score.get(h.event_id, -1.0)
+            if (h.similarity_score or 0.0) > prev:
+                id_to_score[h.event_id] = h.similarity_score
+
         rows = (
             session.query(Event)
             .filter(Event.id.in_(id_to_score.keys()))
             .filter(visible_events_filter())
             .all()
         )
-        return sorted(
+        ranked = sorted(
             (_event_to_summary(r, similarity_score=id_to_score[r.id]) for r in rows),
             key=lambda d: d["similarity_score"] or 0.0,
             reverse=True,
         )
+        return ranked[:n]
     finally:
         session.close()
 

@@ -120,49 +120,6 @@ def test_update_user_profile_updates_fields(db_session, user, monkeypatch):
     assert fresh.about_me == "loves indie"
 
 
-def test_get_recommendations_cold_start_uses_interest_tags(db_session, events, monkeypatch):
-    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "embed_one", lambda text: [0.42] * 1536)
-
-    captured = {}
-
-    def fake_query(vector, n, where=None):
-        captured["vector"] = vector
-        captured["n"] = n
-        return [
-            chroma_store.QueryHit(event_id="e_music", similarity_score=0.9),
-            chroma_store.QueryHit(event_id="e_tech", similarity_score=0.8),
-        ]
-
-    monkeypatch.setattr(tools.chroma_store, "query_by_vector", fake_query)
-
-    results = tools.get_recommendations.invoke({"n": 2})
-    assert len(results) == 2
-    assert results[0]["id"] == "e_music"
-    assert results[0]["similarity_score"] == 0.9
-    assert captured["vector"] == [0.42] * 1536
-
-
-def test_get_recommendations_uses_centroid_when_present(db_session, user, events, monkeypatch):
-    user.taste_centroid = [0.7] * 1536
-    db_session.commit()
-    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "embed_one", lambda text: pytest.fail("must not embed when centroid set"))
-    captured = {}
-
-    def fake_query(vector, n, where=None):
-        captured["vector"] = vector
-        return [chroma_store.QueryHit(event_id="e_music", similarity_score=0.99)]
-
-    monkeypatch.setattr(tools.chroma_store, "query_by_vector", fake_query)
-
-    results = tools.get_recommendations.invoke({"n": 1})
-    assert captured["vector"] == [0.7] * 1536
-    assert results[0]["id"] == "e_music"
-
-
 def test_record_feedback_inserts_row(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
