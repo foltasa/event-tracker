@@ -48,3 +48,4 @@ out/
 *.sqlite
 *.sqlite.bak*
 *.sqlite3
+*.db-journal
