@@ -48,3 +48,30 @@ def test_user_taste_centroid_roundtrip(db_session):
     db_session.commit()
     fresh = db_session.query(User).filter_by(id="local").first()
     assert fresh.taste_centroid == [0.1, 0.2, 0.3]
+
+
+def test_user_new_taste_columns_defaults(db_session):
+    from app.db.models import User
+    u = User(id="alice")
+    db_session.add(u)
+    db_session.commit()
+    db_session.refresh(u)
+    assert u.taste_centroids == {}
+    assert u.taste_facets == {}
+    assert u.active_categories is None
+
+
+def test_user_can_persist_taste_centroids_and_facets(db_session):
+    from app.db.models import User
+    u = User(
+        id="bob",
+        taste_centroids={"concerts": [0.1, 0.2, 0.3]},
+        taste_facets={"concerts": {"artists": {"Die Sterne": 0.9}}},
+        active_categories=["concerts", "party"],
+    )
+    db_session.add(u)
+    db_session.commit()
+    db_session.refresh(u)
+    assert u.taste_centroids["concerts"] == [0.1, 0.2, 0.3]
+    assert u.taste_facets["concerts"]["artists"]["Die Sterne"] == 0.9
+    assert u.active_categories == ["concerts", "party"]
