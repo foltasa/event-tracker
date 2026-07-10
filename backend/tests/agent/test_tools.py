@@ -166,7 +166,7 @@ def test_get_recommendations_uses_centroid_when_present(db_session, user, events
 def test_record_feedback_inserts_row(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "refresh_taste_centroid", lambda s, uid: None)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", lambda s, uid: None)
 
     tools.record_feedback.invoke({
         "event_id": "e_music", "sentiment": "like", "comment": "loved it",
@@ -185,12 +185,13 @@ def test_record_feedback_like_refreshes_centroid(db_session, events, monkeypatch
     def fake_refresh(s, uid):
         called["refreshed"] = True
 
-    monkeypatch.setattr(tools, "refresh_taste_centroid", fake_refresh)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", fake_refresh)
     tools.record_feedback.invoke({"event_id": "e_music", "sentiment": "like"})
     assert called["refreshed"] is True
 
 
-def test_record_feedback_dislike_skips_centroid_refresh(db_session, events, monkeypatch):
+def test_record_feedback_dislike_also_refreshes_centroid(db_session, events, monkeypatch):
+    # Any feedback signal (like or dislike) triggers a centroid refresh.
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     called = {"refreshed": False}
@@ -198,9 +199,9 @@ def test_record_feedback_dislike_skips_centroid_refresh(db_session, events, monk
     def fake_refresh(s, uid):
         called["refreshed"] = True
 
-    monkeypatch.setattr(tools, "refresh_taste_centroid", fake_refresh)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", fake_refresh)
     tools.record_feedback.invoke({"event_id": "e_music", "sentiment": "dislike"})
-    assert called["refreshed"] is False
+    assert called["refreshed"] is True
 
 
 def test_record_feedback_unknown_event_raises(db_session, user, monkeypatch):

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.agent.memory import get_current_user_id, refresh_taste_centroid
+from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.api.deps import DbSession
 from app.db.models import Event, Feedback
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
@@ -36,9 +36,9 @@ def post_feedback(payload: FeedbackCreate, db: DbSession) -> FeedbackResponse:
     db.commit()
     db.refresh(fb)
 
-    if payload.sentiment == "like":
-        refresh_taste_centroid(db, user_id)
-        db.commit()
+    # Any signal change (like/dislike, upsert) may affect the taste centroid.
+    refresh_taste_centroids(db, user_id)
+    db.commit()
 
     return FeedbackResponse(
         id=fb.id, event_id=fb.event_id, sentiment=fb.sentiment,
@@ -52,9 +52,8 @@ def delete_feedback(event_id: str, db: DbSession) -> None:
     existing = db.query(Feedback).filter_by(user_id=user_id, event_id=event_id).first()
     if not existing:
         return  # idempotent: silent success when there's nothing to clear
-    was_like = existing.sentiment == "like"
     db.delete(existing)
     db.commit()
-    if was_like:
-        refresh_taste_centroid(db, user_id)
-        db.commit()
+    # Deleting any feedback row (like or dislike) can shift the centroid.
+    refresh_taste_centroids(db, user_id)
+    db.commit()

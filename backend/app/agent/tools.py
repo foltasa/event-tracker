@@ -12,7 +12,7 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.agent.memory import get_current_user_id, refresh_taste_centroid
+from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.config import settings
@@ -141,6 +141,9 @@ def save_to_calendar(event_id: str) -> dict:
             return {"status": "ok", "already_saved": True}
         import uuid as _uuid
         session.add(SavedEvent(id=str(_uuid.uuid4()), user_id=user_id, event_id=event_id))
+        session.commit()
+        # A new save is a positive taste signal; refresh the centroid.
+        refresh_taste_centroids(session, user_id)
         session.commit()
         return {"status": "ok", "already_saved": False}
     finally:
@@ -343,9 +346,9 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
                 comment=comment,
             ))
         session.commit()
-        if sentiment == "like":
-            refresh_taste_centroid(session, user_id)
-            session.commit()
+        # Any feedback signal change may affect the centroid.
+        refresh_taste_centroids(session, user_id)
+        session.commit()
         return {"status": "ok"}
     finally:
         session.close()
