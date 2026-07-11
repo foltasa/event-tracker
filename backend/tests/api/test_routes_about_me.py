@@ -76,10 +76,7 @@ def test_deselecting_a_category_preserves_its_facets(client, db_session):
 
 
 def test_notes_field_triggers_extractor(client, db_session, monkeypatch):
-    from app.config import settings
-    from app.db.models import User
-
-    monkeypatch.setattr(settings, "comment_extractor_enabled", True)
+    monkeypatch.setattr("app.api.routes_about_me.settings.comment_extractor_enabled", True)
     db_session.add(User(id="local"))
     db_session.commit()
 
@@ -101,10 +98,7 @@ def test_notes_field_triggers_extractor(client, db_session, monkeypatch):
 
 
 def test_about_me_notes_do_not_schedule_extractor_when_disabled(client, db_session, monkeypatch):
-    from app.config import settings
-    from app.db.models import User
-
-    monkeypatch.setattr(settings, "comment_extractor_enabled", False)
+    monkeypatch.setattr("app.api.routes_about_me.settings.comment_extractor_enabled", False)
 
     db_session.add(User(id="local", active_categories=["concerts"], taste_facets={}))
     db_session.commit()
