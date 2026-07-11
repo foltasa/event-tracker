@@ -35,3 +35,17 @@ def test_web_search_strategy_warns_against_retrying_empty_ingest(monkeypatch):
     )
     assert "ingested=0" in out
     assert "do not retry" in out.lower()
+
+
+def test_curation_prompt_new_placeholders():
+    from app.agent.prompts import CURATION_PROMPT
+
+    required = [
+        "{about_me}", "{active_categories}", "{inactive_categories}",
+        "{taste_prose}", "{event_pool}",
+    ]
+    for token in required:
+        assert token in CURATION_PROMPT, f"missing placeholder: {token}"
+
+    for token in ("{interests}", "{taste_summary}", "{taste_facets_json}", "{disliked_json}"):
+        assert token not in CURATION_PROMPT, f"legacy placeholder must be removed: {token}"

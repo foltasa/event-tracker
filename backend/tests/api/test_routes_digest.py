@@ -266,3 +266,24 @@ def test_digest_redirects_new_user(client, db_session):
     res = client.get("/digest")
     assert res.status_code == 409
     assert "about_me_required" in res.json().get("detail", "")
+
+
+def test_format_taste_prose_dumps_active_categories_only():
+    from app.api.routes_digest import _format_taste_prose
+
+    user = User(
+        id="local",
+        active_categories=["concerts", "party"],
+        taste_facets={
+            "concerts": {"artists": {"Nils Frahm": 1.0}, "genres": {"indie": 1.0}, "venues": {}, "notes": "Piano over guitars"},
+            "party":    {"venues":  {"Südpol": 1.0}},
+            "theater":  {"venues":  {"Thalia": 1.0}},  # inactive → excluded
+        },
+    )
+    prose = _format_taste_prose(user)
+    assert "concerts" in prose
+    assert "Nils Frahm" in prose
+    assert "Piano over guitars" in prose
+    assert "Südpol" in prose
+    # Inactive-category facets must not leak in.
+    assert "Thalia" not in prose

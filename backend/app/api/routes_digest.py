@@ -145,22 +145,34 @@ def _per_category_pool(db, user: User, today: date) -> list[Event]:
     )
 
 
-def _extract_disliked(user: User) -> dict:
-    out: dict = {}
-    for cat, facets in (user.taste_facets or {}).items():
-        d = {}
-        for key in ("disliked.artists", "disliked.genres"):
-            entries = (facets or {}).get(key) or {}
-            if entries:
-                d[key] = sorted(entries.keys())
-        if d:
-            out[cat] = d
-    return out
+def _format_taste_prose(user: User) -> str:
+    """Render per-active-category facets as a compact prose block.
 
+    Weights are dropped. Missing fields are omitted. Empty categories
+    produce a `(nothing listed)` line so the LLM knows the category is
+    active but has no user-typed hints."""
+    active = list(user.active_categories or [])
+    facets = user.taste_facets or {}
+    if not active:
+        return "(no active categories)"
 
-def _compact_facets(user: User) -> dict:
-    active = set(user.active_categories or [])
-    return {c: f for c, f in (user.taste_facets or {}).items() if c in active}
+    lines: list[str] = []
+    for cat in active:
+        cat_facets = facets.get(cat) or {}
+        cat_lines: list[str] = []
+        for field in ("artists", "genres", "venues"):
+            bucket = cat_facets.get(field) or {}
+            terms = [t for t in bucket.keys() if t]
+            if terms:
+                cat_lines.append(f"    {field}: {', '.join(terms)}")
+        notes = cat_facets.get("notes")
+        if isinstance(notes, str) and notes.strip():
+            cat_lines.append(f"    notes: {notes.strip()}")
+        if not cat_lines:
+            cat_lines.append("    (nothing listed)")
+        lines.append(f"  {cat}:")
+        lines.extend(cat_lines)
+    return "\n".join(lines)
 
 
 def _build_response(picks_raw: list[dict], db, today: date, generated_at: datetime, is_cached: bool) -> DigestResponse:
@@ -188,13 +200,10 @@ def _generate_digest(db, user: User, today: date) -> DigestResponse:
     inactive = sorted(set(USER_SELECTABLE_CATEGORIES) - set(user.active_categories))
 
     prompt = CURATION_PROMPT.format(
-        interests=", ".join(user.interest_tags) or "(none)",
-        about_me=user.about_me or "(none)",
+        about_me=user.about_me or "(nothing written)",
         active_categories=", ".join(user.active_categories) or "(none)",
         inactive_categories=", ".join(inactive) or "(none)",
-        taste_summary=user.taste_summary or "(empty)",
-        taste_facets_json=json.dumps(_compact_facets(user), indent=2),
-        disliked_json=json.dumps(_extract_disliked(user), indent=2),
+        taste_prose=_format_taste_prose(user),
         event_pool=json.dumps([_serialise_event_for_prompt(e) for e in pool], indent=2),
     )
 
