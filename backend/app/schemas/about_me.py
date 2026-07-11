@@ -9,12 +9,14 @@ class AboutMeResponse(_JsonBase):
     active_categories: list[str] | None = None
     taste_facets: dict = Field(default_factory=dict)
     taste_summary: str | None = None
+    about_me: str | None = None
 
 
 class AboutMeUpdate(_JsonBase):
     active_categories: list[str] | None = None
     taste_facets: dict | None = None
     taste_summary: str | None = None
+    about_me: str | None = None
 
     @field_validator("active_categories")
     @classmethod

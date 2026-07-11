@@ -116,3 +116,20 @@ def test_about_me_notes_do_not_schedule_extractor_when_disabled(client, db_sessi
     })
     assert r.status_code == 200
     assert called["n"] == 0
+
+
+def test_about_me_roundtrips_general_text(client, db_session):
+    db_session.add(User(id="local"))
+    db_session.commit()
+
+    r = client.put("/about-me", json={
+        "active_categories": ["concerts"],
+        "about_me": "I bike to venues and hate crowds after 23:00.",
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["about_me"] == "I bike to venues and hate crowds after 23:00."
+
+    r2 = client.get("/about-me")
+    assert r2.status_code == 200
+    assert r2.json()["about_me"] == "I bike to venues and hate crowds after 23:00."

@@ -16,6 +16,7 @@ def _to_response(u: User) -> AboutMeResponse:
         active_categories=u.active_categories,
         taste_facets=dict(u.taste_facets or {}),
         taste_summary=u.taste_summary,
+        about_me=u.about_me,
     )
 
 
@@ -68,6 +69,8 @@ def update_about_me(
         u.taste_facets = merged
     if payload.taste_summary is not None:
         u.taste_summary = payload.taste_summary
+    if payload.about_me is not None:
+        u.about_me = payload.about_me
     db.commit()
     db.refresh(u)
 
