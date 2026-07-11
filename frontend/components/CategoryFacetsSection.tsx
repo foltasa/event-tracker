@@ -1,5 +1,6 @@
 // frontend/components/CategoryFacetsSection.tsx
 'use client'
+import ChipInput from './ChipInput'
 import type { CategoryDescriptor } from '@/lib/aboutMeCategories'
 import type { CategoryFacets } from '@/lib/types'
 
@@ -9,17 +10,24 @@ export interface CategoryFacetsSectionProps {
   onChange: (next: CategoryFacets) => void
 }
 
-function bucketToText(bucket: Record<string, number> | undefined): string {
-  if (!bucket) return ''
-  return Object.keys(bucket).join(', ')
+/**
+ * The backend stores facet buckets as `{term: weight}` dicts for historical
+ * reasons. The About Me form treats them as ordered string arrays. These two
+ * helpers bridge the shapes for the ChipInput.
+ */
+function bucketToArray(bucket: unknown): string[] {
+  if (Array.isArray(bucket)) return bucket.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+  if (bucket && typeof bucket === 'object') return Object.keys(bucket as Record<string, unknown>).filter((k) => k.trim() !== '')
+  return []
 }
 
-function textToBucket(text: string, weight = 0.8): Record<string, number> {
+function arrayToBucket(arr: string[]): Record<string, number> {
   const out: Record<string, number> = {}
-  for (const raw of text.split(',')) {
-    const key = raw.trim()
+  for (const term of arr) {
+    const key = term.trim()
     if (!key) continue
-    out[key] = weight
+    // Weight is retained on-disk for schema compatibility but has no consumer.
+    out[key] = 1.0
   }
   return out
 }
@@ -45,13 +53,10 @@ export default function CategoryFacetsSection({ descriptor, facets, onChange }: 
                 onChange={(e) => onChange({ ...facets, notes: e.target.value })}
               />
             ) : (
-              <input
-                type="text"
-                className="rounded border border-border px-2 py-1 text-[13px]"
-                value={bucketToText(facets[f.facetField] as Record<string, number> | undefined)}
-                onChange={(e) =>
-                  onChange({ ...facets, [f.facetField]: textToBucket(e.target.value) })
-                }
+              <ChipInput
+                value={bucketToArray(facets[f.facetField])}
+                onChange={(next) => onChange({ ...facets, [f.facetField]: arrayToBucket(next) })}
+                placeholder="type and press Enter"
               />
             )}
           </label>

@@ -26,8 +26,8 @@ export const CATEGORY_DESCRIPTORS: Record<EventCategory, CategoryDescriptor> = {
   concerts: {
     key: "concerts", displayName: "Concerts",
     fields: [
-      { label: "Favourite artists", facetField: "artists", helper: "Comma-separated" },
-      { label: "Favourite genres", facetField: "genres", helper: "e.g. punk, indie, jazz" },
+      { label: "Favourite artists", facetField: "artists" },
+      { label: "Favourite genres", facetField: "genres", helper: "e.g. punk / indie / jazz" },
       { label: "Favourite venues", facetField: "venues" },
       { label: "Anything else?", facetField: "notes" },
     ],
@@ -36,7 +36,7 @@ export const CATEGORY_DESCRIPTORS: Record<EventCategory, CategoryDescriptor> = {
     key: "party", displayName: "Party",
     fields: [
       { label: "Favourite DJs / acts", facetField: "artists" },
-      { label: "Favourite genres", facetField: "genres", helper: "e.g. techno, house, drum'n'bass" },
+      { label: "Favourite genres", facetField: "genres", helper: "e.g. techno / house / drum'n'bass" },
       { label: "Favourite clubs", facetField: "venues" },
       { label: "Anything else?", facetField: "notes" },
     ],
