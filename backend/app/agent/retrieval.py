@@ -1,8 +1,11 @@
-"""Per-category candidate retrieval + disliked-substring hard-filter.
+"""Per-category candidate retrieval.
 
-Both the digest generator and the get_recommendations tool call into
-this module."""
+Keyword-first: SQL substring matches from the user's About Me pills,
+then semantic add from the category centroid, then a generic fill up to
+GENERIC_FLOOR. The digest generator and the get_recommendations tool
+both call get_category_candidates."""
 from datetime import date, datetime, time, timezone
+from math import ceil
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -10,7 +13,11 @@ from sqlalchemy.orm import Session
 from app.db.models import Event, User
 from app.rag import chroma_store
 from app.rag.chroma_store import QueryHit
-from app.rag.embeddings import embed_one
+
+
+GENERIC_FLOOR = 30
+SEMANTIC_TOP_UP = 15
+POOL_TARGET = 50
 
 
 def _iter_disliked_terms(user: User, category: str) -> list[str]:
@@ -36,20 +43,6 @@ def filter_out_disliked(
     this function to iterate _iter_disliked_terms and substring-match
     against event title/description/tags."""
     return list(event_ids)
-
-
-def _build_cold_start_seed(user: User, category: str) -> str | None:
-    facets = (user.taste_facets or {}).get(category) or {}
-    parts: list[str] = []
-    for field in ("artists", "genres", "venues"):
-        bucket = facets.get(field) or {}
-        parts.extend(bucket.keys())
-    if parts:
-        return f"{category}: " + ", ".join(parts)
-    tags = list(user.interest_tags or [])
-    if tags:
-        return f"{category}: " + ", ".join(tags)
-    return None
 
 
 def _range_clause(date_from: str | None, date_to: str | None) -> dict | None:
@@ -135,6 +128,17 @@ def _keyword_hits_for_category(
     return list(seen.values())
 
 
+def _per_pill_cap(user: User, category: str) -> int:
+    """Compute per-pill row cap so the pool trends toward POOL_TARGET.
+
+    Minimum of 1 per pill. If no pills are declared, the caller does not
+    invoke this — but return 1 as a safe default."""
+    n = len(_iter_pills_for_category(user, category))
+    if n <= 0:
+        return 1
+    return max(1, ceil(POOL_TARGET / n))
+
+
 def get_category_candidates(
     session: Session,
     user: User,
@@ -144,25 +148,63 @@ def get_category_candidates(
     date_to: str | None,
     k: int = 30,
 ) -> list[QueryHit]:
+    """Keyword-first candidate retrieval with semantic add and generic fill.
+
+    Order:
+    1. Keyword hits from user-typed pills (venues/artists/genres). Always.
+    2. Semantic add: up to SEMANTIC_TOP_UP Chroma hits keyed on the
+       category centroid, deduplicated against keyword hits. Only when a
+       centroid exists.
+    3. Generic fill: upcoming events in this category, ordered by
+       start_datetime, to reach GENERIC_FLOOR.
+
+    The `k` argument is a soft ceiling for the caller — this function
+    returns up to GENERIC_FLOOR + SEMANTIC_TOP_UP events irrespective of
+    `k`, since ranking upstream slices the final list.
+
+    Deactivated categories return []. Disliked filter is currently a
+    pass-through (see filter_out_disliked)."""
     if user.active_categories is not None and category not in user.active_categories:
         return []
 
+    seen: dict[str, QueryHit] = {}
+
+    # 1. Keyword hits — always.
+    per_pill_cap = _per_pill_cap(user, category)
+    kw_hits = _keyword_hits_for_category(
+        session, user, category,
+        date_from=date_from, date_to=date_to, per_pill_cap=per_pill_cap,
+    )
+    for h in kw_hits:
+        seen[h.event_id] = h
+
+    # 2. Semantic add — only with a centroid.
     centroid = (user.taste_centroids or {}).get(category)
     if centroid:
-        vector = list(centroid)
-    else:
-        seed = _build_cold_start_seed(user, category)
-        if not seed:
-            return []
-        vector = embed_one(seed)
+        where: dict = {"category": category}
+        rng = _range_clause(date_from, date_to)
+        if rng:
+            where = {"$and": [where, rng]}
+        sem = chroma_store.query_by_vector(list(centroid), n=SEMANTIC_TOP_UP, where=where)
+        for h in sem or []:
+            if h.event_id not in seen:
+                seen[h.event_id] = h
 
-    where: dict = {"category": category}
-    rng = _range_clause(date_from, date_to)
-    if rng:
-        where = {"$and": [where, rng]}
+    # 3. Generic fill — top up to GENERIC_FLOOR with upcoming events in this category.
+    if len(seen) < GENERIC_FLOOR:
+        need = GENERIC_FLOOR - len(seen)
+        q = session.query(Event.id).filter(Event.category == category)
+        if date_from:
+            q = q.filter(Event.start_datetime >= datetime.combine(
+                date.fromisoformat(date_from), time.min, tzinfo=timezone.utc))
+        if date_to:
+            q = q.filter(Event.start_datetime <= datetime.combine(
+                date.fromisoformat(date_to), time.max, tzinfo=timezone.utc))
+        if seen:
+            q = q.filter(~Event.id.in_(seen.keys()))
+        for (eid,) in q.order_by(Event.start_datetime.asc()).limit(need).all():
+            seen[eid] = QueryHit(event_id=eid, similarity_score=None)
 
-    hits = chroma_store.query_by_vector(vector, n=min(k, 30), where=where)
-    if not hits:
-        return []
-    kept_ids = set(filter_out_disliked(session, user, category, [h.event_id for h in hits]))
-    return [h for h in hits if h.event_id in kept_ids]
+    # Dislike hard-filter is a pass-through — call kept to preserve the seam.
+    kept = set(filter_out_disliked(session, user, category, list(seen.keys())))
+    return [seen[eid] for eid in seen if eid in kept]
