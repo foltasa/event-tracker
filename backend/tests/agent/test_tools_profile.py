@@ -23,7 +23,7 @@ def test_get_user_profile_returns_new_shape_only(db_session, monkeypatch):
     assert result == {
         "about_me": "I ride a bike",
         "active_categories": ["concerts", "party"],
-        "taste_facets": {"concerts": {"artists": {"Nils Frahm": 1.0}}},
+        "taste_facets": {"concerts": {"artists": ["Nils Frahm"]}},
     }
     # Legacy fields are dropped from the tool response.
     assert "interest_tags" not in result

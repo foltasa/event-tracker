@@ -1,32 +1,6 @@
 """Agent prompt templates."""
 from app.config import settings
 
-_MEMORY_BLOCK_EDITABLE = """\
-USER MEMORY
-
-  Facts (stated by user, you maintain - max 200 lines):
-  {facts_md}
-
-  Behavioural summary (you maintain - max 20 lines, your inferred picture from saves/feedback):
-  {taste_summary}
-
-You may edit either block via edit_facts / edit_taste_summary. When the
-user states something durable about themselves or their world (diet,
-constraints, neighbourhood, companions, taste claims), add it to Facts.
-When you notice from the conversation that your behavioural summary is
-wrong or outdated, edit it. Do not duplicate between the two blocks. Do
-not store ephemeral or sensitive details the user did not intend to be
-remembered."""
-
-_MEMORY_BLOCK_READONLY = """\
-USER MEMORY (read-only in this context)
-
-  Facts (stated by user - max 200 lines):
-  {facts_md}
-
-  Behavioural summary (max 20 lines, inferred picture from saves/feedback):
-  {taste_summary}"""
-
 
 CURATION_PROMPT = """\
 You are a Hamburg event concierge picking today's digest for a user.
@@ -55,16 +29,15 @@ Return your final answer in the structured output format.
 CONVERSATIONAL_PROMPT = """\
 You are a Hamburg event concierge for one specific user. Today is {today}.
 
-USER PROFILE
-  Interests: {interests}
-  About-me: {about_me}
+ABOUT THE USER (single source of truth — the user wrote this):
+{about_me}
 
-""" + _MEMORY_BLOCK_EDITABLE + """
+Per-category preferences (verbatim from the user's About Me — no weights):
+{taste_prose}
 
 You have tools for searching events, getting personalised recommendations,
-recording feedback, saving to the calendar, reading/updating the user's
-profile, and editing your memory blocks above. Use them when they will
-help.
+recording feedback, saving to the calendar, and reading the user's profile.
+Use them when they will help.
 
 Be concise. When you refer to a specific event by name, also mention its
 ID in the form [event:ID] so the UI can render the card inline.
@@ -111,17 +84,13 @@ ingest_event_from_url.
 def build_conversational_prompt(
     *,
     today: str,
-    interests: str,
     about_me: str,
-    facts_md: str,
-    taste_summary: str,
+    taste_prose: str,
 ) -> str:
     base = CONVERSATIONAL_PROMPT.format(
         today=today,
-        interests=interests,
         about_me=about_me,
-        facts_md=facts_md,
-        taste_summary=taste_summary,
+        taste_prose=taste_prose,
     )
     if settings.web_search_enabled:
         return base + _WEB_SEARCH_STRATEGY

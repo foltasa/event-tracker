@@ -15,6 +15,7 @@ from fastapi import APIRouter
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sse_starlette.sse import EventSourceResponse
 
+from app.agent.facets import format_taste_prose
 from app.agent.memory import get_current_user_id, record_message
 from app.agent.prompts import build_conversational_prompt
 from app.agent.runtime import clear_session_checkpoint, heal_orphan_tool_calls
@@ -92,10 +93,8 @@ async def _stream_chat(payload: ChatRequest, db) -> AsyncIterator[dict]:
 
     system = build_conversational_prompt(
         today=date.today().isoformat(),
-        interests=", ".join(user.interest_tags) or "(none)",
-        about_me=user.about_me or "(none)",
-        facts_md=user.facts_md or "(empty)",
-        taste_summary=user.taste_summary or "(empty)",
+        about_me=user.about_me or "(nothing written)",
+        taste_prose=format_taste_prose(user),
     )
 
     assistant_buffer: list[str] = []

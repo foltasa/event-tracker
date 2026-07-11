@@ -4,6 +4,37 @@ Kept side-effect-free so tests don't need a DB session and so both the
 comment extractor and the About Me form save path can reuse them."""
 
 
+def format_taste_prose(user) -> str:
+    """Render per-active-category facets as a compact prose block.
+
+    Weights are dropped. Missing fields are omitted. Empty categories
+    produce a `(nothing listed)` line so the LLM knows the category is
+    active but has no user-typed hints."""
+    active = list(user.active_categories or [])
+    facets = user.taste_facets or {}
+    if not active:
+        return "(no active categories)"
+
+    lines: list[str] = []
+    for cat in active:
+        cat_facets = facets.get(cat) or {}
+        cat_lines: list[str] = []
+        for field in ("artists", "genres", "venues"):
+            bucket = cat_facets.get(field) or {}
+            terms = [t for t in bucket.keys() if t]
+            if terms:
+                cat_lines.append(f"    {field}: {', '.join(terms)}")
+        notes = cat_facets.get("notes")
+        if isinstance(notes, str) and notes.strip():
+            indented = notes.strip().replace("\n", "\n      ")
+            cat_lines.append(f"    notes: {indented}")
+        if not cat_lines:
+            cat_lines.append("    (nothing listed)")
+        lines.append(f"  {cat}:")
+        lines.extend(cat_lines)
+    return "\n".join(lines)
+
+
 def _ensure_path(facets: dict, category: str, field: str) -> dict:
     cat = facets.setdefault(category, {})
     bucket = cat.setdefault(field, {})

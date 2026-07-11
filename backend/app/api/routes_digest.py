@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.agent import retrieval
 from app.agent.categories import USER_SELECTABLE_CATEGORIES
+from app.agent.facets import format_taste_prose
 from app.agent.memory import get_current_user_id
 from app.agent.prompts import CURATION_PROMPT
 from app.agent.schemas import LLMDigestResponse
@@ -145,37 +146,6 @@ def _per_category_pool(db, user: User, today: date) -> list[Event]:
     )
 
 
-def _format_taste_prose(user: User) -> str:
-    """Render per-active-category facets as a compact prose block.
-
-    Weights are dropped. Missing fields are omitted. Empty categories
-    produce a `(nothing listed)` line so the LLM knows the category is
-    active but has no user-typed hints."""
-    active = list(user.active_categories or [])
-    facets = user.taste_facets or {}
-    if not active:
-        return "(no active categories)"
-
-    lines: list[str] = []
-    for cat in active:
-        cat_facets = facets.get(cat) or {}
-        cat_lines: list[str] = []
-        for field in ("artists", "genres", "venues"):
-            bucket = cat_facets.get(field) or {}
-            terms = [t for t in bucket.keys() if t]
-            if terms:
-                cat_lines.append(f"    {field}: {', '.join(terms)}")
-        notes = cat_facets.get("notes")
-        if isinstance(notes, str) and notes.strip():
-            indented = notes.strip().replace("\n", "\n      ")
-            cat_lines.append(f"    notes: {indented}")
-        if not cat_lines:
-            cat_lines.append("    (nothing listed)")
-        lines.append(f"  {cat}:")
-        lines.extend(cat_lines)
-    return "\n".join(lines)
-
-
 def _build_response(picks_raw: list[dict], db, today: date, generated_at: datetime, is_cached: bool) -> DigestResponse:
     ids = [p["event_id"] for p in picks_raw]
     rows = {r.id: r for r in db.query(Event).filter(Event.id.in_(ids)).all()}
@@ -204,7 +174,7 @@ def _generate_digest(db, user: User, today: date) -> DigestResponse:
         about_me=user.about_me or "(nothing written)",
         active_categories=", ".join(user.active_categories) or "(none)",
         inactive_categories=", ".join(inactive) or "(none)",
-        taste_prose=_format_taste_prose(user),
+        taste_prose=format_taste_prose(user),
         event_pool=json.dumps([_serialise_event_for_prompt(e) for e in pool], indent=2),
     )
 

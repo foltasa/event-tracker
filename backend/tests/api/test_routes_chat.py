@@ -20,8 +20,13 @@ def _stub_agent_state(agent) -> None:
 
 @pytest.fixture
 def user(db_session):
-    db_session.add(User(id="local", interest_tags=["music"],
-                        taste_summary="loves indie", facts_md="lives in Eimsbüttel"))
+    db_session.add(User(
+        id="local",
+        interest_tags=["music"],
+        about_me="rides a bike in Eimsbüttel",
+        active_categories=["concerts"],
+        taste_facets={"concerts": {"artists": {"Nils Frahm": 1.0}}},
+    ))
     db_session.commit()
 
 
@@ -105,7 +110,9 @@ def test_chat_emits_error_event_on_agent_exception(mock_get_agent, client, user)
 
 
 @patch("app.api.routes_chat.get_agent")
-def test_chat_prompt_includes_memory_blocks(mock_get_agent, client, user):
+def test_chat_prompt_includes_about_me_and_taste_prose(mock_get_agent, client, user):
+    """The chat system prompt must inject the user's About Me and the compact
+    per-category taste prose — About Me is the single source of truth."""
     fake_agent = MagicMock()
     _stub_agent_state(fake_agent)
     captured = {}
@@ -120,9 +127,13 @@ def test_chat_prompt_includes_memory_blocks(mock_get_agent, client, user):
     with client.stream("POST", "/chat", json={"session_id": "s1", "message": "hi"}) as r:
         b"".join(r.iter_bytes())
 
-    assert "USER MEMORY" in captured["system"]
-    assert "lives in Eimsbüttel" in captured["system"]
-    assert "loves indie" in captured["system"]
+    assert "ABOUT THE USER" in captured["system"]
+    assert "rides a bike in Eimsbüttel" in captured["system"]
+    # taste_prose block renders active category + artist term verbatim.
+    assert "concerts" in captured["system"]
+    assert "Nils Frahm" in captured["system"]
+    # Legacy memory blocks must not appear.
+    assert "USER MEMORY" not in captured["system"]
 
 
 def test_chat_heals_orphan_tool_calls_before_streaming(client, user, monkeypatch):

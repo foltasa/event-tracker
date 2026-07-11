@@ -151,6 +151,29 @@ def save_to_calendar(event_id: str) -> dict:
         session.close()
 
 
+def _compact_facets_for_tool(taste_facets: dict) -> dict:
+    """Return the About Me facet shape with weights stripped.
+
+    Keys within each category are preserved in this order: artists, genres,
+    venues, notes. Empty fields are omitted."""
+    out: dict = {}
+    for cat, cat_facets in (taste_facets or {}).items():
+        if not isinstance(cat_facets, dict):
+            continue
+        entry: dict = {}
+        for field in ("artists", "genres", "venues"):
+            bucket = cat_facets.get(field) or {}
+            terms = [t for t in bucket.keys() if isinstance(t, str) and t.strip()]
+            if terms:
+                entry[field] = terms
+        notes = cat_facets.get("notes")
+        if isinstance(notes, str) and notes.strip():
+            entry["notes"] = notes.strip()
+        if entry:
+            out[cat] = entry
+    return out
+
+
 @tool
 def get_user_profile() -> dict:
     """Return the current user's About Me: general free text, active
@@ -168,7 +191,7 @@ def get_user_profile() -> dict:
         return {
             "about_me": user.about_me,
             "active_categories": list(user.active_categories) if user.active_categories is not None else None,
-            "taste_facets": dict(user.taste_facets or {}),
+            "taste_facets": _compact_facets_for_tool(user.taste_facets or {}),
         }
     finally:
         session.close()

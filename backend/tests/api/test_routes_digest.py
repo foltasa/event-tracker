@@ -269,7 +269,7 @@ def test_digest_redirects_new_user(client, db_session):
 
 
 def test_format_taste_prose_dumps_active_categories_only():
-    from app.api.routes_digest import _format_taste_prose
+    from app.agent.facets import format_taste_prose as _format_taste_prose
 
     user = User(
         id="local",
@@ -290,18 +290,18 @@ def test_format_taste_prose_dumps_active_categories_only():
 
 
 def test_format_taste_prose_handles_empty_active_categories():
-    from app.api.routes_digest import _format_taste_prose
+    from app.agent.facets import format_taste_prose as _format_taste_prose
     assert _format_taste_prose(User(id="u", active_categories=[])) == "(no active categories)"
 
 
 def test_format_taste_prose_marks_category_with_no_facets():
-    from app.api.routes_digest import _format_taste_prose
+    from app.agent.facets import format_taste_prose as _format_taste_prose
     out = _format_taste_prose(User(id="u", active_categories=["concerts"], taste_facets={}))
     assert "(nothing listed)" in out
 
 
 def test_format_taste_prose_ignores_non_string_notes():
-    from app.api.routes_digest import _format_taste_prose
+    from app.agent.facets import format_taste_prose as _format_taste_prose
     out = _format_taste_prose(User(
         id="u", active_categories=["concerts"],
         taste_facets={"concerts": {"notes": 42}},
@@ -311,7 +311,7 @@ def test_format_taste_prose_ignores_non_string_notes():
 
 
 def test_format_taste_prose_indents_multiline_notes():
-    from app.api.routes_digest import _format_taste_prose
+    from app.agent.facets import format_taste_prose as _format_taste_prose
     out = _format_taste_prose(User(
         id="u", active_categories=["concerts"],
         taste_facets={"concerts": {"notes": "line 1\nline 2"}},
