@@ -272,7 +272,7 @@ export async function updateProfileSettings(body: SettingsUpdate): Promise<UserP
 
 export async function getAboutMe(): Promise<AboutMeResponse> {
   if (MOCK) {
-    return { active_categories: null, taste_facets: {}, taste_summary: null };
+    return { active_categories: null, taste_facets: {}, taste_summary: null, about_me: null };
   }
   return jsonFetch<AboutMeResponse>("/about-me");
 }
@@ -284,6 +284,7 @@ export async function updateAboutMe(body: AboutMeUpdate): Promise<AboutMeRespons
       active_categories: body.active_categories ?? null,
       taste_facets: body.taste_facets ?? {},
       taste_summary: body.taste_summary ?? null,
+      about_me: body.about_me ?? null,
     };
   }
   return jsonFetch<AboutMeResponse>("/about-me", {

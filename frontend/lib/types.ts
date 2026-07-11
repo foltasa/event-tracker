@@ -203,10 +203,12 @@ export interface AboutMeResponse {
   active_categories: string[] | null;
   taste_facets: Partial<Record<EventCategory, CategoryFacets>>;
   taste_summary: string | null;
+  about_me: string | null;
 }
 
 export interface AboutMeUpdate {
   active_categories?: string[];
   taste_facets?: Partial<Record<EventCategory, CategoryFacets>>;
   taste_summary?: string;
+  about_me?: string | null;
 }
