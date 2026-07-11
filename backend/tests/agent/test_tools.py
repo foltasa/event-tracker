@@ -97,8 +97,6 @@ def test_save_to_calendar_unknown_raises_toolerror(db_session, user, monkeypatch
 
 
 def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
-    user.taste_summary = "loves jazz"
-    db_session.commit()
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     result = tools.get_user_profile.invoke({})
