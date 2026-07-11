@@ -16,28 +16,31 @@ def _mk_event(db, ev_id, cat, title="t", desc="d", tags=None):
     return e
 
 
-def test_filter_out_disliked_terms_substring_match(db_session):
+def test_filter_out_disliked_is_passthrough(db_session):
     from app.agent.retrieval import filter_out_disliked
+    from app.db.models import User
+
     _mk_event(db_session, "e_edm", "party", title="Big EDM night", desc="DJ set")
     _mk_event(db_session, "e_ok", "party", title="Techno party", desc="raw sound")
     db_session.commit()
+
     user = User(
         id="local",
+        # Even with dislike facets present, filter must be a no-op.
         taste_facets={"party": {"disliked.genres": {"edm": 1.0}}},
     )
     kept = filter_out_disliked(db_session, user, "party", ["e_edm", "e_ok"])
-    assert kept == ["e_ok"]
+    assert kept == ["e_edm", "e_ok"]
 
 
-def test_filter_out_disliked_is_case_insensitive(db_session):
+def test_filter_out_disliked_passthrough_with_empty_facets(db_session):
     from app.agent.retrieval import filter_out_disliked
-    _mk_event(db_session, "e1", "concerts", title="Interpol live", desc="")
+    from app.db.models import User
+
+    _mk_event(db_session, "e1", "concerts")
     db_session.commit()
-    user = User(
-        id="local",
-        taste_facets={"concerts": {"disliked.artists": {"interpol": 1.0}}},
-    )
-    assert filter_out_disliked(db_session, user, "concerts", ["e1"]) == []
+    user = User(id="local", taste_facets={})
+    assert filter_out_disliked(db_session, user, "concerts", ["e1"]) == ["e1"]
 
 
 def test_get_category_candidates_returns_empty_when_category_inactive(db_session):

@@ -29,24 +29,12 @@ def filter_out_disliked(
     category: str,
     event_ids: list[str],
 ) -> list[str]:
-    """Substring-match disliked artist/genre terms against title/description/tags.
+    """Dislike hard-filter is currently disabled.
 
-    Phase 1 approximation. Phase 2 replaces this with MBID-based matching."""
-    terms = _iter_disliked_terms(user, category)
-    if not terms or not event_ids:
-        return list(event_ids)
-    rows = session.query(Event).filter(Event.id.in_(event_ids)).all()
-    kept: list[str] = []
-    for e in rows:
-        hay = " ".join([
-            (e.title or ""),
-            (e.description or ""),
-            " ".join(e.tags or []),
-        ]).lower()
-        if any(term in hay for term in terms):
-            continue
-        kept.append(e.id)
-    return kept
+    Preserved as a call site so re-enabling is a one-line change: revert
+    this function to iterate _iter_disliked_terms and substring-match
+    against event title/description/tags."""
+    return list(event_ids)
 
 
 def _build_cold_start_seed(user: User, category: str) -> str | None:
