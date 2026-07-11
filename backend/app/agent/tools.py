@@ -153,7 +153,12 @@ def save_to_calendar(event_id: str) -> dict:
 
 @tool
 def get_user_profile() -> dict:
-    """Return the current user's interests, about-me, and distilled taste summary."""
+    """Return the current user's About Me: general free text, active
+    categories, and per-category preferences (facets).
+
+    This is the single source of truth for what the user has told the
+    assistant. Legacy fields (interest_tags, taste_summary) are not
+    exposed here."""
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -161,9 +166,7 @@ def get_user_profile() -> dict:
         if user is None:
             raise ToolError("user not found")
         return {
-            "interest_tags": list(user.interest_tags),
             "about_me": user.about_me,
-            "taste_summary": user.taste_summary,
             "active_categories": list(user.active_categories) if user.active_categories is not None else None,
             "taste_facets": dict(user.taste_facets or {}),
         }

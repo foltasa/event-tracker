@@ -103,9 +103,7 @@ def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     result = tools.get_user_profile.invoke({})
     assert result == {
-        "interest_tags": ["music"],
         "about_me": None,
-        "taste_summary": "loves jazz",
         "active_categories": None,
         "taste_facets": {},
     }
