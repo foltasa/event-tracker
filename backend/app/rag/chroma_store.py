@@ -26,7 +26,7 @@ class EventForEmbedding:
 @dataclass
 class QueryHit:
     event_id: str
-    similarity_score: float
+    similarity_score: float | None
 
 
 def _get_collection():

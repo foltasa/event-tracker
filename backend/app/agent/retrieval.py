@@ -4,6 +4,7 @@ Both the digest generator and the get_recommendations tool call into
 this module."""
 from datetime import date, datetime, time, timezone
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.db.models import Event, User
@@ -64,6 +65,74 @@ def _range_clause(date_from: str | None, date_to: str | None) -> dict | None:
     if not ranges:
         return None
     return {"$and": ranges} if len(ranges) > 1 else ranges[0]
+
+
+def _iter_pills_for_category(user: User, category: str) -> list[tuple[str, str]]:
+    """Yield (field, term) pairs from taste_facets[category] for venues, artists, genres.
+
+    Order is stable: venues, then artists, then genres — so the pool is
+    predictable across runs."""
+    facets = (user.taste_facets or {}).get(category) or {}
+    out: list[tuple[str, str]] = []
+    for field in ("venues", "artists", "genres"):
+        bucket = facets.get(field) or {}
+        for term in bucket.keys():
+            term = (term or "").strip()
+            if term:
+                out.append((field, term))
+    return out
+
+
+def _keyword_hits_for_category(
+    session: Session,
+    user: User,
+    category: str,
+    *,
+    date_from: str | None,
+    date_to: str | None,
+    per_pill_cap: int,
+) -> list[QueryHit]:
+    """Run a case-insensitive substring query per pill and union the results.
+
+    - venues.*  -> LOWER(venue_name)  LIKE '%term%'
+    - artists.* -> LOWER(title) OR LOWER(description) LIKE '%term%'
+    - genres.*  -> same as artists.* (tags column does not carry musical subgenres)
+
+    All within the category and optional date window. Each pill's query is
+    capped at `per_pill_cap`. Result is deduplicated across pills, order
+    preserved by first appearance. Returns QueryHit objects with a
+    `similarity_score` of None (semantic scoring is applied elsewhere)."""
+    pills = _iter_pills_for_category(user, category)
+    if not pills:
+        return []
+
+    # Build the date bounds once.
+    date_lo = date_hi = None
+    if date_from:
+        date_lo = datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc)
+    if date_to:
+        date_hi = datetime.combine(date.fromisoformat(date_to), time.max, tzinfo=timezone.utc)
+
+    seen: dict[str, QueryHit] = {}
+    for field, term in pills:
+        like = f"%{term.lower()}%"
+        q = session.query(Event.id).filter(Event.category == category)
+        if date_lo is not None:
+            q = q.filter(Event.start_datetime >= date_lo)
+        if date_hi is not None:
+            q = q.filter(Event.start_datetime <= date_hi)
+        if field == "venues":
+            q = q.filter(func.lower(Event.venue_name).like(like))
+        else:
+            q = q.filter(or_(
+                func.lower(Event.title).like(like),
+                func.lower(Event.description).like(like),
+            ))
+        q = q.order_by(Event.start_datetime.asc()).limit(per_pill_cap)
+        for (eid,) in q.all():
+            if eid not in seen:
+                seen[eid] = QueryHit(event_id=eid, similarity_score=None)
+    return list(seen.values())
 
 
 def get_category_candidates(
