@@ -92,8 +92,9 @@ def test_get_category_candidates_keyword_first_no_centroid(db_session):
     ids = [h.event_id for h in hits]
     # Südpol match is always in the pool.
     assert "s1" in ids
-    # Generic fill kicks in because pool < GENERIC_FLOOR = 30 after keyword pass.
-    assert len(ids) >= 30
+    # Generic fill kicks in because pool < GENERIC_FLOOR after keyword pass.
+    from app.agent.retrieval import GENERIC_FLOOR
+    assert len(ids) >= GENERIC_FLOOR
 
 
 def test_get_category_candidates_semantic_add_only_if_centroid(db_session):
@@ -136,7 +137,7 @@ def test_get_category_candidates_semantic_skipped_without_centroid(db_session):
 
 
 def test_get_category_candidates_per_pill_cap_scales_with_pill_count(db_session):
-    from app.agent.retrieval import get_category_candidates
+    from app.agent.retrieval import _per_pill_cap, get_category_candidates
     from app.db.models import User
 
     # 60 party events, each mentioning both venues.
@@ -148,9 +149,13 @@ def test_get_category_candidates_per_pill_cap_scales_with_pill_count(db_session)
         id="local", active_categories=["party"], taste_centroids={},
         taste_facets={"party": {"venues": {"südpol": 1.0, "fundbureau": 1.0}}},
     )
+
+    # Two pills, POOL_TARGET=50 → ceil(50/2) = 25 per pill.
+    assert _per_pill_cap(user, "party") == 25
+
     hits = get_category_candidates(db_session, user, "party", date_from=None, date_to=None, k=30)
-    # Two pills, target=50 → per_pill_cap = 25. After dedup (both terms match every event)
-    # unique events = 25. Then generic fill runs since pool < 30, adding 5 more.
+    # Both terms match every event → post-dedup keyword pool = 25.
+    # Then generic fill runs (25 < GENERIC_FLOOR=30) and tops up to 30.
     assert len(hits) >= 30
 
 
