@@ -13,14 +13,14 @@ export default function AboutMePage() {
 
   const [active, setActive] = useState<EventCategory[]>([])
   const [facets, setFacets] = useState<Partial<Record<EventCategory, CategoryFacets>>>({})
-  const [tasteSummary, setTasteSummary] = useState<string>('')
+  const [aboutMe, setAboutMe] = useState<string>('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!data) return
     setActive((data.active_categories ?? []) as EventCategory[])
     setFacets(data.taste_facets ?? {})
-    setTasteSummary(data.taste_summary ?? '')
+    setAboutMe(data.about_me ?? '')
   }, [data])
 
   const isFirstVisit = data?.active_categories === null
@@ -39,7 +39,7 @@ export default function AboutMePage() {
       const updated = await updateAboutMe({
         active_categories: active,
         taste_facets: facets,
-        taste_summary: tasteSummary,
+        about_me: aboutMe,
       })
       mutate('/about-me', updated, { revalidate: false })
     } finally {
@@ -88,6 +88,21 @@ export default function AboutMePage() {
             </div>
           </section>
 
+          <section className="rounded-lg border border-border bg-white p-4">
+            <h2 className="text-[12px] uppercase tracking-wider text-accent-gold mb-3">
+              General
+            </h2>
+            <p className="text-[11px] text-text-muted mb-2">
+              Anything the assistant should know that isn't category-specific.
+            </p>
+            <textarea
+              className="w-full rounded border border-border px-2 py-1 text-[13px]"
+              rows={6}
+              value={aboutMe}
+              onChange={(e) => setAboutMe(e.target.value)}
+            />
+          </section>
+
           {sortedActive.map((cat) => (
             <CategoryFacetsSection
               key={cat}
@@ -96,18 +111,6 @@ export default function AboutMePage() {
               onChange={(next) => updateFacetsFor(cat, next)}
             />
           ))}
-
-          <section className="rounded-lg border border-border bg-white p-4">
-            <h2 className="text-[12px] uppercase tracking-wider text-accent-gold mb-3">
-              What the assistant has learned about you
-            </h2>
-            <textarea
-              className="w-full rounded border border-border px-2 py-1 text-[13px]"
-              rows={5}
-              value={tasteSummary}
-              onChange={(e) => setTasteSummary(e.target.value)}
-            />
-          </section>
 
           <div className="flex gap-2">
             <button
