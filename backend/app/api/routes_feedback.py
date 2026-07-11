@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from app.agent.comment_extractor import ExtractorInput, extract_and_apply
 from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.api.deps import DbSession
+from app.config import settings
 from app.db.models import Event, Feedback
 from app.db.session import SessionLocal
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
@@ -62,7 +63,7 @@ def post_feedback(
     refresh_taste_centroids(db, user_id)
     db.commit()
 
-    if payload.comment:
+    if payload.comment and settings.comment_extractor_enabled:
         event_ctx = {
             "title": event.title,
             "venue": event.venue_name,

@@ -3,6 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from app.agent.comment_extractor import ExtractorInput, extract_and_apply
 from app.agent.memory import get_current_user_id
 from app.api.deps import DbSession
+from app.config import settings
 from app.db.models import User
 from app.db.session import SessionLocal
 from app.schemas.about_me import AboutMeResponse, AboutMeUpdate
@@ -70,7 +71,8 @@ def update_about_me(
     db.commit()
     db.refresh(u)
 
-    for cat, text in notes_to_extract:
-        background.add_task(_extract_notes_bg, user_id=user_id, category=cat, text=text)
+    if settings.comment_extractor_enabled:
+        for cat, text in notes_to_extract:
+            background.add_task(_extract_notes_bg, user_id=user_id, category=cat, text=text)
 
     return _to_response(u)

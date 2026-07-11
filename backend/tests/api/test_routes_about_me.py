@@ -75,8 +75,11 @@ def test_deselecting_a_category_preserves_its_facets(client, db_session):
     assert u.taste_facets["theater"]["venues"]["Thalia"] == 0.8
 
 
-def test_notes_field_triggers_extractor(client, db_session):
+def test_notes_field_triggers_extractor(client, db_session, monkeypatch):
+    from app.config import settings
     from app.db.models import User
+
+    monkeypatch.setattr(settings, "comment_extractor_enabled", True)
     db_session.add(User(id="local"))
     db_session.commit()
 
@@ -95,3 +98,27 @@ def test_notes_field_triggers_extractor(client, db_session):
     calls = [c for c in m.call_args_list if c.kwargs.get("input_", None)]
     # One call per category that carries a non-empty "notes" field.
     assert len(calls) == 1
+
+
+def test_about_me_notes_do_not_schedule_extractor_when_disabled(client, db_session, monkeypatch):
+    from app.config import settings
+    from app.db.models import User
+
+    monkeypatch.setattr(settings, "comment_extractor_enabled", False)
+
+    db_session.add(User(id="local", active_categories=["concerts"], taste_facets={}))
+    db_session.commit()
+
+    called = {"n": 0}
+
+    def fake_extract_and_apply(*args, **kwargs):
+        called["n"] += 1
+
+    monkeypatch.setattr("app.api.routes_about_me.extract_and_apply", fake_extract_and_apply)
+
+    r = client.put("/about-me", json={
+        "active_categories": ["concerts"],
+        "taste_facets": {"concerts": {"notes": "I love late-night piano concerts"}},
+    })
+    assert r.status_code == 200
+    assert called["n"] == 0

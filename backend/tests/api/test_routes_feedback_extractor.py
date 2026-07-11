@@ -54,7 +54,11 @@ def test_calendar_delete_triggers_centroid_refresh(client, db_session):
     m.assert_called_once()
 
 
-def test_feedback_with_comment_schedules_extractor(client, db_session):
+def test_feedback_with_comment_schedules_extractor(client, db_session, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "comment_extractor_enabled", True)
+
     _seed_event(db_session)
     db_session.add(User(id="local"))
     db_session.commit()
@@ -84,3 +88,31 @@ def test_feedback_without_comment_does_not_call_extractor(client, db_session):
         )
     assert res.status_code == 200
     m.assert_not_called()
+
+
+def test_feedback_does_not_schedule_extractor_when_disabled(client, db_session, monkeypatch):
+    """When comment_extractor_enabled=False the POST does not schedule the background task."""
+    from app.config import settings
+    from app.db.models import Event, User
+
+    monkeypatch.setattr(settings, "comment_extractor_enabled", False)
+
+    ev = Event(
+        id="e1", external_id="e1", source="test", title="X",
+        description="d", start_datetime=__import__("datetime").datetime(2026, 6, 1, tzinfo=__import__("datetime").timezone.utc),
+        category="concerts", tags=[], source_url="http://e", raw_data={},
+    )
+    db_session.add(ev)
+    db_session.add(User(id="local"))
+    db_session.commit()
+
+    called = {"n": 0}
+
+    def fake_extract_and_apply(*args, **kwargs):
+        called["n"] += 1
+
+    monkeypatch.setattr("app.api.routes_feedback.extract_and_apply", fake_extract_and_apply)
+
+    r = client.post("/feedback", json={"event_id": "e1", "sentiment": "like", "comment": "loved it"})
+    assert r.status_code == 200
+    assert called["n"] == 0
