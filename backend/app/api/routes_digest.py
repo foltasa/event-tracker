@@ -167,7 +167,8 @@ def _format_taste_prose(user: User) -> str:
                 cat_lines.append(f"    {field}: {', '.join(terms)}")
         notes = cat_facets.get("notes")
         if isinstance(notes, str) and notes.strip():
-            cat_lines.append(f"    notes: {notes.strip()}")
+            indented = notes.strip().replace("\n", "\n      ")
+            cat_lines.append(f"    notes: {indented}")
         if not cat_lines:
             cat_lines.append("    (nothing listed)")
         lines.append(f"  {cat}:")

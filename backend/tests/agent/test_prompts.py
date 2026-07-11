@@ -49,3 +49,12 @@ def test_curation_prompt_new_placeholders():
 
     for token in ("{interests}", "{taste_summary}", "{taste_facets_json}", "{disliked_json}"):
         assert token not in CURATION_PROMPT, f"legacy placeholder must be removed: {token}"
+
+
+def test_curation_prompt_formats_cleanly():
+    from app.agent.prompts import CURATION_PROMPT
+    # Guard against dangling {something} placeholders left in the template.
+    CURATION_PROMPT.format(
+        about_me="x", active_categories="y", inactive_categories="z",
+        taste_prose="p", event_pool="[]",
+    )

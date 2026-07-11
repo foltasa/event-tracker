@@ -287,3 +287,34 @@ def test_format_taste_prose_dumps_active_categories_only():
     assert "Südpol" in prose
     # Inactive-category facets must not leak in.
     assert "Thalia" not in prose
+
+
+def test_format_taste_prose_handles_empty_active_categories():
+    from app.api.routes_digest import _format_taste_prose
+    assert _format_taste_prose(User(id="u", active_categories=[])) == "(no active categories)"
+
+
+def test_format_taste_prose_marks_category_with_no_facets():
+    from app.api.routes_digest import _format_taste_prose
+    out = _format_taste_prose(User(id="u", active_categories=["concerts"], taste_facets={}))
+    assert "(nothing listed)" in out
+
+
+def test_format_taste_prose_ignores_non_string_notes():
+    from app.api.routes_digest import _format_taste_prose
+    out = _format_taste_prose(User(
+        id="u", active_categories=["concerts"],
+        taste_facets={"concerts": {"notes": 42}},
+    ))
+    assert "42" not in out
+    assert "(nothing listed)" in out
+
+
+def test_format_taste_prose_indents_multiline_notes():
+    from app.api.routes_digest import _format_taste_prose
+    out = _format_taste_prose(User(
+        id="u", active_categories=["concerts"],
+        taste_facets={"concerts": {"notes": "line 1\nline 2"}},
+    ))
+    # Continuation lines are indented so they visually belong under `notes:`.
+    assert "notes: line 1\n      line 2" in out
