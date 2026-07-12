@@ -332,23 +332,32 @@ def get_recommendations(
         if not hits_per_category:
             return []
 
-        id_to_score = {}
+        # Rank by (source_tier, -similarity_score). Keyword hits always win
+        # over semantic, which win over generic fill. Ties broken by higher
+        # similarity_score (None treated as 0.0). Dedup keeps the best
+        # rank_key seen for each event_id.
+        SOURCE_TIER = {"keyword": 0, "semantic": 1, "fill": 2}
+        best: dict[str, tuple[tuple[int, float], float | None]] = {}
         for h in hits_per_category:
-            prev = id_to_score.get(h.event_id, -1.0)
-            if (h.similarity_score or 0.0) > prev:
-                id_to_score[h.event_id] = h.similarity_score
+            tier = SOURCE_TIER.get(getattr(h, "source", None) or "fill", 2)
+            rank_key = (tier, -(h.similarity_score or 0.0))
+            prev = best.get(h.event_id)
+            if prev is None or rank_key < prev[0]:
+                best[h.event_id] = (rank_key, h.similarity_score)
 
+        ordered_ids = sorted(best.keys(), key=lambda eid: best[eid][0])
         rows = (
             session.query(Event)
-            .filter(Event.id.in_(id_to_score.keys()))
+            .filter(Event.id.in_(ordered_ids))
             .filter(visible_events_filter())
             .all()
         )
-        ranked = sorted(
-            (_event_to_summary(r, similarity_score=id_to_score[r.id]) for r in rows),
-            key=lambda d: d["similarity_score"] or 0.0,
-            reverse=True,
-        )
+        by_id = {r.id: r for r in rows}
+        ranked = [
+            _event_to_summary(by_id[eid], similarity_score=best[eid][1])
+            for eid in ordered_ids
+            if eid in by_id
+        ]
         return ranked[:n]
     finally:
         session.close()

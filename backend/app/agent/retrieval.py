@@ -108,15 +108,23 @@ def _keyword_hits_for_category(
 
     seen: dict[str, QueryHit] = {}
     for field, term in pills:
-        like = f"%{term.lower()}%"
         q = session.query(Event.id).filter(Event.category == category)
         if date_lo is not None:
             q = q.filter(Event.start_datetime >= date_lo)
         if date_hi is not None:
             q = q.filter(Event.start_datetime <= date_hi)
         if field == "venues":
-            q = q.filter(func.lower(Event.venue_name).like(like))
+            # Chip input strips whitespace, but ingested venue names keep
+            # spaces/hyphens (e.g. pill "beatboutique" vs DB "Beat Boutique").
+            # Normalize both sides so the substring match is not doomed.
+            venue_norm = func.replace(
+                func.replace(func.lower(Event.venue_name), " ", ""),
+                "-", "",
+            )
+            term_norm = term.lower().replace(" ", "").replace("-", "")
+            q = q.filter(venue_norm.like(f"%{term_norm}%"))
         else:
+            like = f"%{term.lower()}%"
             q = q.filter(or_(
                 func.lower(Event.title).like(like),
                 func.lower(Event.description).like(like),
@@ -124,7 +132,7 @@ def _keyword_hits_for_category(
         q = q.order_by(Event.start_datetime.asc()).limit(per_pill_cap)
         for (eid,) in q.all():
             if eid not in seen:
-                seen[eid] = QueryHit(event_id=eid, similarity_score=None)
+                seen[eid] = QueryHit(event_id=eid, similarity_score=None, source="keyword")
     return list(seen.values())
 
 
@@ -203,7 +211,7 @@ def get_category_candidates(
         if seen:
             q = q.filter(~Event.id.in_(seen.keys()))
         for (eid,) in q.order_by(Event.start_datetime.asc()).limit(need).all():
-            seen[eid] = QueryHit(event_id=eid, similarity_score=None)
+            seen[eid] = QueryHit(event_id=eid, similarity_score=None, source="fill")
 
     # Dislike hard-filter is a pass-through — call kept to preserve the seam.
     kept = set(filter_out_disliked(session, user, category, list(seen.keys())))

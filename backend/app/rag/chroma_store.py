@@ -27,6 +27,8 @@ class EventForEmbedding:
 class QueryHit:
     event_id: str
     similarity_score: float | None
+    # Provenance so the ranker can tier keyword > semantic > fill.
+    source: str = "semantic"
 
 
 def _get_collection():
@@ -98,7 +100,7 @@ def query_by_vector(
     )
     ids = result["ids"][0]
     distances = result["distances"][0]
-    return [QueryHit(event_id=i, similarity_score=1.0 - d) for i, d in zip(ids, distances)]
+    return [QueryHit(event_id=i, similarity_score=1.0 - d, source="semantic") for i, d in zip(ids, distances)]
 
 
 def get_embeddings_for_ids(event_ids: list[str]) -> dict[str, list[float]]:

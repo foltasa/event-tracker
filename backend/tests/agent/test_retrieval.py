@@ -174,6 +174,27 @@ def test_keyword_hits_matches_venue_name_case_insensitively(db_session):
     assert [h.event_id for h in hits] == ["e2"]
 
 
+def test_keyword_hits_matches_venue_ignoring_whitespace_and_case(db_session):
+    """Regression: pill 'beatboutique' (no space) must match DB row 'Beat Boutique'.
+    The About Me chip input strips whitespace; the ingested venue name keeps it.
+    Without normalization the substring test is doomed."""
+    from app.agent.retrieval import _keyword_hits_for_category
+    from app.db.models import User
+
+    e1 = _mk_event(db_session, "e1", "party", title="X", desc="")
+    e1.venue_name = "Beat Boutique"
+    e2 = _mk_event(db_session, "e2", "party", title="Y", desc="")
+    e2.venue_name = "Other Club"
+    db_session.commit()
+
+    user = User(id="local", taste_facets={"party": {"venues": {"beatboutique": 1.0}}})
+    hits = _keyword_hits_for_category(
+        db_session, user, "party",
+        date_from=None, date_to=None, per_pill_cap=10,
+    )
+    assert [h.event_id for h in hits] == ["e1"]
+
+
 def test_keyword_hits_matches_title_and_description_for_artists_and_genres(db_session):
     from app.agent.retrieval import _keyword_hits_for_category
     from app.db.models import User

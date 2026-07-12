@@ -4,6 +4,7 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, String, UniqueConstraint,
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import UTCDateTime
 
 
 def _utcnow() -> datetime:
@@ -20,8 +21,8 @@ class Event(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     summary: Mapped[str | None] = mapped_column(String, nullable=True)
-    start_datetime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    start_datetime: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    end_datetime: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     venue_name: Mapped[str | None] = mapped_column(String, nullable=True)
     venue_address: Mapped[str | None] = mapped_column(String, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
