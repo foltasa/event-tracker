@@ -1,11 +1,19 @@
 'use client'
 import type { GridItem, LaidOutItem } from '@/lib/calendarGrid'
+import type { CalendarEntry } from '@/lib/types'
+import { categoryBg, RECOMMENDATION_OPACITY } from '@/lib/categoryColors'
 
 interface Props {
   days: { key: string }[]
   itemsByDay: Map<string, GridItem[]>
   onItemClick: (item: LaidOutItem) => void
   onAllDayClick: (dayKey: string) => void
+}
+
+function chipBackground(it: GridItem): string {
+  if (it.kind === 'appointment') return '#ffffff'
+  const entry = it.raw as CalendarEntry
+  return categoryBg(entry.event?.category)
 }
 
 // Shared all-day strip that spans the whole week. It sits outside the vertical
@@ -26,19 +34,29 @@ export default function AllDayStrip({ days, itemsByDay, onItemClick, onAllDayCli
             aria-label="Add all-day appointment"
             className="flex-1 min-h-[24px] flex flex-col gap-0.5 p-0.5 border-l border-border cursor-pointer text-left"
           >
-            {items.map((it) => (
-              <button
-                key={it.id}
-                data-testid={`allday-block-${it.id}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onItemClick({ ...it, column: 0, columnCount: 1 })
-                }}
-                className="text-[10px] truncate rounded bg-white px-1 py-0.5 border-l-[3px] border-text-secondary text-left"
-              >
-                {it.title}
-              </button>
-            ))}
+            {items.map((it) => {
+              const isRec = it.kind === 'recommendation'
+              const borderClass =
+                it.kind === 'appointment' ? 'border-text-secondary' : 'border-accent-gold'
+              return (
+                <button
+                  key={it.id}
+                  data-testid={`allday-block-${it.id}`}
+                  data-kind={it.kind}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onItemClick({ ...it, column: 0, columnCount: 1 })
+                  }}
+                  style={{
+                    background: chipBackground(it),
+                    opacity: isRec ? RECOMMENDATION_OPACITY : undefined,
+                  }}
+                  className={`text-[10px] truncate rounded px-1 py-0.5 border-l-[3px] ${borderClass} text-left text-text-primary`}
+                >
+                  {it.title}
+                </button>
+              )
+            })}
           </div>
         )
       })}
