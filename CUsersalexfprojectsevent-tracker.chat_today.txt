@@ -1,0 +1,35 @@
+--- dashboard user 2026-07-12 10:11:49.787316 
+ What do you know about me?
+--- dashboard assistant 2026-07-12 10:11:58.691060 
+ Here's what I have on file for you:
+
+- **No free-text "About Me"** written yet.
+- **Active category preferences:**
+  - 🎸 **Concerts:** punk
+  - 🎧 **Party:** techno; favorite venues — Südpol, Fundbureau, Beatboutique, PAL
+  - 🎭 **Theater:** Thalia
+  - 🎤 **Comedy:** active, but no specifics listed
+
+Want to add anything — a bio, more genres, favorite venues, things to avoid?
+--- dashboard user 2026-07-12 10:12:25.093491 
+ Can you recommend me events for next week?
+--- dashboard assistant 2026-07-12 10:12:38.689989 
+ Here are some picks for next week (Jul 13–19):
+
+🎸 **Concerts**
+- **Powerslave** (Iron Maiden tribute) [event:01402f68-5e74-42f1-b2f0-bf1bae8255e2] — Sat Jul 18, LOGO Hamburg
+- **The 27 Club** [event:04946d2d-0e61-4f78-8119-e3df1c2a05f6] — Tue Jul 14, St. Pauli Theater (also Jul 15 & 17)
+- **Counting Crows** [event:20dc3c2e-9eb8-4078-bc58-ae2d7dab0666] — Tue Jul 14
+- **Xavier Rudd** [event:0270baff-cfda-4c7c-91f7-207fa26a6227] — Fri Jul 17, Stadtpark Open Air
+- **La Delio Valdez** [event:073b0aaa-fcc8-429c-a556-ada104b9a618] — Fri Jul 17, Fabrik
+
+🎧 **Party**
+- **Rum Tings w/ Hein Boogie & Selecta Ahoi** [event:19cf17b6-6ede-4506-ac75-f7d7cefac8ae] — Thu Jul 16, Locke
+
+🎭 **Theater**
+- **Familie Flöz: Feste (SHMF)** [event:0a81f5e1-958e-4624-a5a3-c1dcba5579c6] — Wed Jul 15, Ernst Deutsch Theater
+- **Höchste Zeit** [event:0d2acbfa-ccd0-495a-9ea1-f4e2ca61be2c] — Thu Jul 16, Komödie Winterhuder Fährhaus
+- **Die Königs schenken nach!** [event:0aa37af4-e527-4f8e-a3e7-3f08bb8c9d2c] — Fri Jul 17, Schmidt Theater
+- **klein.** [event:169a5cc2-bc33-4a21-9417-5bf9767d3a2a] — Fri Jul 17, Klabauter Theater
+
+Nothing punk or techno at your usual venues (Südpol, Fundbureau, Beatboutique, PAL) or Thalia this week. Want me to dig deeper into any category or save something to your calendar?
