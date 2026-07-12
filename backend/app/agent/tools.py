@@ -12,7 +12,8 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.agent.memory import get_current_user_id, refresh_taste_centroid
+from app.agent import retrieval
+from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.agent.memory_blob import EditError, apply_edit
 from app.agent.schemas import ToolError
 from app.config import settings
@@ -142,14 +143,45 @@ def save_to_calendar(event_id: str) -> dict:
         import uuid as _uuid
         session.add(SavedEvent(id=str(_uuid.uuid4()), user_id=user_id, event_id=event_id))
         session.commit()
+        # A new save is a positive taste signal; refresh the centroid.
+        refresh_taste_centroids(session, user_id)
+        session.commit()
         return {"status": "ok", "already_saved": False}
     finally:
         session.close()
 
 
+def _compact_facets_for_tool(taste_facets: dict) -> dict:
+    """Return the About Me facet shape with weights stripped.
+
+    Keys within each category are preserved in this order: artists, genres,
+    venues, notes. Empty fields are omitted."""
+    out: dict = {}
+    for cat, cat_facets in (taste_facets or {}).items():
+        if not isinstance(cat_facets, dict):
+            continue
+        entry: dict = {}
+        for field in ("artists", "genres", "venues"):
+            bucket = cat_facets.get(field) or {}
+            terms = [t for t in bucket.keys() if isinstance(t, str) and t.strip()]
+            if terms:
+                entry[field] = terms
+        notes = cat_facets.get("notes")
+        if isinstance(notes, str) and notes.strip():
+            entry["notes"] = notes.strip()
+        if entry:
+            out[cat] = entry
+    return out
+
+
 @tool
 def get_user_profile() -> dict:
-    """Return the current user's interests, about-me, and distilled taste summary."""
+    """Return the current user's About Me: general free text, active
+    categories, and per-category preferences (facets).
+
+    This is the single source of truth for what the user has told the
+    assistant. Legacy fields (interest_tags, taste_summary) are not
+    exposed here."""
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -157,9 +189,9 @@ def get_user_profile() -> dict:
         if user is None:
             raise ToolError("user not found")
         return {
-            "interest_tags": list(user.interest_tags),
             "about_me": user.about_me,
-            "taste_summary": user.taste_summary,
+            "active_categories": list(user.active_categories) if user.active_categories is not None else None,
+            "taste_facets": _compact_facets_for_tool(user.taste_facets or {}),
         }
     finally:
         session.close()
@@ -260,11 +292,18 @@ def get_recommendations(
     date_from: str | None = None,
     date_to: str | None = None,
     n: int = 10,
-) -> list[dict]:
-    """Recommend events ranked by similarity to the user's taste.
+    category: str | None = None,
+) -> list[dict] | dict:
+    """Recommend events for the current user, per category.
 
-    Uses the user's taste centroid (mean of liked-event embeddings) when
-    available; otherwise falls back to embedding their interest tags."""
+    Args:
+        date_from: ISO date lower bound (inclusive).
+        date_to: ISO date upper bound (inclusive).
+        n: max results across all queried categories.
+        category: if given, restrict to this category (overrides active_categories).
+                  if None, uses active_categories and returns [] with a
+                  structured hint when no categories are active.
+    """
     session = _session_factory()
     try:
         user_id = get_current_user_id()
@@ -272,43 +311,54 @@ def get_recommendations(
         if user is None:
             raise ToolError("user not found")
 
-        if user.taste_centroid is not None and len(user.taste_centroid) > 0:
-            vector = list(user.taste_centroid)
-        elif user.interest_tags:
-            vector = embed_one(", ".join(user.interest_tags))
+        if category is not None:
+            targets = [category]
         else:
-            return []
-
-        where = None
-        ranges = []
-        if date_from:
-            ranges.append({"start_time": {"$gte": int(datetime.combine(date.fromisoformat(date_from), time.min, tzinfo=timezone.utc).timestamp())}})
-        if date_to:
-            ranges.append({"start_time": {"$lte": int(datetime.combine(date.fromisoformat(date_to), time.max, tzinfo=timezone.utc).timestamp())}})
-        if ranges:
-            where = {"$and": ranges} if len(ranges) > 1 else ranges[0]
+            if not user.active_categories:
+                return {"error": "no_active_categories"}
+            targets = list(user.active_categories)
 
         try:
-            hits = chroma_store.query_by_vector(vector, n=min(n, 30), where=where)
+            hits_per_category: list[chroma_store.QueryHit] = []
+            for cat in targets:
+                hits_per_category.extend(retrieval.get_category_candidates(
+                    session, user, cat,
+                    date_from=date_from, date_to=date_to, k=min(n * 3, 30),
+                ))
         except Exception as exc:
             logger.exception("chroma query failed")
             raise ToolError("recommendations temporarily unavailable") from exc
 
-        if not hits:
+        if not hits_per_category:
             return []
 
-        id_to_score = {h.event_id: h.similarity_score for h in hits}
+        # Rank by (source_tier, -similarity_score). Keyword hits always win
+        # over semantic, which win over generic fill. Ties broken by higher
+        # similarity_score (None treated as 0.0). Dedup keeps the best
+        # rank_key seen for each event_id.
+        SOURCE_TIER = {"keyword": 0, "semantic": 1, "fill": 2}
+        best: dict[str, tuple[tuple[int, float], float | None]] = {}
+        for h in hits_per_category:
+            tier = SOURCE_TIER.get(getattr(h, "source", None) or "fill", 2)
+            rank_key = (tier, -(h.similarity_score or 0.0))
+            prev = best.get(h.event_id)
+            if prev is None or rank_key < prev[0]:
+                best[h.event_id] = (rank_key, h.similarity_score)
+
+        ordered_ids = sorted(best.keys(), key=lambda eid: best[eid][0])
         rows = (
             session.query(Event)
-            .filter(Event.id.in_(id_to_score.keys()))
+            .filter(Event.id.in_(ordered_ids))
             .filter(visible_events_filter())
             .all()
         )
-        return sorted(
-            (_event_to_summary(r, similarity_score=id_to_score[r.id]) for r in rows),
-            key=lambda d: d["similarity_score"] or 0.0,
-            reverse=True,
-        )
+        by_id = {r.id: r for r in rows}
+        ranked = [
+            _event_to_summary(by_id[eid], similarity_score=best[eid][1])
+            for eid in ordered_ids
+            if eid in by_id
+        ]
+        return ranked[:n]
     finally:
         session.close()
 
@@ -343,9 +393,9 @@ def record_feedback(event_id: str, sentiment: str, comment: str | None = None) -
                 comment=comment,
             ))
         session.commit()
-        if sentiment == "like":
-            refresh_taste_centroid(session, user_id)
-            session.commit()
+        # Any feedback signal change may affect the centroid.
+        refresh_taste_centroids(session, user_id)
+        session.commit()
         return {"status": "ok"}
     finally:
         session.close()

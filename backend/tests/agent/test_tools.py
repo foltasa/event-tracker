@@ -97,15 +97,13 @@ def test_save_to_calendar_unknown_raises_toolerror(db_session, user, monkeypatch
 
 
 def test_get_user_profile_returns_profile(db_session, user, monkeypatch):
-    user.taste_summary = "loves jazz"
-    db_session.commit()
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     result = tools.get_user_profile.invoke({})
     assert result == {
-        "interest_tags": ["music"],
         "about_me": None,
-        "taste_summary": "loves jazz",
+        "active_categories": None,
+        "taste_facets": {},
     }
 
 
@@ -120,53 +118,10 @@ def test_update_user_profile_updates_fields(db_session, user, monkeypatch):
     assert fresh.about_me == "loves indie"
 
 
-def test_get_recommendations_cold_start_uses_interest_tags(db_session, events, monkeypatch):
-    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "embed_one", lambda text: [0.42] * 1536)
-
-    captured = {}
-
-    def fake_query(vector, n, where=None):
-        captured["vector"] = vector
-        captured["n"] = n
-        return [
-            chroma_store.QueryHit(event_id="e_music", similarity_score=0.9),
-            chroma_store.QueryHit(event_id="e_tech", similarity_score=0.8),
-        ]
-
-    monkeypatch.setattr(tools.chroma_store, "query_by_vector", fake_query)
-
-    results = tools.get_recommendations.invoke({"n": 2})
-    assert len(results) == 2
-    assert results[0]["id"] == "e_music"
-    assert results[0]["similarity_score"] == 0.9
-    assert captured["vector"] == [0.42] * 1536
-
-
-def test_get_recommendations_uses_centroid_when_present(db_session, user, events, monkeypatch):
-    user.taste_centroid = [0.7] * 1536
-    db_session.commit()
-    monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
-    monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "embed_one", lambda text: pytest.fail("must not embed when centroid set"))
-    captured = {}
-
-    def fake_query(vector, n, where=None):
-        captured["vector"] = vector
-        return [chroma_store.QueryHit(event_id="e_music", similarity_score=0.99)]
-
-    monkeypatch.setattr(tools.chroma_store, "query_by_vector", fake_query)
-
-    results = tools.get_recommendations.invoke({"n": 1})
-    assert captured["vector"] == [0.7] * 1536
-    assert results[0]["id"] == "e_music"
-
-
 def test_record_feedback_inserts_row(db_session, events, monkeypatch):
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
-    monkeypatch.setattr(tools, "refresh_taste_centroid", lambda s, uid: None)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", lambda s, uid: None)
 
     tools.record_feedback.invoke({
         "event_id": "e_music", "sentiment": "like", "comment": "loved it",
@@ -185,12 +140,13 @@ def test_record_feedback_like_refreshes_centroid(db_session, events, monkeypatch
     def fake_refresh(s, uid):
         called["refreshed"] = True
 
-    monkeypatch.setattr(tools, "refresh_taste_centroid", fake_refresh)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", fake_refresh)
     tools.record_feedback.invoke({"event_id": "e_music", "sentiment": "like"})
     assert called["refreshed"] is True
 
 
-def test_record_feedback_dislike_skips_centroid_refresh(db_session, events, monkeypatch):
+def test_record_feedback_dislike_also_refreshes_centroid(db_session, events, monkeypatch):
+    # Any feedback signal (like or dislike) triggers a centroid refresh.
     monkeypatch.setattr(tools, "_session_factory", lambda: db_session)
     monkeypatch.setattr(tools, "get_current_user_id", lambda: "local")
     called = {"refreshed": False}
@@ -198,9 +154,9 @@ def test_record_feedback_dislike_skips_centroid_refresh(db_session, events, monk
     def fake_refresh(s, uid):
         called["refreshed"] = True
 
-    monkeypatch.setattr(tools, "refresh_taste_centroid", fake_refresh)
+    monkeypatch.setattr(tools, "refresh_taste_centroids", fake_refresh)
     tools.record_feedback.invoke({"event_id": "e_music", "sentiment": "dislike"})
-    assert called["refreshed"] is False
+    assert called["refreshed"] is True
 
 
 def test_record_feedback_unknown_event_raises(db_session, user, monkeypatch):

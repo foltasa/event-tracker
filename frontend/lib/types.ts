@@ -186,3 +186,29 @@ export interface RecommendRequest {
 export interface RecommendResponse {
   message: string;
 }
+
+export interface CategoryFacets {
+  artists?: Record<string, number>;
+  genres?: Record<string, number>;
+  venues?: Record<string, number>;
+  weekday_pref?: Record<string, number>;
+  disliked?: {
+    artists?: Record<string, number>;
+    genres?: Record<string, number>;
+  };
+  notes?: string;
+}
+
+export interface AboutMeResponse {
+  active_categories: string[] | null;
+  taste_facets: Partial<Record<EventCategory, CategoryFacets>>;
+  taste_summary: string | null;
+  about_me: string | null;
+}
+
+export interface AboutMeUpdate {
+  active_categories?: string[];
+  taste_facets?: Partial<Record<EventCategory, CategoryFacets>>;
+  taste_summary?: string;
+  about_me?: string | null;
+}

@@ -1,11 +1,12 @@
 import Link from 'next/link'
 
-type ActivePage = 'timetable' | 'explore' | 'settings'
+type ActivePage = 'timetable' | 'explore' | 'about-me' | 'settings'
 
 const LINKS: { href: string; label: string; page: ActivePage }[] = [
-  { href: '/',         label: 'Timetable', page: 'timetable' },
-  { href: '/explore',  label: 'Explore',   page: 'explore'   },
-  { href: '/settings', label: 'Settings',  page: 'settings'  },
+  { href: '/',          label: 'Timetable', page: 'timetable' },
+  { href: '/explore',   label: 'Explore',   page: 'explore'   },
+  { href: '/about-me',  label: 'About Me',  page: 'about-me'  },
+  { href: '/settings',  label: 'Settings',  page: 'settings'  },
 ]
 
 export default function TopNav({ active, date }: { active: ActivePage; date: string }) {

@@ -1,10 +1,18 @@
 import { HOUR_PX } from './HourGutter'
 import type { LaidOutItem } from '@/lib/calendarGrid'
+import type { CalendarEntry } from '@/lib/types'
+import { categoryBg, RECOMMENDATION_OPACITY } from '@/lib/categoryColors'
 
 function fmtTime(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function backgroundFor(item: LaidOutItem): string {
+  if (item.kind === 'appointment') return '#ffffff'
+  const entry = item.raw as CalendarEntry
+  return categoryBg(entry.event?.category)
 }
 
 export default function EventBlock({
@@ -20,11 +28,10 @@ export default function EventBlock({
   const leftPct = item.column * widthPct
 
   const isRec = item.kind === 'recommendation'
-  const bgColor = isRec ? 'bg-gray-300' : 'bg-white'
-  const titleClass = isRec ? 'text-text-secondary' : 'text-text-primary'
-  const borderClasses = isRec
-    ? 'border border-border'
-    : `border border-border border-l-[3px] ${item.kind === 'event' ? 'border-accent-gold' : 'border-text-secondary'}`
+  const borderClasses =
+    item.kind === 'appointment'
+      ? 'border border-border border-l-[3px] border-text-secondary'
+      : 'border border-border border-l-[3px] border-accent-gold'
 
   return (
     <button
@@ -34,16 +41,13 @@ export default function EventBlock({
       style={{
         top: startPx, height: heightPx,
         left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
+        background: backgroundFor(item),
+        opacity: isRec ? RECOMMENDATION_OPACITY : undefined,
       }}
-      className={`absolute z-10 text-left rounded-md ${bgColor} ${borderClasses} px-2 py-1 overflow-hidden hover:shadow-sm cursor-pointer`}
+      className={`absolute z-10 text-left rounded-md ${borderClasses} px-2 py-1 overflow-hidden hover:shadow-sm cursor-pointer`}
     >
-      {isRec && (
-        <p className="text-[9px] uppercase tracking-wider font-semibold text-accent-gold leading-none mb-0.5">
-          Recommendation:
-        </p>
-      )}
-      <p className={`text-[11px] font-semibold truncate ${titleClass}`}>{item.title}</p>
-      <p className="text-[10px] text-text-muted">
+      <p className="text-[11px] font-semibold truncate text-text-primary">{item.title}</p>
+      <p className="text-[10px] text-text-primary">
         {fmtTime(item.startMinutes!)}{item.endMinutes != null ? ` – ${fmtTime(item.endMinutes)}` : ''}
       </p>
     </button>

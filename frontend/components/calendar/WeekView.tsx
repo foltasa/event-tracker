@@ -3,9 +3,10 @@ import HourGutter from './HourGutter'
 import WeekHeader from './WeekHeader'
 import WeekdayStrip from './WeekdayStrip'
 import DayColumn from './DayColumn'
+import AllDayStrip from './AllDayStrip'
 import { toGridItem, type GridItem, type LaidOutItem } from '@/lib/calendarGrid'
 import type { Appointment, CalendarEntry } from '@/lib/types'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { HOUR_PX } from './HourGutter'
 
 function toKey(d: Date): string {
@@ -39,6 +40,18 @@ export default function WeekView({
     return { key: toKey(d), date: d }
   })
 
+  const { allDayByDay, timedByDay } = useMemo(() => {
+    const allDay = new Map<string, GridItem[]>()
+    const timed = new Map<string, GridItem[]>()
+    for (const it of items) {
+      const bucket = it.startMinutes === null ? allDay : timed
+      const arr = bucket.get(it.day) ?? []
+      arr.push(it)
+      bucket.set(it.day, arr)
+    }
+    return { allDayByDay: allDay, timedByDay: timed }
+  }, [items])
+
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // Scroll to 07:00 on mount so morning appointments are immediately visible
@@ -49,6 +62,12 @@ export default function WeekView({
     <div className="flex-1 flex flex-col overflow-hidden bg-bg-page">
       <WeekHeader weekStart={weekStart} onPrev={onPrev} onNext={onNext} onToday={onToday} />
       <WeekdayStrip weekStart={weekStart} todayKey={todayKey} />
+      <AllDayStrip
+        days={days}
+        itemsByDay={allDayByDay}
+        onItemClick={onItemClick}
+        onAllDayClick={onAllDayClick}
+      />
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-auto">
         <div className="flex">
           <HourGutter />
@@ -56,11 +75,10 @@ export default function WeekView({
             <DayColumn
               key={key}
               dayKey={key}
-              items={items.filter(i => i.day === key)}
+              items={timedByDay.get(key) ?? []}
               isToday={key === todayKey}
               onEmptyClick={onEmptyClick}
               onItemClick={onItemClick}
-              onAllDayClick={onAllDayClick}
             />
           ))}
         </div>

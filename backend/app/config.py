@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     web_search_max_results: int = 5
     web_search_allowed_domains: str = ""  # CSV; empty = allow all
 
+    # Comment extractor — when False the feedback POST and About-Me PUT do not
+    # schedule the LLM-driven extractor background task. Facets remain
+    # user-editable via the About Me form; behaviour signals still feed
+    # taste_centroids via refresh_taste_centroids.
+    comment_extractor_enabled: bool = False
+
     # Comma-separated list of origins allowed to call the API (browser CORS).
     # Defaults cover the Next.js dev server on common ports.
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"

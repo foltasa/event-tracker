@@ -17,7 +17,7 @@ def setup(db_session):
     db_session.commit()
 
 
-@patch("app.api.routes_feedback.refresh_taste_centroid")
+@patch("app.api.routes_feedback.refresh_taste_centroids")
 def test_post_feedback_like_inserts_and_refreshes(mock_refresh, client, setup, db_session):
     r = client.post("/feedback", json={"event_id": "e1", "sentiment": "like", "comment": "loved it"})
     assert r.status_code == 200
@@ -27,11 +27,12 @@ def test_post_feedback_like_inserts_and_refreshes(mock_refresh, client, setup, d
     mock_refresh.assert_called_once()
 
 
-@patch("app.api.routes_feedback.refresh_taste_centroid")
-def test_post_feedback_dislike_skips_refresh(mock_refresh, client, setup):
+@patch("app.api.routes_feedback.refresh_taste_centroids")
+def test_post_feedback_dislike_also_refreshes(mock_refresh, client, setup):
+    # Any feedback signal (like or dislike) triggers a centroid refresh.
     r = client.post("/feedback", json={"event_id": "e1", "sentiment": "dislike"})
     assert r.status_code == 200
-    mock_refresh.assert_not_called()
+    mock_refresh.assert_called_once()
 
 
 def test_post_feedback_unknown_event_404(client, setup):
@@ -39,7 +40,7 @@ def test_post_feedback_unknown_event_404(client, setup):
     assert r.status_code == 404
 
 
-@patch("app.api.routes_feedback.refresh_taste_centroid")
+@patch("app.api.routes_feedback.refresh_taste_centroids")
 def test_post_feedback_upserts_on_repeat(mock_refresh, client, setup, db_session):
     client.post("/feedback", json={"event_id": "e1", "sentiment": "like"})
     client.post("/feedback", json={"event_id": "e1", "sentiment": "dislike", "comment": "changed mind"})

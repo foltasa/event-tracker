@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-from app.agent.memory import get_current_user_id
+from app.agent.memory import get_current_user_id, refresh_taste_centroids
 from app.api.deps import DbSession
 from app.db.models import Event, SavedEvent
 from app.schemas.calendar import CalendarEntry, CalendarResponse
@@ -58,6 +58,9 @@ def save_to_calendar(payload: SaveRequest, db: DbSession) -> CalendarEntry:
         db.add(existing)
         db.commit()
         db.refresh(existing)
+        # Saving an event is a positive taste signal; refresh centroid.
+        refresh_taste_centroids(db, user_id)
+        db.commit()
     return CalendarEntry(
         id=existing.id, event=_event_to_card(e),
         saved_at=existing.saved_at, kind=existing.kind,
@@ -70,6 +73,9 @@ def unsave(event_id: str, db: DbSession) -> Response:
     row = db.query(SavedEvent).filter_by(user_id=user_id, event_id=event_id).one_or_none()
     if row is not None:
         db.delete(row)
+        db.commit()
+        # Removing a save can shift the centroid; only refresh if we actually deleted.
+        refresh_taste_centroids(db, user_id)
         db.commit()
     return Response(status_code=204)
 

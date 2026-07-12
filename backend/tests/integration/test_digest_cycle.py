@@ -1,5 +1,6 @@
 ﻿"""End-to-end digest exercises: events fixture → /digest → cache hit on second call."""
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,13 @@ from app.db.models import DigestCache, Event, User
 
 @pytest.fixture
 def populated(db_session):
-    db_session.add(User(id="local", interest_tags=["music"], taste_summary="loves jazz", facts_md=""))
+    db_session.add(User(
+        id="local",
+        interest_tags=["music"],
+        taste_summary="loves jazz",
+        facts_md="",
+        active_categories=["concerts"],
+    ))
     for i in range(8):
         db_session.add(Event(
             id=f"e{i}", external_id=f"x{i}", source="eventbrite",
@@ -21,9 +28,15 @@ def populated(db_session):
     db_session.commit()
 
 
+def _fake_hits(event_ids):
+    return [SimpleNamespace(event_id=eid, similarity_score=0.9) for eid in event_ids]
+
+
 @patch("app.api.routes_digest._get_today", return_value=date(2026, 6, 9))
+@patch("app.api.routes_digest.retrieval.get_category_candidates",
+       side_effect=lambda *a, **k: _fake_hits([f"e{i}" for i in range(8)]))
 @patch("app.api.routes_digest.get_agent")
-def test_digest_full_cycle_caches(mock_agent, _today, client, populated, db_session):
+def test_digest_full_cycle_caches(mock_agent, _retr, _today, client, populated, db_session):
     response = LLMDigestResponse(picks=[
         LLMDigestPick(event_id=f"e{i}", justification=f"justification number {i}") for i in range(4)
     ])
